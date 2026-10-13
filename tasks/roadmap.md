@@ -9,21 +9,23 @@ Master list of milestones. Each active workstream gets its own `tasks/workflow-<
 - [x] Pushed to `github.com/Thiago-Dantas/x4-station-designer` (private)
 
 ## Phase 1: Research: how X4 handles station plans
-- [ ] Extract `libraries/constructionplans.xml` and compare its format with the player file
-- [ ] Find the module macros and component files for a few station modules; map `connectionsnapNNN` to their transforms
-- [ ] **Top question:** check whether `offset` is authoritative or derived from predecessor + connection. Answer it with REA on `X4.exe`; it is the first RE target.
-- [ ] Injection test A: add a hand-made plan to the profile file (backup first, game closed), launch, check the plan appears
-- [ ] Check the game's read and write behaviour for `constructionplans.xml` (startup only? overwritten on exit?)
-- [ ] Check for an in-game import/export feature and what `<profile>\constructionplan\` is for (option B)
-- [ ] Investigate `x4ep_planner` (GHOSTau's Station Planner, `ws_3777272604`), the main prior art
-  - [ ] Extract its `ext_01.cat/.dat` to a research folder outside the install. This also tests the `.dat` layout hypothesis.
-  - [ ] Read `readme.txt`, `ui.xml`, `md/x4ep_build_queue.xml`, `md/x4ep_build_bridge.xml`
-  - [ ] In `ui/ep_planner.lua`, find which build-menu or FFI calls place modules, connect them and build the plan
-  - [ ] Find its module-geometry tables in `ui/ep_data.lua` (how it knows snap points)
-  - [ ] Write up the findings in `docs/`
+Session log: [workflow-phase1-research.md](workflow-phase1-research.md)
+
+- [x] `.cat`/`.dat` extractor `tools/x4cat.py`. The `.dat` layout is verified with MD5s.
+- [x] Extract `libraries/constructionplans.xml` and compare its format with the player file. Same format, plus `bookmark`, `fixed`, text-ref names, multiple roots.
+- [x] Map `connectionsnapNNN` to module geometry for one module (macro → component → `ConnectionSnapNNN` offsets)
+- [x] Find the in-game import/export feature (verified in the menu Lua; folder `constructionplan\` is a strong hypothesis)
+- [x] Investigate `x4ep_planner`: it uses the engine's layout generator (`create_construction_sequence`) and then `add_build_to_expand_station`. No exact placement. Its "geometry" tables are only snap counts. See `docs/x4-plan-apis.md`.
+- [x] Catalogue the MD actions that take a plan ID (`create_station`, `apply_construction_sequence`, `add_build_to_expand_station`)
+- [x] User exported a plan in-game. The folder `constructionplan\` and the file format (a `<plans>` wrapper with one plan) are verified.
+- [x] Injection test B: a hand-written file in `constructionplan\` was listed and imported while the game ran, with no restart
+- [x] Injection test A, live: the game doesn't re-read `constructionplans.xml` while running. Save and Export rewrite it from memory.
+- [x] **Top question answered by test C:** `offset` is authoritative. The game doesn't snap or re-derive links, and calls a plan with a floating module "OK".
+- [ ] **Snap math:** recompute each entry's offset from its predecessor's offset plus both snap transforms (and the plan rotation), and compare with the stored offsets of all player plans (5 plans, about 540 entries). Needs the component XML of every module, including DLC ones. Our designer can't place modules without this.
+- [ ] Clean up the test plans in-game: the user deletes "X4SD test B" and "X4SD test C" from the plan list
+- [ ] Injection test A after a restart (low priority, since B works)
 - [ ] Study `sn_mod_support_apis` named pipes (option D)
-- [ ] Decide OD-3 (injection method)
-- [ ] Use REA on `X4.exe`: start with the `offset` question, then any others the data files can't answer
+- [x] Decide OD-3 (injection method): option B, recorded as D-5
 
 ## Phase 2: Core library
 - [ ] Decide OD-2 (language)

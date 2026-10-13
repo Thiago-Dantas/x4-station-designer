@@ -15,6 +15,8 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `CLAUDE.md` | Entry point: rules, key paths, doc index |
 | `docs/` | Durable knowledge: goals, X4 internals, decisions |
 | `tasks/` | Roadmap (`roadmap.md`) plus one state file per workstream (`workflow-<topic>.md`, `subagent-<role>-<task>.md`) |
+| `tools/x4cat.py` | Lists and extracts files from `.cat`/`.dat` archives, with MD5 checks. Usage in [docs/x4-game-data.md](docs/x4-game-data.md#our-extractor-toolsx4catpy). |
+| `research/extracted/` | Extracted game and mod files. **Git-ignored**: never commit them. |
 
 ## Repository
 - Private GitHub repo: `github.com/Thiago-Dantas/x4-station-designer`, branch `main`
@@ -42,5 +44,6 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 ## Docs index
 - [docs/goals.md](docs/goals.md): vision, goals, non-goals, proposed architecture
 - [docs/decisions.md](docs/decisions.md): decision log and open decisions
-- [docs/x4-construction-plans.md](docs/x4-construction-plans.md): plan XML format and ways to inject a plan
+- [docs/x4-construction-plans.md](docs/x4-construction-plans.md): plan XML format, snap-point geometry, ways to inject a plan
+- [docs/x4-plan-apis.md](docs/x4-plan-apis.md): the game's plan APIs (build-menu Lua FFI, MD actions) and how the `x4ep_planner` mod uses them
 - [docs/x4-game-data.md](docs/x4-game-data.md): install layout, `.cat`/`.dat` archives, DLCs, mods, prior art
