@@ -29,6 +29,7 @@ Smoke tests of the built exe (each runs the real program):
 python -I research\mcp_smoke.py target\release\x4sd.exe <scratch profile dir>   # MCP, like an agent
 python -I research\ui_smoke.py  target\release\x4sd.exe <scratch dir>           # builder, through WebView2's DevTools protocol; saves screenshots
 python -I research\link_smoke.py target\release\x4sd.exe <scratch dir>           # live link: an agent edits the open builder (scratch profile)
+python -I research\texture_smoke.py target\release\x4sd.exe <scratch dir> [plan]  # textures off vs on: load time, GPU memory, fps
 ```
 
 ### Builder stack notes
@@ -39,6 +40,7 @@ python -I research\link_smoke.py target\release\x4sd.exe <scratch dir>          
   - Generated `crates/x4sd/gen/` is git-ignored.
 - **Coordinates:** the game is left-handed (Y up) and Three.js right-handed. `ui/src/view3d.ts` mirrors Z, so a position `(x, y, z)` becomes `(x, y, -z)`, and a quaternion `(w, x, y, z)` becomes `(w, -x, -y, z)`.
 - **Console window:** `x4sd.exe` stays a console program (for the CLI and MCP). In builder mode it detaches from a console that Windows created just for it (double-click), so a terminal it was started from is kept.
+- **UI tests share the builder's WebView2 profile with real use:** remembered settings (local storage) carry over in both directions, and tests must restore what they change. All scripts use one DevTools port, because WebView2 refuses to start (and Tauri panics) while a previous instance's processes still hold the profile with different arguments.
 - **UI testing:** WebView2 accepts `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=N`. `research/ui_smoke.py` uses that for clicks, JavaScript evaluation and screenshots, and finds snap cones by their colour.
 **Don't build from Git Bash.** Its `/usr/bin/link.exe` (GNU coreutils) shadows the MSVC linker and the build fails with `link: missing operand`.
 

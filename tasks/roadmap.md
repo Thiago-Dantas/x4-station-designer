@@ -59,7 +59,7 @@ Proposed order (each step usable on its own):
   - [ ] move unattached modules in the UI
 - [ ] Equipment (shields/turrets per module group) in the model, the builder and MCP
 - [x] Real module meshes from `.xmf` instead of boxes (user request, done first; see [workflow-module-meshes.md](workflow-module-meshes.md))
-- [ ] Textures on the models as an on/off setting (user request; in progress, see [workflow-module-meshes.md](workflow-module-meshes.md))
+- [x] Textures on the models as an on/off setting (user request; on by default after measuring; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [ ] **Race filter** in the palette (user request): choose one or several races (e.g. Terran only, Terran + Boron) or all
 - [ ] **Plot size** (user request):
   - [ ] the user sets a plot size, drawn as a box
