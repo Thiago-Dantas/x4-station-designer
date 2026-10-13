@@ -38,6 +38,8 @@ export interface Scene {
   entries: Entry[];
   issues: Issue[];
   plot: PlotStatus | null;
+  /** Changes since the last save, export or open. */
+  dirty: boolean;
   /** After a build-order change: the moved module's new index (modules are renumbered). */
   focus?: number;
 }
@@ -81,6 +83,10 @@ export const api = {
   buildFirst: (index: number) => serial<Scene>("build_first", { index }),
   buildLast: (index: number) => serial<Scene>("build_last", { index }),
   setStageEnd: (index: number, end: boolean) => serial<Scene>("set_stage_end", { index, end }),
+  reattachModule: (index: number, snap: string, to: number, toSnap: string, twist: number) =>
+    serial<Scene>("reattach_module", { index, snap, to, toSnap, twist }),
+  detachModule: (index: number) => serial<Scene>("detach_module", { index }),
+  moveRoot: (index: number, position: Vec3) => serial<Scene>("move_root", { index, position }),
   undo: () => serial<Scene>("undo"),
   redo: () => serial<Scene>("redo"),
 };

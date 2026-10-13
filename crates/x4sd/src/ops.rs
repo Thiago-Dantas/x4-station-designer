@@ -47,15 +47,18 @@ pub enum Op {
     BuildLast { index: u32 },
     /// End (or not) a build stage after this module.
     SetStageEnd { index: u32, end: bool },
+    /// Move a module (and everything on it) onto another free snap.
+    ReattachModule { index: u32, to: u32, to_snap: String, snap: Option<String>, twist: Option<f64> },
+    DetachModule { index: u32 },
 }
 
 impl Op {
     /// Whether the open design may change (the builder then redraws).
     pub fn changes_design(&self) -> bool {
+        // Save and export count: they change whether the design has unsaved changes.
         !matches!(
             self,
-            Op::ListModules { .. } | Op::ModuleSnaps { .. } | Op::DescribeDesign | Op::FreeSnaps { .. }
-                | Op::ValidateDesign | Op::SaveDesign { .. } | Op::ExportDesign { .. }
+            Op::ListModules { .. } | Op::ModuleSnaps { .. } | Op::DescribeDesign | Op::FreeSnaps { .. } | Op::ValidateDesign
         )
     }
 
@@ -185,8 +188,21 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             ctx.design.set_stage_end(index, end).map_err(err)?;
             describe(ctx)
         }
+        Op::ReattachModule { index, to, to_snap, snap, twist } => {
+            let snap = match snap {
+                Some(s) => s,
+                None => default_snap(ctx.design, c, index)?,
+            };
+            let moved_to = ctx.design.reattach(c, index, &snap, to, &to_snap, twist.unwrap_or(0.0)).map_err(err)?;
+            moved(ctx, moved_to)
+        }
+        Op::DetachModule { index } => {
+            ctx.design.detach(index).map_err(err)?;
+            describe(ctx)
+        }
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
+            ctx.design.mark_saved();
             Ok(json!({"saved": file}))
         }
         Op::ExportDesign { new_id, overwrite } => {
@@ -196,9 +212,20 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
                 plan.id = new_plan_id();
             }
             let path = write_import_file(profile, &plan, overwrite.unwrap_or(false)).map_err(err)?;
+            ctx.design.mark_saved();
             Ok(json!({"file": path, "id": plan.id, "next": "In game: station build menu > Import > select the plan"}))
         }
     }
+}
+
+/// The snap a moved module connects with by default: its current one, else its first.
+fn default_snap(design: &Design, catalog: &Catalog, index: u32) -> Result<String, String> {
+    let e = design.plan().entries.iter().find(|e| e.index == index).ok_or(format!("no entry {index}"))?;
+    if let Some(c) = &e.connection {
+        return Ok(c.clone());
+    }
+    let module = catalog.module(&e.macro_name).map_err(|e| e.to_string())?;
+    module.snaps.first().map(|s| s.name.clone()).ok_or(format!("{} has no snaps", e.macro_name))
 }
 
 /// After a reorder: the module's new index plus the renumbered design.
@@ -229,7 +256,7 @@ fn describe(ctx: &Ctx) -> Result<Value, String> {
         })
         .collect();
     let patches: Vec<&str> = plan.patches.iter().map(|p| p.extension.as_str()).collect();
-    let mut out = json!({"id": plan.id, "name": plan.name, "patches": patches, "modules": modules});
+    let mut out = json!({"id": plan.id, "name": plan.name, "patches": patches, "unsaved_changes": design.is_dirty(), "modules": modules});
     out["plot"] = plot_status(design, ctx.catalog);
     Ok(out)
 }

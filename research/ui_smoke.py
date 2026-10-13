@@ -126,6 +126,32 @@ try:
           cdp.js("[...document.querySelectorAll('#issues li')].map(l => l.textContent).join('; ')"))
     time.sleep(1.0)
     cdp.screenshot(os.path.join(out, "ui-4-attached.png"))
+    print("   unsaved marker shown:", not cdp.js("document.getElementById('dirty').hidden"))
+
+    # Move the beam (#2) onto another free snap of the cross: select it in the build order, Move..., click a cone.
+    cdp.js("document.getElementById('tab-order').click()")
+    cdp.js("document.querySelectorAll('#order-list .order-row')[1].click()")
+    cdp.js("document.getElementById('tab-modules').click()")
+    cdp.js("document.getElementById('btn-move').click()")
+    cdp.wait_for("document.getElementById('armed-title').textContent === 'Moving'")
+    time.sleep(1.0)
+    target = find_color(cdp.screenshot(os.path.join(out, "ui-4b-moving.png")), (0x37, 0xD0, 0xC0), vp)
+    cdp.click(*target)
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Moved onto')")
+    print("   move:", cdp.js("document.getElementById('status').textContent"), "| checks:",
+          cdp.js("[...document.querySelectorAll('#issues li')].map(l => l.textContent).join('; ')"))
+    assert cdp.js("document.querySelector('#issues li').textContent") == "No problems found"
+    # The builder's move_root command (the gizmo calls it) moves the whole station.
+    moved = cdp.js("window.__TAURI_INTERNALS__.invoke('move_root', { index: 1, position: [500, 0, 0] }).then(s => s.entries.map(e => Math.round(e.position[0])))")
+    saved = cdp.js("window.__TAURI_INTERNALS__.invoke('save_design', { file: %r }).then(() => window.__TAURI_INTERNALS__.invoke('scene')).then(s => s.dirty)" % os.path.join(out, "ui-saved.xml").replace("\\", "/"))
+    print("   move_root x positions:", moved, "| unsaved after save:", saved)
+    assert moved[0] == 500 and saved is False
+    cdp.js("window.__TAURI_INTERNALS__.invoke('undo')")  # move_root
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")  # the re-attach
+    time.sleep(0.5)
+    # Arm the beam again so snap cones show for the next steps.
+    cdp.js("document.querySelector('.module').click()")
+    time.sleep(1.0)
     cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
     time.sleep(0.5)
     print("4. after Ctrl+Z, undo enabled:", not cdp.js("document.getElementById('btn-undo').disabled"),

@@ -30,6 +30,8 @@ New designs start on a 2x2x2 km plot, opened ones on the smallest that fits. val
 outside the plot and the size needed; set_plot / fit_plot change it (tell the user when the plot must grow).
 Build order: modules are built in index order, each after the module it attaches to. move_in_build_order, \
 build_first and build_last reorder (and renumber, so describe again); set_stage_end splits the build into stages.
+Moving: reattach_module moves a placed module (with everything on it) onto another free snap; detach_module \
+makes it free-standing; move_module moves free-standing ones.
 If the X4 Station Designer builder window is open, all tools work on the design shown there and the \
 user sees every change live (builder_status tells which).";
 
@@ -168,6 +170,20 @@ pub struct MoveArgsOrder {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct ReattachArgs {
+    /// Module to move (everything attached to it moves along)
+    index: u32,
+    /// Index of the placed module to attach it to (not the module itself or one attached to it)
+    to: u32,
+    /// Free snap of that module (see free_snaps)
+    to_snap: String,
+    /// Snap of the moved module to connect; default: its current one, else its first
+    snap: Option<String>,
+    /// Rotation around the snap axis in degrees; default 0
+    twist: Option<f64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct StageArgs {
     /// Module index
     index: u32,
@@ -297,6 +313,16 @@ impl Server {
     #[tool(description = "Build a module as late as possible: it and everything attached to it move to the end. Modules are renumbered.")]
     fn build_last(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
         self.run(Op::BuildLast { index: a.index })
+    }
+
+    #[tool(description = "Move a placed module, with everything attached to it, onto another free snap. Modules may be renumbered (the result has moved_to).")]
+    fn reattach_module(&self, Parameters(a): Parameters<ReattachArgs>) -> ToolResult {
+        self.run(Op::ReattachModule { index: a.index, to: a.to, to_snap: a.to_snap, snap: a.snap, twist: a.twist })
+    }
+
+    #[tool(description = "Make an attached module free-standing where it is (whatever is attached to it stays attached).")]
+    fn detach_module(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
+        self.run(Op::DetachModule { index: a.index })
     }
 
     #[tool(description = "End a build stage after this module (or remove that stage end). Stages let the station be built in steps.")]

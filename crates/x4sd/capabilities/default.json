@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Builder window: core APIs and file dialogs",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": ["core:default", "dialog:default", "core:window:allow-destroy", "core:window:allow-set-title"]
 }

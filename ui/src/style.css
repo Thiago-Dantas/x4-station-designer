@@ -29,6 +29,7 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 #design-name { width: 240px; }
 #toolbar .toggle { display: flex; align-items: center; gap: 4px; color: var(--text); cursor: pointer; }
 #patches { color: var(--muted); font-size: 12px; }
+#dirty { color: var(--accent); font-size: 12px; }
 
 main { flex: 1; display: flex; min-height: 0; }
 aside { width: 290px; background: var(--panel); display: flex; flex-direction: column; min-height: 0; }

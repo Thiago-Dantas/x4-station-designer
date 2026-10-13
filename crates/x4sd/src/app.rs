@@ -69,6 +69,9 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             build_first,
             build_last,
             set_stage_end,
+            reattach_module,
+            detach_module,
+            move_root,
             undo,
             redo,
         ])
@@ -245,8 +248,9 @@ fn open_design(state: State<'_, Shared>, file: String, id: String) -> CmdResult 
 
 #[tauri::command]
 fn save_design(state: State<'_, Shared>, file: String) -> CmdResult {
-    let app = state.lock().unwrap();
+    let mut app = state.lock().unwrap();
     std::fs::write(&file, write_plans(std::slice::from_ref(app.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
+    app.design.mark_saved();
     Ok(json!({"file": file}))
 }
 
@@ -254,7 +258,7 @@ fn save_design(state: State<'_, Shared>, file: String) -> CmdResult {
 /// Fails with a message starting "exists:" when the file is there and `overwrite` is false.
 #[tauri::command]
 fn export_design(state: State<'_, Shared>, new_id: bool, overwrite: bool) -> CmdResult {
-    let app = state.lock().unwrap();
+    let mut app = state.lock().unwrap();
     let profile = app.profile_dir.as_ref().ok_or("player profile not found")?;
     let mut plan = app.design.plan().clone();
     if new_id {
@@ -265,6 +269,7 @@ fn export_design(state: State<'_, Shared>, new_id: bool, overwrite: bool) -> Cmd
         return Err(format!("exists: {}", path.display()));
     }
     let path = write_import_file(profile, &plan, true).map_err(|e| e.to_string())?;
+    app.design.mark_saved();
     Ok(json!({"file": path, "id": plan.id}))
 }
 
@@ -321,6 +326,27 @@ fn build_first(state: State<'_, Shared>, index: u32) -> CmdResult {
 #[tauri::command]
 fn build_last(state: State<'_, Shared>, index: u32) -> CmdResult {
     reorder(&state, |d| d.build_last(index))
+}
+
+/// Moves a placed module (and everything on it) onto another free snap; `focus` is its new index.
+#[tauri::command]
+fn reattach_module(state: State<'_, Shared>, index: u32, snap: String, to: u32, to_snap: String, twist: f64) -> CmdResult {
+    let catalog = catalog(&state.lock().unwrap())?;
+    reorder(&state, |d| d.reattach(&catalog, index, &snap, to, &to_snap, twist))
+}
+
+#[tauri::command]
+fn detach_module(state: State<'_, Shared>, index: u32) -> CmdResult {
+    edit(&state, |d, _| d.detach(index))
+}
+
+/// Moves a free-standing module (and everything on it) to `position`, keeping its rotation.
+#[tauri::command]
+fn move_root(state: State<'_, Shared>, index: u32, position: [f64; 3]) -> CmdResult {
+    edit(&state, |d, _| {
+        let rotation = d.world(index)?.rotation;
+        d.move_root(index, Transform { position, rotation })
+    })
 }
 
 fn reorder(state: &State<'_, Shared>, op: impl FnOnce(&mut Design) -> x4sd_core::Result<u32>) -> CmdResult {
@@ -435,6 +461,7 @@ fn scene_json(app: &App) -> CmdResult {
         "name": plan.name,
         "patches": plan.patches.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
         "can_undo": design.can_undo(),
+        "dirty": design.is_dirty(),
         "can_redo": design.can_redo(),
         "entries": entries,
         "issues": issues,

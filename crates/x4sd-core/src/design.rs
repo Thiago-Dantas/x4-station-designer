@@ -25,6 +25,8 @@ pub struct Design {
     /// The plot the station must fit in. Not part of the plan file (the game keeps
     /// plots per station), and not undone with edits.
     plot: Option<Plot>,
+    /// The plan as last saved, exported or opened: unsaved changes are differences from it.
+    saved: Plan,
 }
 
 /// A snap point of a placed module that nothing uses, in the station frame.
@@ -53,7 +55,18 @@ impl Design {
 
     /// A design for an existing plan, without a plot (see `fit_plot`).
     pub fn from_plan(plan: Plan) -> Design {
-        Design { plan, undo: Vec::new(), redo: Vec::new(), plot: None }
+        Design { saved: plan.clone(), plan, undo: Vec::new(), redo: Vec::new(), plot: None }
+    }
+
+    /// Whether the plan differs from what was last saved, exported or opened
+    /// (undoing back to that state counts as unchanged).
+    pub fn is_dirty(&self) -> bool {
+        self.plan != self.saved
+    }
+
+    /// Call after writing the plan somewhere (plan file or the game's import folder).
+    pub fn mark_saved(&mut self) {
+        self.saved = self.plan.clone();
     }
 
     pub fn plot(&self) -> Option<Plot> {
@@ -141,6 +154,70 @@ impl Design {
         self.checkpoint();
         self.move_subtree(index, &target);
         Ok(())
+    }
+
+    /// Moves an attached or free-standing module, with everything attached to it,
+    /// so its snap `snap` connects to snap `to_snap` of entry `to`, twisted by
+    /// `twist_degrees`. The target can't be the module itself or attached to it.
+    /// If `to` comes later in the build order, the moved modules are re-sequenced
+    /// right after it. Returns the module's (possibly new) index.
+    pub fn reattach(&mut self, catalog: &Catalog, index: u32, snap: &str, to: u32, to_snap: &str, twist_degrees: f64) -> Result<u32> {
+        let moved = self.subtree(index);
+        if moved.contains(&to) {
+            return Err(Error(format!("module {index} can't attach to itself or to a module attached to it")));
+        }
+        let entry = self.entry(index)?;
+        let child_snap = find_snap(&catalog.module(&entry.macro_name)?, snap)?;
+        let pred_snap = find_snap(&catalog.module(&self.entry(to)?.macro_name)?, to_snap)?;
+        let current_link = entry.predecessor.as_ref().is_some_and(|p| p.index == to && p.connection.eq_ignore_ascii_case(&pred_snap.name));
+        if self.snap_in_use(to, &pred_snap.name) && !current_link {
+            return Err(Error(format!("snap {} of entry {to} is already in use", pred_snap.name)));
+        }
+        let used_by_children = self.plan.entries.iter().any(|e| {
+            e.predecessor.as_ref().is_some_and(|p| p.index == index && p.connection.eq_ignore_ascii_case(&child_snap.name))
+        });
+        if used_by_children {
+            return Err(Error(format!("snap {} of module {index} holds an attached module", child_snap.name)));
+        }
+        let target = attach_transform(&self.world(to)?, &pred_snap.transform, &child_snap.transform, twist_degrees);
+        self.checkpoint();
+        self.move_subtree(index, &target);
+        let e = self.plan.entries.iter_mut().find(|e| e.index == index).unwrap();
+        e.connection = Some(child_snap.name.clone());
+        e.predecessor = Some(Predecessor { index: to, connection: pred_snap.name.clone() });
+        // Keep the build order valid: the moved modules come after their new parent.
+        let order = self.order_after(&moved, to);
+        let new_index = order.iter().position(|&i| i == index).unwrap() as u32 + 1;
+        self.sort_and_renumber(&order);
+        Ok(new_index)
+    }
+
+    /// Makes an attached module free-standing where it is (its link is dropped;
+    /// whatever is attached to it stays attached).
+    pub fn detach(&mut self, index: u32) -> Result<()> {
+        if self.entry(index)?.predecessor.is_none() {
+            return Err(Error(format!("module {index} is not attached to anything")));
+        }
+        self.checkpoint();
+        let e = self.plan.entries.iter_mut().find(|e| e.index == index).unwrap();
+        e.connection = None;
+        e.predecessor = None;
+        Ok(())
+    }
+
+    /// The current order with `moved` placed right after `after` when they came
+    /// before it; otherwise unchanged.
+    fn order_after(&self, moved: &[u32], after: u32) -> Vec<u32> {
+        let current: Vec<u32> = self.plan.entries.iter().map(|e| e.index).collect();
+        let first_moved = current.iter().position(|i| moved.contains(i)).unwrap_or(0);
+        let parent = current.iter().position(|&i| i == after).unwrap_or(0);
+        if parent < first_moved {
+            return current;
+        }
+        let rest: Vec<u32> = current.iter().copied().filter(|i| !moved.contains(i)).collect();
+        let cut = rest.iter().position(|&i| i == after).map_or(rest.len(), |p| p + 1);
+        let block: Vec<u32> = current.iter().copied().filter(|i| moved.contains(i)).collect();
+        [&rest[..cut], &block[..], &rest[cut..]].concat()
     }
 
     /// Moves an unattached module, and everything attached to it, to `at`.
@@ -233,11 +310,17 @@ impl Design {
             }
         }
         self.checkpoint();
+        self.sort_and_renumber(order);
+        Ok(())
+    }
+
+    /// Puts the entries in `order` (current indices) and renumbers them `1..n`.
+    fn sort_and_renumber(&mut self, order: &[u32]) {
+        let rank = |i: u32| order.iter().position(|&o| o == i);
         let mut entries = std::mem::take(&mut self.plan.entries);
         entries.sort_by_key(|e| rank(e.index));
         self.plan.entries = entries;
         self.renumber();
-        Ok(())
     }
 
     /// Snaps of entry `index` that nothing uses, where new modules can attach.
@@ -485,6 +568,48 @@ mod tests {
         assert_eq!(d.plan().entries[1].bookmark.as_deref(), Some("1"));
         assert!(d.undo());
         assert_eq!(d.plan().entries[1].bookmark, None);
+    }
+
+    #[test]
+    fn reattach_moves_subtree_and_keeps_order_valid() {
+        let c = catalog();
+        // 1 beam, 2 cross on it, 3 beam on the cross's east arm, 4 beam on beam 1's other end.
+        let mut d = small_station(&c);
+        // Move the cross (with beam 3 on it) to the end of beam 4: beam 4 comes later
+        // in the order, so the cross and beam 3 are re-sequenced after it.
+        let free_end = d.free_snaps(&c, 4).unwrap()[0].name.clone();
+        let new_index = d.reattach(&c, 2, "s", 4, &free_end, 0.0).unwrap();
+        assert_eq!(new_index, 3);
+        assert_eq!(order(&d).iter().map(|o| (o.1.as_str(), o.2)).collect::<Vec<_>>(),
+                   [("beam", None), ("beam", Some(1)), ("cross", Some(2)), ("beam", Some(3))]);
+        for i in 2..=4 {
+            assert_attached(&d, &c, i);
+        }
+        // Not onto itself or something attached to it.
+        assert!(d.reattach(&c, 3, "s", 4, "w", 0.0).is_err());
+        // Detach: the module stays where it is, free-standing.
+        let at = d.world(3).unwrap();
+        d.detach(3).unwrap();
+        assert!(d.plan().entries[2].predecessor.is_none() && d.world(3).unwrap() == at);
+        assert_attached(&d, &c, 4);
+        // Undo twice: back to the original station.
+        assert!(d.undo() && d.undo());
+        assert_eq!(order(&d), order(&small_station(&c)));
+    }
+
+    #[test]
+    fn dirty_tracks_changes_since_saved() {
+        let c = catalog();
+        let mut d = Design::new("dirty");
+        assert!(!d.is_dirty());
+        d.add_root(&c, "beam", Transform::IDENTITY).unwrap();
+        assert!(d.is_dirty());
+        d.mark_saved();
+        assert!(!d.is_dirty());
+        d.rename("other");
+        assert!(d.is_dirty());
+        d.undo();
+        assert!(!d.is_dirty(), "undoing back to the saved state counts as unchanged");
     }
 
     #[test]

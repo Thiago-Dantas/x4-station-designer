@@ -2,6 +2,7 @@
 // through the Tauri commands in api.ts, which return the new scene.
 import "./style.css";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
 import { api, type ModuleInfo, type PlanRef, type Quality, type Scene, type Shape } from "./api";
@@ -35,6 +36,8 @@ let modules: ModuleInfo[] = [];
 let scene: Scene | null = null;
 let selected: number | null = null;
 let armed: ModuleInfo | null = null;
+/** Module being moved onto another snap (with everything attached to it), if any. */
+let moving: number | null = null;
 /** Build-order preview: show modules up to this step (null: all). */
 let buildStep: number | null = null;
 /** Races shown in the palette; empty means all. Modules without a race count as "generic". */
@@ -149,8 +152,20 @@ function moduleName(macro: string) {
 function redraw() {
   if (!scene) return;
   if (buildStep !== null && buildStep >= scene.entries.length) buildStep = null;
-  view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null, buildStep);
+  view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null || moving !== null, buildStep, moving !== null ? subtree(moving) : null);
   renderOrder();
+  $("dirty").hidden = !scene.dirty;
+  const title = `X4 Station Designer - ${scene.name}${scene.dirty ? " *" : ""}`;
+  if (title !== windowTitle) {
+    windowTitle = title;
+    void getCurrentWindow().setTitle(title).catch(() => undefined);
+  }
+  // A selected free-standing module can be dragged with the gizmo.
+  const root = entry(selected);
+  view.setGizmo(
+    root && !root.attached && !armed && moving === null && buildStep === null ? root.position : null,
+    root ? (p) => void apply(api.moveRoot(root.index, p), `Moved ${root.name ?? root.macro}`, false, true) : null,
+  );
   $<HTMLInputElement>("design-name").value = scene.name;
   const count = `${scene.entries.length} module${scene.entries.length === 1 ? "" : "s"}`;
   $("patches").textContent = scene.patches.length ? `${count} · Needs: ${scene.patches.join(", ")}` : count;
@@ -183,6 +198,8 @@ function redraw() {
       `\n${sel.free_snaps.length} free snap(s)`;
     $<HTMLButtonElement>("btn-twist-left").disabled = !a;
     $<HTMLButtonElement>("btn-twist-right").disabled = !a;
+    $<HTMLButtonElement>("btn-detach").disabled = !a;
+    $<HTMLButtonElement>("btn-move").disabled = (scene.entries.length ?? 0) < 2;
     $<HTMLInputElement>("stage-end").checked = sel.stage_end;
   }
   $("btn-place-root").hidden = scene.entries.length > 0;
@@ -314,9 +331,68 @@ function renderRaceFilter() {
   );
 }
 
+let windowTitle = "";
+
+/** `index` and every module attached to it, directly or not. */
+function subtree(index: number): Set<number> {
+  const found = new Set([index]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const e of scene?.entries ?? []) {
+      if (e.attached && found.has(e.attached.to) && !found.has(e.index)) {
+        found.add(e.index);
+        grew = true;
+      }
+    }
+  }
+  return found;
+}
+
+/** Before replacing the design: true when there is nothing unsaved or the user agrees. */
+async function confirmDiscard(): Promise<boolean> {
+  if (!scene?.dirty) return true;
+  return ask(`"${scene.name}" has unsaved changes. Discard them?`, { title: "Unsaved changes", kind: "warning" });
+}
+
+/** Move mode: the selected module (with everything on it) goes onto the next free snap clicked. */
+async function startMove() {
+  const e = entry(selected);
+  if (!e) return;
+  armed = null;
+  moving = e.index;
+  $("armed-panel").hidden = false;
+  $("armed-title").textContent = "Moving";
+  $("armed-name").textContent = e.name ?? e.macro;
+  $("btn-place-root").hidden = true;
+  // Its snaps that don't hold one of its own attached modules.
+  const held = new Set(scene!.entries.filter((x) => x.attached?.to === e.index).map((x) => x.attached!.to_snap.toLowerCase()));
+  const snaps = (await shapeOf(e.macro)).snaps.filter((s) => !held.has(s.name.toLowerCase()));
+  $<HTMLSelectElement>("armed-snap").replaceChildren(...snaps.map((s) => new Option(s.name, s.name)));
+  if (e.attached) $<HTMLSelectElement>("armed-snap").value = e.attached.snap;
+  status("Click a free snap (cone) to move the module there. Esc cancels.");
+  renderPalette();
+  redraw();
+}
+
+function stopMove() {
+  moving = null;
+  $("armed-panel").hidden = !armed;
+  $("armed-title").textContent = "Placing";
+}
+
+async function moveOnto(to: number, toSnap: string) {
+  const index = moving!;
+  const snap = $<HTMLSelectElement>("armed-snap").value;
+  const twist = Number($<HTMLSelectElement>("armed-twist").value);
+  stopMove();
+  await apply(api.reattachModule(index, snap, to, toSnap, twist), `Moved onto #${to}`, false, true);
+}
+
 // ---------------------------------------------------------------- actions
 
 async function arm(m: ModuleInfo | null) {
+  if (m) stopMove();
   armed = m;
   $("armed-panel").hidden = !m;
   if (m) {
@@ -382,6 +458,7 @@ function choosePlan(title: string, plans: PlanRef[]): Promise<PlanRef | null> {
 
 async function openPlans(title: string, plans: PlanRef[]) {
   if (plans.length === 0) return status("No plans found", "error");
+  if (!(await confirmDiscard())) return;
   const plan = plans.length === 1 ? plans[0] : await choosePlan(title, plans);
   if (!plan) return;
   selected = null;
@@ -398,6 +475,7 @@ async function exportToGame() {
       if (!(await ask(`${String(e).slice(8)}\n\nReplace it?`, { title: "Export to game", kind: "warning" }))) return;
       result = await api.exportDesign(false, true);
     }
+    await apply(api.scene());
     status(`Exported to ${result.file}. In game: station build menu → Import.`, "good");
   } catch (e) {
     status(String(e), "error");
@@ -408,7 +486,8 @@ async function exportToGame() {
 
 $("search").oninput = renderPalette;
 $("class-filter").onchange = renderPalette;
-$("btn-new").onclick = () => {
+$("btn-new").onclick = async () => {
+  if (!(await confirmDiscard())) return;
   selected = null;
   void apply(api.newDesign("New station"), "New design", true);
 };
@@ -433,6 +512,7 @@ $("btn-save").onclick = async () => {
   if (!file) return;
   try {
     await api.saveDesign(file);
+    await apply(api.scene());
     status(`Saved ${file}`, "good");
   } catch (e) {
     status(String(e), "error");
@@ -468,6 +548,8 @@ $<HTMLSelectElement>("quality").onchange = async (ev) => {
 $("btn-twist-left").onclick = () => twistSelected(-90);
 $("btn-twist-right").onclick = () => twistSelected(90);
 $("btn-remove").onclick = removeSelected;
+$("btn-move").onclick = startMove;
+$("btn-detach").onclick = () => selected !== null && apply(api.detachModule(selected), "Detached: it now stands on its own");
 $("btn-build-first").onclick = () => selected !== null && apply(api.buildFirst(selected), "Moved to the front of the build order");
 $("btn-build-last").onclick = () => selected !== null && apply(api.buildLast(selected), "Moved to the end of the build order");
 $<HTMLInputElement>("stage-end").onchange = (ev) =>
@@ -497,13 +579,15 @@ viewport.addEventListener("pointerdown", (ev) => (down = { x: ev.clientX, y: ev.
 viewport.addEventListener("pointerup", async (ev) => {
   if (!down || ev.button !== 0 || Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 5) return;
   const pick = view.pick(ev.clientX, ev.clientY);
-  if (pick?.kind === "snap" && armed) await attachArmed(pick.index, pick.snap);
+  if (view.gizmoBusy()) return;
+  if (pick?.kind === "snap" && moving !== null) await moveOnto(pick.index, pick.snap);
+  else if (pick?.kind === "snap" && armed) await attachArmed(pick.index, pick.snap);
   else if (pick?.kind === "module") select(pick.index);
   else if (armed && scene?.entries.length === 0) await apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
   else select(null);
 });
 viewport.addEventListener("pointermove", (ev) => {
-  if (armed && !ev.buttons) view.hoverSnap(ev.clientX, ev.clientY);
+  if ((armed || moving !== null) && !ev.buttons) view.hoverSnap(ev.clientX, ev.clientY);
 });
 
 // Drag from the palette onto a snap cone (or anywhere, for the first module).
@@ -533,9 +617,20 @@ window.addEventListener("keydown", (ev) => {
   else if (key === "r") void twistSelected(ev.shiftKey ? -90 : 90);
   else if (key === "f") view.frame();
   else if (key === "escape") {
+    if (moving !== null) {
+      stopMove();
+      redraw();
+      status("Move cancelled");
+      return;
+    }
     void arm(null);
     select(null);
   }
+});
+
+// Closing with unsaved changes asks first.
+void getCurrentWindow().onCloseRequested(async (ev) => {
+  if (scene?.dirty && !(await confirmDiscard())) ev.preventDefault();
 });
 
 // An AI agent edited the design through the live link (x4sd mcp).

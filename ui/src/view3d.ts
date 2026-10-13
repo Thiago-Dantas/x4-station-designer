@@ -1,6 +1,7 @@
 // The 3D station view: module models (or boxes as a fallback), free-snap cones, picking.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { TransformControls } from "three/addons/controls/TransformControls.js";
 import type { Entry, Quat, Scene, Shape, Vec3 } from "./api";
 
 // The game is left-handed (Y up), Three.js right-handed: mirror Z. A rotation
@@ -81,6 +82,10 @@ export class View3D {
    * down/up, the arrow keys rotate the camera around its target. */
   private panKeys = new Set<string>();
   private clock = new THREE.Clock();
+  /** Translate gizmo for a selected free-standing module. */
+  private gizmo: TransformControls;
+  private gizmoTarget = new THREE.Object3D();
+  private onGizmoMoved: ((position: Vec3) => void) | null = null;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -103,6 +108,16 @@ export class View3D {
     this.scene.add(grid, this.station, this.snaps, this.plotBox);
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+    this.gizmo = new TransformControls(this.camera, this.renderer.domElement);
+    this.gizmo.setTranslationSnap(10);
+    this.gizmo.addEventListener("dragging-changed", (ev) => {
+      this.controls.enabled = !ev.value;
+      if (!ev.value && this.onGizmoMoved) {
+        const p = this.gizmoTarget.position;
+        this.onGizmoMoved([p.x, p.y, -p.z]); // back to the game's frame (mirror Z)
+      }
+    });
+    this.scene.add(this.gizmoTarget, this.gizmo.getHelper());
     this.bindPanKeys();
     this.renderer.setAnimationLoop(() => {
       this.keyNavigate(this.clock.getDelta());
@@ -192,7 +207,8 @@ export class View3D {
   /** Redraws the station. `shapes` must hold every macro in the scene; `models`
    * holds real models where they are loaded (boxes are drawn otherwise);
    * `textures` maps game material names to diffuse textures (when shown);
-   * with `upTo`, only modules up to that build step are drawn. */
+   * with `upTo`, only modules up to that build step are drawn; snap cones of
+   * modules in `noSnaps` are left out (a module being moved and what it carries). */
   render(
     scene: Scene,
     shapes: Map<string, Shape>,
@@ -201,6 +217,7 @@ export class View3D {
     selected: number | null,
     showSnaps: boolean,
     upTo: number | null = null,
+    noSnaps: Set<number> | null = null,
   ) {
     clear(this.station);
     clear(this.snaps);
@@ -227,7 +244,7 @@ export class View3D {
       const key = e.macro.toLowerCase();
       if (models.get(key) && e.index !== selected) instanced.set(key, [...(instanced.get(key) ?? []), e]);
       else this.station.add(single(e, shapes.get(key), models.get(key) ?? null, textures, bad.has(e.index), e.index === selected));
-      if (showSnaps) {
+      if (showSnaps && !noSnaps?.has(e.index)) {
         for (const s of e.free_snaps) {
           const cone = new THREE.Mesh(this.snapGeometry, new THREE.MeshBasicMaterial({ color: SNAP_COLOR }));
           cone.position.copy(toVec(s.position));
@@ -252,6 +269,23 @@ export class View3D {
       mesh.computeBoundingSphere();
       this.station.add(mesh);
     }
+  }
+
+  /** Shows the translate gizmo at `position` (game frame), or hides it with null.
+   * `onMoved` gets the new position when a drag ends. */
+  setGizmo(position: Vec3 | null, onMoved: ((position: Vec3) => void) | null = null) {
+    this.onGizmoMoved = onMoved;
+    if (!position) {
+      this.gizmo.detach();
+      return;
+    }
+    if (!this.gizmo.dragging) this.gizmoTarget.position.copy(toVec(position));
+    this.gizmo.attach(this.gizmoTarget);
+  }
+
+  /** Whether the pointer is on (or dragging) the gizmo: clicks there aren't picks. */
+  gizmoBusy(): boolean {
+    return this.gizmo.dragging || this.gizmo.axis !== null;
   }
 
   /** What is under the cursor: free snaps take priority over modules. */

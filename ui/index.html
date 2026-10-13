@@ -24,6 +24,7 @@
       </select>
       <span class="sep"></span>
       <input id="design-name" spellcheck="false" title="Plan name (also the import file name)" />
+      <span id="dirty" hidden title="Changes since the last save or export">● unsaved</span>
       <span id="patches"></span>
     </header>
     <main>
@@ -48,7 +49,7 @@
       <section id="viewport"></section>
       <aside id="inspector">
         <section id="armed-panel" hidden>
-          <h3>Placing</h3>
+          <h3 id="armed-title">Placing</h3>
           <div id="armed-name" class="name"></div>
           <label>Connect by snap <select id="armed-snap"></select></label>
           <label>Twist <select id="armed-twist"><option>0</option><option>90</option><option>180</option><option>270</option></select></label>
@@ -63,6 +64,10 @@
             <button id="btn-twist-left" title="Twist -90° (Shift+R)">⟲ 90°</button>
             <button id="btn-twist-right" title="Twist +90° (R)">⟳ 90°</button>
             <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
+          </div>
+          <div class="row order-actions">
+            <button id="btn-move" title="Move it (with everything attached) onto another free snap">Move…</button>
+            <button id="btn-detach" title="Make it free-standing where it is">Detach</button>
           </div>
           <div class="row order-actions">
             <button id="btn-build-first" title="Build it as early as possible (with the modules it hangs on)">Build first</button>

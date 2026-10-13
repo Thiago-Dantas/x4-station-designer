@@ -10,6 +10,9 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 - **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it by 90° with everything attached to it; *Remove* (Del) removes it with everything attached.
   - *Build first* moves the module (and the chain it hangs on) to the front of the build order; *Build last* moves it (and everything on it) to the end.
   - *A build stage ends here* closes a build stage after it.
+  - **Move…** lifts the module with everything attached to it; click any free snap cone (cones of the moving part are hidden) to re-attach it there. The panel picks which of its snaps connects and the twist; Esc cancels. If the new spot comes later in the build order, the moved part is re-sequenced after it.
+  - **Detach** makes an attached module free-standing where it is.
+  - A selected **free-standing module** (like the first one) shows a move gizmo: drag its arrows to move it and everything on it, in 10 m steps.
 - **Build order (left, second tab):** every module in build order, top to bottom, with "End of stage N" dividers.
   - **Drag a row onto another** to move it to that step. A module can't come before the module it attaches to, so impossible moves are refused with a message.
   - Click a row to select the module.
@@ -26,6 +29,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Open file…* / *Save as…* work with plan files.
   - *Export to game* writes the plan into `constructionplan\`; then click Import in the game's build menu.
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
+  - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
 - **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt); right drag **or WASD** pans (W/S up and down, A/D left and right on screen); **Q/E** move straight down/up. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
 - **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.
 - **Textures** (toolbar, on by default): the game's diffuse textures on the models. Without them, models are tinted by module class. The status bar reports how many loaded and their GPU memory, typically about 10 MB in 0.2 s. Turn them off on weak graphics hardware. The choice is remembered.
@@ -57,6 +61,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `set_twist`, `move_module`, `remove_module` | Rotate around the snap axis, move unattached modules, remove a module with everything attached to it (renumbers 1..n) |
 | `undo`, `redo` | Every edit can be undone |
 | `builder_status` | Whether a builder window is open (then all tools act on it, live) |
+| `reattach_module`, `detach_module` | Move a placed module (with everything on it) onto another free snap (`moved_to` gives its new index), or make it free-standing |
 | `move_in_build_order`, `build_first`, `build_last`, `set_stage_end` | Reorder the build (renumbers; the result includes `moved_to`) and set stage ends. `describe_design` lists modules in build order with `stage_end`. |
 | `set_plot`, `fit_plot` | Set the plot (km per side), or fit it to the station (optionally only growing it). `describe_design` shows the plot, the size needed and whether it fits; `validate_design` includes plot issues. |
 | `validate_design` | Same checks as `x4sd validate` |
