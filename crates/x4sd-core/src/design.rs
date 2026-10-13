@@ -143,6 +143,14 @@ impl Design {
         Ok(Transform::from_offset(self.entry(index)?.offset.as_ref()))
     }
 
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(previous) = self.undo.pop() else { return false };
         self.redo.push(std::mem::replace(&mut self.plan, previous));

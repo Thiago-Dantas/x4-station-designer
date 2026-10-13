@@ -9,7 +9,7 @@ Order agreed with the user (foundation first): core editing operations, CLI, MCP
 - [x] 2. CLI binary `crates/x4sd` (clap): `list-modules`, `snaps`, `show`, `validate`, `export`. Finds the game through Steam's `libraryfolders.vdf` and the profile by itself. Release exe 1.0 MB. Tried every command against the real data and a scratch profile.
 - [x] 3. MCP server `x4sd mcp` (rmcp 3.5.1, stdio): 17 tools over `design`. `research/mcp_smoke.py` builds, validates and exports a Terran station end to end. Exe is 3.8 MB.
 - [x] 4. Module shapes: part boxes from component `<size>` (detail, collision and invisible parts skipped; a snap-bounds fallback for one partless landmark). All 287 modules have snaps + shape.
-- [ ] 5. Builder (Tauri + Three.js)
+- [x] 5. Builder (Tauri 2 + Three.js): palette, 3D boxes, snap cones, click/drag to attach, twist, remove, undo/redo, live checks, open/save/export. One 12.6 MB exe (builder + CLI + MCP). `research/ui_smoke.py` drives it via WebView2 DevTools (open TerranScrapyard, place + attach by clicking a cone, undo).
 - [ ] 6. Live link builder ⇄ MCP
 
 ## Sub-agents
@@ -22,4 +22,9 @@ None.
   - Tools returning `Result<String, String>` turn `Err` into an `isError` tool result.
   - `ServerConfig::new(caps).with_server_info(Implementation::new(..)).with_instructions(..)`.
   - The MCP revision 2026-07-28 drops the `initialize` handshake; rmcp still accepts it from older clients (our smoke test uses 2025-06-18).
+- 2026-10-13: builder notes:
+  - Tauri 3 is alpha, so we use 2.12. `custom-protocol` on by default embeds `ui/dist`.
+  - The game → Three.js conversion mirrors Z: quaternion (w,x,y,z) → (w,-x,-y,z), checked on yaw 90.
+  - `x4sd.exe` detaches a console created only for it (double-click).
+  - One UI-smoke run timed out on the attach click, and 3 reruns passed. A suspected cause is a leftover WebView2 process holding the debug port; not confirmed.
 - 2026-10-13: the game is found through `%ProgramFiles(x86)%\Steam\steamapps\libraryfolders.vdf` (6 libraries here; X4 on F:).

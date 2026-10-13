@@ -28,6 +28,22 @@ pub enum Issue {
     MissingPatch { extension: String },
 }
 
+impl Issue {
+    /// The entry the issue is about; `None` for plan-wide issues.
+    pub fn index(&self) -> Option<u32> {
+        match self {
+            Issue::DuplicateIndex { index }
+            | Issue::UnknownMacro { index, .. }
+            | Issue::UnknownUpgradeMacro { index, .. }
+            | Issue::UnknownSnap { index, .. }
+            | Issue::MissingPredecessor { index, .. }
+            | Issue::SnapGap { index, .. }
+            | Issue::SnapMisaligned { index, .. } => Some(*index),
+            Issue::MissingPatch { .. } => None,
+        }
+    }
+}
+
 impl fmt::Display for Issue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

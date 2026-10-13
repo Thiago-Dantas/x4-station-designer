@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>X4 Station Designer</title>
+  </head>
+  <body>
+    <header id="toolbar">
+      <button id="btn-new" title="Start an empty design">New</button>
+      <button id="btn-open-game" title="Open one of your saved plans or import files">Open game plan…</button>
+      <button id="btn-open-file" title="Open a plan file">Open file…</button>
+      <button id="btn-save" title="Save the design to a plan file">Save as…</button>
+      <button id="btn-export" class="primary" title="Write into the game's import folder">Export to game</button>
+      <span class="sep"></span>
+      <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="btn-redo" title="Redo (Ctrl+Y)">Redo</button>
+      <button id="btn-frame" title="Fit the view (F)">Fit view</button>
+      <span class="sep"></span>
+      <input id="design-name" spellcheck="false" title="Plan name (also the import file name)" />
+      <span id="patches"></span>
+    </header>
+    <main>
+      <aside id="palette">
+        <input id="search" placeholder="Search modules…" spellcheck="false" />
+        <select id="class-filter"><option value="">All classes</option></select>
+        <div id="module-list"></div>
+        <div id="module-count"></div>
+      </aside>
+      <section id="viewport"></section>
+      <aside id="inspector">
+        <section id="armed-panel" hidden>
+          <h3>Placing</h3>
+          <div id="armed-name" class="name"></div>
+          <label>Connect by snap <select id="armed-snap"></select></label>
+          <label>Twist <select id="armed-twist"><option>0</option><option>90</option><option>180</option><option>270</option></select></label>
+          <button id="btn-place-root">Place as first module</button>
+          <p class="hint">Click or drop onto a free snap (cone) to attach. Esc cancels.</p>
+        </section>
+        <section id="selection-panel" hidden>
+          <h3>Selected</h3>
+          <div id="sel-name" class="name"></div>
+          <div id="sel-details" class="details"></div>
+          <div class="row">
+            <button id="btn-twist-left" title="Twist -90° (Shift+R)">⟲ 90°</button>
+            <button id="btn-twist-right" title="Twist +90° (R)">⟳ 90°</button>
+            <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
+          </div>
+        </section>
+        <section>
+          <h3>Checks</h3>
+          <ul id="issues"></ul>
+        </section>
+        <section class="help">
+          <h3>Controls</h3>
+          <p>Left drag: orbit · Right drag: pan · Wheel: zoom<br />Click a module to select · Del removes · R twists</p>
+        </section>
+      </aside>
+    </main>
+    <footer id="status">Loading game data…</footer>
+    <div id="modal" hidden><div class="dialog"><h3 id="modal-title"></h3><div id="modal-body"></div><button id="modal-close">Cancel</button></div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

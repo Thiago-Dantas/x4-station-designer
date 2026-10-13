@@ -1,6 +1,7 @@
-//! `x4sd`: the X4 station designer. Command line and MCP server (`x4sd mcp`);
-//! the builder (no arguments) follows (D-8).
+//! `x4sd`: the X4 station designer. Without arguments it opens the visual
+//! builder; `x4sd mcp` serves AI agents; the other commands are the CLI (D-8).
 
+mod app;
 mod mcp;
 
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ struct Cli {
     #[arg(long, global = true)]
     profile_dir: Option<PathBuf>,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -88,7 +89,11 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Catalog::load(&game, profile.as_deref())
     };
 
-    match cli.command {
+    let Some(command) = cli.command else {
+        app::run(cli.game_dir.clone().or_else(find_game_dir), profile)?;
+        return Ok(ExitCode::SUCCESS);
+    };
+    match command {
         Command::Mcp => {
             mcp::serve(cli.game_dir.clone().or_else(find_game_dir), profile)?;
         }

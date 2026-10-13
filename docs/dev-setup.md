@@ -17,9 +17,28 @@ What is installed on the dev machine and how to build. Installs go on H: or D:, 
 ## Building and testing
 Use **PowerShell** (or cmd):
 ```powershell
-cargo test -p x4sd-core            # unit tests + round-trip tests
+npm --prefix ui install            # once: UI dependencies (dev only; not shipped)
+npm --prefix ui run build          # the builder UI -> ui/dist (must exist before cargo build)
+cargo build -p x4sd --release      # target\release\x4sd.exe: builder + CLI + MCP, ui/dist embedded
+cargo test --workspace             # unit, round-trip and game-data tests
 cargo test -p x4sd-core -- --nocapture   # also prints the round-trip report
+npm --prefix ui run check          # TypeScript type check
 ```
+Smoke tests of the built exe (each runs the real program):
+```powershell
+python -I research\mcp_smoke.py target\release\x4sd.exe <scratch profile dir>   # MCP, like an agent
+python -I research\ui_smoke.py  target\release\x4sd.exe <scratch dir>           # builder, through WebView2's DevTools protocol; saves screenshots
+```
+
+### Builder stack notes
+- **Tauri 2.x stable** (`tauri` 2.12, `@tauri-apps/api` 2.12). Tauri 3 was alpha in 2026-10.
+  - The crate feature `custom-protocol` is on by default in `crates/x4sd`. That is Tauri's production mode: it embeds `ui/dist`, so a plain `cargo build` gives the self-contained exe without the Tauri CLI.
+- The UI is Vite 8 + TypeScript 7 + Three.js 0.186 in `ui/`.
+  - The Tauri CLI (`npx tauri`) is only needed to regenerate icons in `crates/x4sd/icons/`.
+  - Generated `crates/x4sd/gen/` is git-ignored.
+- **Coordinates:** the game is left-handed (Y up) and Three.js right-handed. `ui/src/view3d.ts` mirrors Z, so a position `(x, y, z)` becomes `(x, y, -z)`, and a quaternion `(w, x, y, z)` becomes `(w, -x, -y, z)`.
+- **Console window:** `x4sd.exe` stays a console program (for the CLI and MCP). In builder mode it detaches from a console that Windows created just for it (double-click), so a terminal it was started from is kept.
+- **UI testing:** WebView2 accepts `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=N`. `research/ui_smoke.py` uses that for clicks, JavaScript evaluation and screenshots, and finds snap cones by their colour.
 **Don't build from Git Bash.** Its `/usr/bin/link.exe` (GNU coreutils) shadows the MSVC linker and the build fails with `link: missing operand`.
 
 The round-trip test also checks the game files in `research/extracted/` when they exist (extract them with `tools/x4cat.py`; see [x4-game-data.md](x4-game-data.md)). On a fresh clone it skips them and says so.

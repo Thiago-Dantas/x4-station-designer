@@ -2,6 +2,20 @@
 
 `x4sd.exe` is one self-contained program (about 1 MB; nothing to install). It finds the game through Steam and the player profile under `Documents\Egosoft\X4\<id>` by itself. Override with `--game-dir` / `X4_GAME_DIR` and `--profile-dir`.
 
+## Visual builder
+Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game data in about half a second and opens the builder.
+- **Palette (left):** all buildable modules, with search and a class filter, coloured by class. Click a module to *arm* it, or drag it into the view.
+- **First module:** with an empty design, click *Place as first module* (or drop it anywhere in the view).
+- **Attaching:** free snaps show as cyan cones. Click a cone (or drop a dragged module on it) to attach the armed module. *Connect by snap* chooses which snap of the new module connects; *Twist* rotates it around the snap axis.
+- **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it by 90° with everything attached to it; *Remove* (Del) removes it with everything attached.
+- **Checks (right):** the validator's findings, live. Click one to select the module.
+- **Toolbar:**
+  - *Open game plan…* lists your saved plans and import files.
+  - *Open file…* / *Save as…* work with plan files.
+  - *Export to game* writes the plan into `constructionplan\`; then click Import in the game's build menu.
+  - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
+- **View:** left drag orbits, right drag pans, the wheel zooms. Modules are drawn as boxes of their main parts, not the real meshes.
+
 ## Command line
 | Command | What it does |
 |---------|--------------|
@@ -31,8 +45,6 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `validate_design` | Same checks as `x4sd validate` |
 | `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import |
 
-For now the MCP server keeps its own open design (headless). Once the builder exists, it will edit the design open in the builder live (D-7).
+For now the MCP server keeps its own open design (headless). The live link (D-7), with the agent editing the design open in the builder, is the next step.
 
 `research/mcp_smoke.py <x4sd.exe> <profile dir>` drives the server like an agent: it builds, validates and exports a small Terran station.
-
-Still to come (Phase 3): `x4sd` without arguments opening the visual builder.

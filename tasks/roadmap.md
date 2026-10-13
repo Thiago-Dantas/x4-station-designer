@@ -47,7 +47,7 @@ Proposed order (each step usable on its own):
 - [x] **CLI** (`crates/x4sd`, one binary; see `docs/usage.md`): `list-modules`, `validate <file>`, `export <file>` (to `constructionplan\`), `show <file>`
 - [x] **MCP server** (`x4sd mcp`, stdio, official Rust SDK `rmcp`): tools mirroring the design operations, plus list/validate/export
 - [x] **Module shapes for the 3D view** (`Module::shape`, part boxes): research bounding boxes or sizes in component XML (`<parts>` / `<size>`). Real meshes (`.xmf`) come later, if ever.
-- [ ] **Builder (Tauri + Three.js):** palette (search the 287 modules), 3D view with snap markers, drag a module onto a snap to attach, rotate in steps around the snap axis, validation panel, export button
+- [x] **Builder (Tauri + Three.js):** palette (search the 287 modules), 3D view with snap markers, drag a module onto a snap to attach, rotate in steps around the snap axis, validation panel, export button
 - [ ] **Live link (D-7):** the builder listens on a local socket. `x4sd mcp` forwards operations to it when it runs, and edits files headless when it doesn't.
 
 ## Later: live bridge (option D)
