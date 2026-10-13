@@ -56,6 +56,23 @@ Extract into `research/extracted/<source>/` (git-ignored: game and mod files are
 ### Buildable station modules (verified)
 Structure macros (`assets/structures/**`) whose `class` is one of `connectionmodule`, `storage`, `production`, `dockarea`, `defencemodule`, `habitation`, `buildmodule`, `pier`, `welfaremodule`, `processingmodule`, `ventureplatform` or `radar`, **and** that have `<properties><build><sets>`. That gives 287 modules on the dev machine (base + DLCs + mods). The other classes under `assets/structures` are landmarks, props and asteroids. The display name is `identification@name`; the race is `identification@makerrace`. Whether the *player* can build a module depends on owned blueprints, which is savegame state and out of scope.
 
+**Build-menu categories** (verified: `leftBar` in `menu_station_configuration.lua`, names from page 1001), in the game's order:
+
+| Category | Our macro classes |
+|---|---|
+| Production Modules | `production` |
+| Build Modules | `buildmodule` |
+| Storage Modules | `storage` |
+| Habitation Modules | `habitation` |
+| Welfare Modules | `welfaremodule` |
+| Dock Modules | `dockarea`, `pier` |
+| Defence Modules | `defencemodule` |
+| Processing Modules | `processingmodule` |
+| Other Modules | `connectionmodule`, `radar` |
+| Venture Modules | `ventureplatform` (only when venture features are on) |
+
+The menu files `moduletypes_radar` under Other (verified in the Lua). The class-to-category mapping otherwise follows the module classes (inferred). The builder's palette uses this order.
+
 ### Module shapes for display (verified)
 Component XML describes every part in a `<connection tags="part ...">` with `<parts><part name><size><max x y z/><center x y z/></size>`. `max` is the half-extent and `center` the box centre, both in the connection's frame (the connection `<offset>` places it in the module frame). For example `struct_arg_base_02` `part_main` has max z = 400, spanning its snaps at ±400.
 - **Used:** the solid parts (`part_main`, `part_interior`, …).

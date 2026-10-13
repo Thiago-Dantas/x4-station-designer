@@ -64,6 +64,7 @@ Proposed order (each step usable on its own):
 - [x] **Plot size** (user request): plot per side in km, drawn as a box; modules outside are flagged; an enlarge (or undo) prompt; MCP `set_plot`/`fit_plot`; CLI `show` (plot needed) and `validate --plot`. See [workflow-plot-size.md](workflow-plot-size.md).
 - [x] **Build order viewer and editor** (user request; see [workflow-build-order.md](workflow-build-order.md)): list with stage dividers, drag to reorder, build first/last, stage ends, timeline slider, MCP tools. Still to check in game: that player builds follow the order.
 - [x] Keyboard navigation (user requests): WASD pan, Q/E down/up, arrow keys rotate
+- [x] Palette in the game's build-menu category order (user request)
 - [x] Move placed modules (re-attach to another snap, detach, gizmo for free-standing ones) and warn about unsaved changes (user requests; see [workflow-move-and-unsaved.md](workflow-move-and-unsaved.md))
 - [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`
 - [ ] Automated checks (CI) for the parts that don't need the game installed

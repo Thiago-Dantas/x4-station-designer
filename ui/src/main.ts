@@ -52,6 +52,26 @@ const races = new Set<string>(
 );
 const raceOf = (m: ModuleInfo) => m.race ?? "generic";
 
+/** The game's build-menu categories, in its order (`leftBar` in menu_station_configuration.lua),
+ * with the macro classes each one holds (radar is filed under Other by the menu). */
+const CATEGORIES = [
+  { name: "Production Modules", classes: ["production"] },
+  { name: "Build Modules", classes: ["buildmodule"] },
+  { name: "Storage Modules", classes: ["storage"] },
+  { name: "Habitation Modules", classes: ["habitation"] },
+  { name: "Welfare Modules", classes: ["welfaremodule"] },
+  { name: "Dock Modules", classes: ["dockarea", "pier"] },
+  { name: "Defence Modules", classes: ["defencemodule"] },
+  { name: "Processing Modules", classes: ["processingmodule"] },
+  { name: "Other Modules", classes: ["connectionmodule", "radar"] },
+  { name: "Venture Modules", classes: ["ventureplatform"] },
+];
+/** Position of a module's category in the game's order (unknown classes last). */
+const categoryOf = (m: ModuleInfo) => {
+  const i = CATEGORIES.findIndex((c) => c.classes.includes(m.class));
+  return i < 0 ? CATEGORIES.length : i;
+};
+
 // ---------------------------------------------------------------- helpers
 
 function status(text: string, kind: "" | "error" | "good" = "") {
@@ -229,10 +249,10 @@ function plotFromInputs(): Promise<Scene> {
 
 function renderPalette() {
   const text = $<HTMLInputElement>("search").value.toLowerCase();
-  const cls = $<HTMLSelectElement>("class-filter").value;
+  const category = $<HTMLSelectElement>("class-filter").value;
   const shown = modules.filter(
     (m) =>
-      (!cls || m.class === cls) &&
+      (!category || categoryOf(m) === Number(category)) &&
       (races.size === 0 || races.has(raceOf(m))) &&
       (!text || m.name.toLowerCase().includes(text) || m.macro.toLowerCase().includes(text)),
   );
@@ -644,8 +664,10 @@ void listen<{ scene: Scene; op: string; replaced: boolean }>("scene-changed", (e
   try {
     const catalog = await api.loadCatalog();
     modules = catalog.modules;
-    const classes = [...new Set(modules.map((m) => m.class))].sort();
-    $("class-filter").append(...classes.map((c) => new Option(c, c)));
+    // Game order: by build-menu category, then by name.
+    modules.sort((a, b) => categoryOf(a) - categoryOf(b) || a.name.localeCompare(b.name));
+    const used = new Set(modules.map(categoryOf));
+    $("class-filter").append(...CATEGORIES.flatMap((c, i) => (used.has(i) ? [new Option(c.name, String(i))] : [])));
     renderRaceFilter();
     renderPalette();
     await apply(api.scene(), `${modules.length} modules loaded · profile ${catalog.profile ?? "not found"}`, true);
