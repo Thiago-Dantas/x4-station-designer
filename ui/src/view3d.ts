@@ -1,4 +1,4 @@
-// The 3D station view: module boxes, free-snap cones, picking.
+// The 3D station view: module models (or boxes as a fallback), free-snap cones, picking.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Quat, Scene, Shape, Vec3 } from "./api";
@@ -22,6 +22,27 @@ export const CLASS_COLORS: Record<string, number> = {
   ventureplatform: 0x6fc2a0,
   radar: 0xbfbfbf,
 };
+
+/** Geometry from `module_model` bytes, mirrored into Three.js space; null when empty. */
+export function modelGeometry(buffer: ArrayBuffer): THREE.BufferGeometry | null {
+  const header = new Uint32Array(buffer, 0, 2);
+  const [vertices, indices] = [header[0], header[1]];
+  if (indices === 0) return null;
+  const positions = new Float32Array(buffer, 8, vertices * 3).slice();
+  const normals = new Float32Array(buffer, 8 + vertices * 12, vertices * 3).slice();
+  for (let i = 2; i < positions.length; i += 3) {
+    positions[i] = -positions[i];
+    normals[i] = -normals[i];
+  }
+  // The mirror also turns the game's clockwise triangles counter-clockwise, as Three.js expects.
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+  geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(buffer, 8 + vertices * 24, indices).slice(), 1));
+  geometry.computeBoundingSphere();
+  geometry.userData.shared = true;
+  return geometry;
+}
 
 export type Pick = { kind: "module"; index: number } | { kind: "snap"; index: number; snap: string } | null;
 
@@ -49,9 +70,11 @@ export class View3D {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.scene.add(new THREE.HemisphereLight(0xdde6ff, 0x202430, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, 2, 1.5);
-    this.scene.add(sun);
+    const fill = new THREE.DirectionalLight(0x9fb4ff, 0.6);
+    fill.position.set(-1.5, -0.5, -1);
+    this.scene.add(sun, fill);
     const grid = new THREE.GridHelper(40000, 50, 0x2b3850, 0x1a2232);
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.6;
@@ -64,8 +87,9 @@ export class View3D {
     });
   }
 
-  /** Redraws the station. `shapes` must hold every macro in the scene. */
-  render(scene: Scene, shapes: Map<string, Shape>, selected: number | null, showSnaps: boolean) {
+  /** Redraws the station. `shapes` must hold every macro in the scene; `models`
+   * holds real models where they are loaded (boxes are drawn otherwise). */
+  render(scene: Scene, shapes: Map<string, Shape>, models: Map<string, THREE.BufferGeometry | null>, selected: number | null, showSnaps: boolean) {
     clear(this.station);
     clear(this.snaps);
     this.hovered = null;
@@ -78,11 +102,17 @@ export class View3D {
       const color = bad.has(e.index) ? 0xff3b30 : CLASS_COLORS[e.class ?? ""] ?? 0xffffff;
       const material = new THREE.MeshStandardMaterial({
         color,
-        roughness: 0.7,
-        metalness: 0.1,
-        emissive: e.index === selected ? 0x553300 : 0x000000,
+        roughness: 0.6,
+        metalness: 0.15,
+        emissive: e.index === selected ? 0x664000 : 0x000000,
       });
-      for (const b of shape?.boxes ?? []) {
+      const model = models.get(e.macro.toLowerCase());
+      if (model) {
+        const mesh = new THREE.Mesh(model, material);
+        mesh.userData = { index: e.index };
+        group.add(mesh);
+      }
+      for (const b of model ? [] : shape?.boxes ?? []) {
         const geometry = new THREE.BoxGeometry(b.half[0] * 2, b.half[1] * 2, b.half[2] * 2);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.copy(toVec(b.position));
@@ -156,7 +186,8 @@ export class View3D {
 function clear(group: THREE.Group) {
   group.traverse((o) => {
     if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) {
-      if (!(o.geometry instanceof THREE.ConeGeometry)) o.geometry.dispose();
+      // Cone and model geometries are shared and cached; only per-render ones are freed.
+      if (!(o.geometry instanceof THREE.ConeGeometry) && !o.geometry.userData.shared) o.geometry.dispose();
       (o.material as THREE.Material).dispose();
     }
   });

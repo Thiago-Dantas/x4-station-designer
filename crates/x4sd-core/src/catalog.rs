@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::game::{find_extensions, load_vfs, Extension};
 use crate::geometry::{Quat, Transform};
+use crate::mesh::{self, Mesh};
 use crate::plan::{Patch, Plan};
 use crate::text::Texts;
 use crate::vfs::{normalize, Vfs};
@@ -29,6 +30,23 @@ pub struct ShapeBox {
     pub half_extents: [f64; 3],
 }
 
+/// A visible part of a module with its mesh files.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Part {
+    pub name: String,
+    /// Path of the mesh files without the `-lodN.xmf` suffix, e.g.
+    /// `assets/structures/connectionmodules/struct_arg_base_02_data/part_main`.
+    pub mesh: String,
+    /// Levels of detail that exist (0 = finest).
+    pub lods: Vec<u8>,
+    /// How small the part's features are: 0 main hull, 1 `detail_l`, 2 `detail_m`,
+    /// 3 `detail_s`, 4 `detail_xs` (the game shows smaller details only up close).
+    /// Interiors count as 3.
+    pub detail: u8,
+    /// Placement in the module's frame (parent parts composed).
+    pub transform: Transform,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub macro_name: String,
@@ -40,6 +58,8 @@ pub struct Module {
     pub snaps: Vec<Snap>,
     /// Rough shape for display: the module's main parts as boxes.
     pub shape: Vec<ShapeBox>,
+    /// Visible parts with meshes (see `Catalog::module_model`).
+    pub parts: Vec<Part>,
 }
 
 impl Module {
@@ -243,6 +263,7 @@ impl Catalog {
             })
             .collect();
 
+        let parts = self.mesh_parts(comp, &centry.path);
         let mut shape = shape_boxes(comp);
         if shape.is_empty() {
             shape.extend(snap_bounds(&snaps));
@@ -254,7 +275,95 @@ impl Catalog {
             source: entry.source.map(|i| self.extensions[i].id.clone()),
             snaps,
             shape,
+            parts,
         })
+    }
+
+    /// The module's look: its visible parts down to detail level `details` (see
+    /// `Part::detail`), merged into one mesh in the module's frame, at level of
+    /// detail `lod` where a part has it (else its nearest). Effect materials
+    /// (glows, light cones, decals) are left out.
+    pub fn module_model(&self, macro_name: &str, lod: u8, details: u8) -> Result<Mesh> {
+        let module = self.module(macro_name)?;
+        let mut model = Mesh::default();
+        for part in module.parts.iter().filter(|p| p.detail <= details) {
+            let Some(&level) = part.lods.iter().filter(|&&l| l <= lod).max().or(part.lods.first()) else { continue };
+            let path = format!("{}-lod{level}.xmf", part.mesh);
+            let mesh = mesh::parse(&self.vfs.read(&path)?).map_err(|e| Error(format!("{path}: {e}")))?;
+            let base = model.positions.len() as u32;
+            model.positions.extend(mesh.positions.iter().map(|p| {
+                let w = part.transform.then(&Transform { position: p.map(f64::from), rotation: Quat::IDENTITY }).position;
+                w.map(|v| v as f32)
+            }));
+            model.normals.extend(mesh.normals.iter().map(|n| part.transform.rotation.rotate(n.map(f64::from)).map(|v| v as f32)));
+            for (material, first, count) in mesh.groups.iter().filter(|g| !is_effect_material(&g.0)) {
+                let start = model.indices.len() as u32;
+                let range = *first as usize..(*first + *count) as usize;
+                model.indices.extend(mesh.indices.get(range).unwrap_or_default().iter().map(|i| i + base));
+                model.groups.push((material.clone(), start, model.indices.len() as u32 - start));
+            }
+        }
+        Ok(model)
+    }
+
+    /// Visible parts of a component: every `<connection tags="part">` except
+    /// collision-only and invisible ones. A part may reference a part of another
+    /// component (`ref="xref_dockingbay_gen_xl_pier_01.part_main"`) and may sit on
+    /// a parent part (`parent="part_main"`), whose placement it inherits.
+    fn mesh_parts(&self, comp: roxmltree::Node, component_path: &str) -> Vec<Part> {
+        struct Raw<'a> {
+            name: &'a str,
+            reference: Option<&'a str>,
+            detail: u8,
+            offset: Transform,
+            parent: Option<&'a str>,
+            visible: bool,
+        }
+        let raw: Vec<Raw> = comp
+            .descendants()
+            .filter(|n| n.has_tag_name("connection"))
+            .filter_map(|conn| {
+                let tags: Vec<&str> = conn.attribute("tags").unwrap_or_default().split_whitespace().collect();
+                let part = child(child(Some(conn), "parts"), "part")?;
+                if !tags.contains(&"part") {
+                    return None;
+                }
+                let name = part.attribute("name")?;
+                let detail = ["detail_l", "detail_m", "detail_s", "detail_xs"]
+                    .iter()
+                    .position(|d| tags.contains(d))
+                    .map_or(if name.contains("interior") { 3 } else { 0 }, |i| i as u8 + 1);
+                Some(Raw {
+                    name,
+                    reference: part.attribute("ref"),
+                    detail,
+                    offset: conn.children().find(|c| c.has_tag_name("offset")).map_or(Transform::IDENTITY, parse_offset),
+                    parent: conn.attribute("parent"),
+                    visible: !tags.iter().any(|t| *t == "collisiononly" || *t == "geometryinvisible"),
+                })
+            })
+            .collect();
+        let world = |start: &Raw| {
+            let mut t = start.offset;
+            let mut parent = start.parent;
+            for _ in 0..16 {
+                let Some(p) = parent.and_then(|name| raw.iter().find(|r| r.name.eq_ignore_ascii_case(name))) else { break };
+                t = p.offset.then(&t);
+                parent = p.parent;
+            }
+            t
+        };
+        raw.iter()
+            .filter(|r| r.visible)
+            .filter_map(|r| {
+                let mesh = match r.reference.and_then(|v| v.split_once('.')) {
+                    Some((component, part)) => format!("{}_data/{part}", self.components.get(&component.to_ascii_lowercase())?.path),
+                    None => format!("{component_path}_data/{}", r.name),
+                };
+                let lods: Vec<u8> = (0..5).filter(|l| self.vfs.contains(&format!("{mesh}-lod{l}.xmf"))).collect();
+                (!lods.is_empty()).then(|| Part { name: r.name.to_owned(), mesh: normalize(&mesh), lods, detail: r.detail, transform: world(r) })
+            })
+            .collect()
     }
 }
 
@@ -278,6 +387,13 @@ fn merge_index(map: &mut HashMap<String, IndexEntry>, xml: &str, source: Option<
         }
     }
     Ok(())
+}
+
+/// Glows, light cones, decals and other effect materials: drawn by the game as
+/// overlays, not as solid geometry.
+fn is_effect_material(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    ["fx", "lightcone", "decal", "effects.", "gradient", "laser", "flare", "pattern_hex"].iter().any(|k| n.contains(k))
 }
 
 fn child<'a, 'i>(node: Option<roxmltree::Node<'a, 'i>>, tag: &str) -> Option<roxmltree::Node<'a, 'i>> {

@@ -3,13 +3,23 @@
 import "./style.css";
 import { listen } from "@tauri-apps/api/event";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
-import { api, type ModuleInfo, type PlanRef, type Scene, type Shape } from "./api";
-import { CLASS_COLORS, View3D } from "./view3d";
+import type { BufferGeometry } from "three";
+import { api, type ModuleInfo, type PlanRef, type Quality, type Scene, type Shape } from "./api";
+import { CLASS_COLORS, modelGeometry, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const view = new View3D($("viewport"));
 const shapes = new Map<string, Shape>();
+/** Real models per macro at the current quality (null: none, boxes are drawn). */
+const models = new Map<string, BufferGeometry | null>();
+let quality: Quality = (() => {
+  try {
+    return (localStorage.getItem("x4sd.quality") as Quality | null) ?? "normal";
+  } catch {
+    return "normal";
+  }
+})();
 let modules: ModuleInfo[] = [];
 let scene: Scene | null = null;
 let selected: number | null = null;
@@ -33,11 +43,23 @@ async function shapeOf(macro: string): Promise<Shape> {
   return shape;
 }
 
+async function modelOf(macro: string) {
+  const key = macro.toLowerCase();
+  if (models.has(key)) return;
+  try {
+    models.set(key, modelGeometry(await api.moduleModel(macro, quality)));
+  } catch {
+    models.set(key, null);
+  }
+}
+
 /** Runs a command that returns the new scene, then redraws. Errors go to the status bar. */
 async function apply(action: Promise<Scene>, done?: string, frame = false) {
   try {
     scene = await action;
-    await Promise.all([...new Set(scene.entries.map((e) => e.macro))].map(shapeOf));
+    const macros = [...new Set(scene.entries.map((e) => e.macro))];
+    if (macros.some((x) => !models.has(x.toLowerCase()))) status("Loading models…");
+    await Promise.all(macros.flatMap((x) => [shapeOf(x), modelOf(x)]));
     if (selected !== null && !scene.entries.some((e) => e.index === selected)) selected = null;
     redraw();
     if (frame) view.frame();
@@ -59,7 +81,7 @@ function moduleName(macro: string) {
 
 function redraw() {
   if (!scene) return;
-  view.render(scene, shapes, selected, armed !== null);
+  view.render(scene, shapes, models, selected, armed !== null);
   $<HTMLInputElement>("design-name").value = scene.name;
   const count = `${scene.entries.length} module${scene.entries.length === 1 ? "" : "s"}`;
   $("patches").textContent = scene.patches.length ? `${count} · Needs: ${scene.patches.join(", ")}` : count;
@@ -251,6 +273,18 @@ $("btn-export").onclick = exportToGame;
 $("btn-undo").onclick = () => apply(api.undo());
 $("btn-redo").onclick = () => apply(api.redo());
 $("btn-frame").onclick = () => view.frame();
+$<HTMLSelectElement>("quality").value = quality;
+$<HTMLSelectElement>("quality").onchange = async (ev) => {
+  quality = (ev.target as HTMLSelectElement).value as Quality;
+  try {
+    localStorage.setItem("x4sd.quality", quality);
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+  models.forEach((g) => g?.dispose());
+  models.clear();
+  if (scene) await apply(Promise.resolve(scene), `Model detail: ${quality}`);
+};
 $("btn-twist-left").onclick = () => twistSelected(-90);
 $("btn-twist-right").onclick = () => twistSelected(90);
 $("btn-remove").onclick = removeSelected;

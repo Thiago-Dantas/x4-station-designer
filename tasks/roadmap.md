@@ -58,7 +58,8 @@ Proposed order (each step usable on its own):
   - [ ] better camera on small designs
   - [ ] move unattached modules in the UI
 - [ ] Equipment (shields/turrets per module group) in the model, the builder and MCP
-- [ ] Real module meshes from `.xmf` instead of boxes
+- [x] Real module meshes from `.xmf` instead of boxes (user request, done first; see [workflow-module-meshes.md](workflow-module-meshes.md))
+- [ ] Textures and materials on the models (to decide with the user)
 - [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 

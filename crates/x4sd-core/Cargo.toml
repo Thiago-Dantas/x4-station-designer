@@ -6,4 +6,5 @@ license.workspace = true
 description = "Core library of the X4 station designer: construction plan model and XML I/O"
 
 [dependencies]
+miniz_oxide = "0.9.1"
 roxmltree = "0.20"

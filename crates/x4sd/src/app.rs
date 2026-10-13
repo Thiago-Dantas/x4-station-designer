@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
+use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
@@ -48,6 +49,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
         .invoke_handler(tauri::generate_handler![
             load_catalog,
             module_shape,
+            module_model,
             scene,
             new_design,
             list_game_plans,
@@ -106,6 +108,32 @@ fn module_shape(state: State<'_, Shared>, macro_name: String) -> CmdResult {
         .map(|b| json!({"position": b.transform.position, "rotation": quat_json(b.transform.rotation), "half": b.half_extents}))
         .collect();
     Ok(json!({"macro": module.macro_name, "class": module.class, "snaps": snaps, "boxes": boxes}))
+}
+
+/// A module's real model as raw little-endian bytes: u32 vertex count, u32 index
+/// count, f32 positions (x, y, z), f32 normals (x, y, z), u32 indices. Game frame.
+/// `quality`: "fast" (LOD 3, hull only), "normal" (LOD 2, large and medium
+/// details) or "detailed" (LOD 1, all details).
+#[tauri::command]
+async fn module_model(state: State<'_, Shared>, macro_name: String, quality: String) -> Result<Response, String> {
+    let catalog = catalog(&state.lock().unwrap())?;
+    let (lod, details) = match quality.as_str() {
+        "fast" => (3, 0),
+        "detailed" => (1, 4),
+        _ => (2, 2),
+    };
+    let model = tauri::async_runtime::spawn_blocking(move || catalog.module_model(&macro_name, lod, details))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    let mut bytes = Vec::with_capacity(8 + model.positions.len() * 24 + model.indices.len() * 4);
+    bytes.extend((model.positions.len() as u32).to_le_bytes());
+    bytes.extend((model.indices.len() as u32).to_le_bytes());
+    for v in model.positions.iter().chain(&model.normals) {
+        v.iter().for_each(|f| bytes.extend(f.to_le_bytes()));
+    }
+    model.indices.iter().for_each(|i| bytes.extend(i.to_le_bytes()));
+    Ok(Response::new(bytes))
 }
 
 #[tauri::command]

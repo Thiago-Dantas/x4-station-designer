@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type Vec3 = [number, number, number];
+export type Quality = "fast" | "normal" | "detailed";
 /** w, x, y, z */
 export type Quat = [number, number, number, number];
 
@@ -29,6 +30,8 @@ export interface PlanRef { file: string; source?: string; id: string; name: stri
 export const api = {
   loadCatalog: () => invoke<{ modules: ModuleInfo[]; profile: string | null; game: string | null }>("load_catalog"),
   moduleShape: (macroName: string) => invoke<Shape>("module_shape", { macroName }),
+  /** Raw model bytes; see `module_model` in app.rs. */
+  moduleModel: (macroName: string, quality: Quality) => invoke<ArrayBuffer>("module_model", { macroName, quality }),
   scene: () => invoke<Scene>("scene"),
   newDesign: (name: string) => invoke<Scene>("new_design", { name }),
   listGamePlans: () => invoke<PlanRef[]>("list_game_plans"),

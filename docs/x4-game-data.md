@@ -64,8 +64,47 @@ Component XML describes every part in a `<connection tags="part ...">` with `<pa
   - `collisiononly` boxes;
   - `geometryinvisible` parts (e.g. a pier's 3.1 km "bounding_box" docking volume).
 - **Fallback:** `landmarks_par_storage_01_macro` has no parts of its own (it is assembled from child landmark pieces), so it gets a box spanning its snap points.
-- Real meshes are in `<component>_data/*-lodN.xmf` (X4's binary mesh format). They could replace the boxes later.
-- Implemented as `Module::shape` (`catalog.rs`). All 287 station modules have snaps and a shape.
+- Implemented as `Module::shape` (`catalog.rs`). The boxes are now only a fallback; the builder draws the real meshes (below).
+
+### Module meshes: `.xmf` (reverse-engineered and verified 2026-10-13)
+**Files.** Each part has meshes at `<component path>_data/<part>-lodN.xmf`, LOD 0 being the finest. Main hull parts usually have LOD 0–3, detail parts only LOD 0. `-collision.xmf` and `-collision1.xmf` are collision meshes and aren't drawn.
+
+**Format.** Little endian, Direct3D 9 conventions:
+- **Header, 64 bytes:**
+  - `XUMF`, then a u8 version (3), a u8 big-endian flag, a u16 header size (64);
+  - u8 buffer count, u8 buffer-description size (188), u8 material count, u8 material size (136), u16 0;
+  - u32 vertex count, u32 index count, u32 primitive type (4 = triangle list), zero padding.
+- **Buffer descriptions, 188 bytes each:**
+  - u32 type (0 vertex, 30 index), u32 usage index, u32 data offset, u32 compressed, u32 0;
+  - u32 format (index buffers: 30 for 16-bit, 31 for 32-bit), u32 compressed size, u32 item count, u32 item size, u32 sections;
+  - 16 bytes reserved;
+  - u32 element count, then 16 × (u32 `D3DDECLTYPE`, u32 usage). In the usage, the **low byte** is the `D3DDECLUSAGE` and the next byte the usage index. The upper bytes can hold leftover data (e.g. `0x0DEC0000`).
+- **Materials, 136 bytes each:** u32 first index, u32 index count, char[128] name (e.g. `generic.generic_p1_hulltexture`). They split the index buffer into per-material ranges.
+- **Data:** each buffer sits at `data start + offset` (data start = after the materials), zlib-compressed when flagged. The decompressed size equals count × item size.
+
+**Vertex layout.** A typical vertex is position (FLOAT3), normal (D3DCOLOR), tangent (D3DCOLOR), texcoords (FLOAT2, up to 3) and colours (D3DCOLOR, up to 2), 32–44 bytes in all.
+- **Normals:** a D3DCOLOR is stored as bytes B, G, R, A, so `n = (byte2, byte1, byte0) / 127.5 − 1`. Verified: unit length, and consistent with the geometry.
+- **Coordinates and winding:** coordinates are the game's (left-handed). Triangles are **clockwise**: right-handed face normals come out opposite to the stored ones on 5,330 of 5,330 vertices. Mirroring Z for Three.js makes them counter-clockwise.
+
+**Verification.** The decoded bounds equal the component's `<size>`, e.g. `struct_arg_base_02` part_main ±138.89 / ±74.87 / ±400, and every index is in range. All 286 modules with own parts decode.
+
+**Which parts are drawn** (`Module::parts`, `Catalog::module_model`):
+- **Included:** every `<connection tags="part ...">` except `collisiononly` and `geometryinvisible`. Animation parts are included, because they hold real geometry: rings, cranes, signs.
+- **Placement:**
+  - A connection's `parent="<part name>"` puts the part on top of its parent's placement; the chain is composed.
+  - `<part ref="<component>.<part>">` borrows another component's part. Its meshes are in that component's `_data` folder (e.g. piers use `xref_dockingbay_gen_xl_pier_01.part_main`).
+- **Detail level:** from the tags (`detail_l` 1, `detail_m` 2, `detail_s` 3, `detail_xs` 4, main 0). Parts named `*interior*` count as 3.
+- **Skipped materials:** names containing `fx`, `lightcone`, `decal`, `effects.`, `gradient`, `laser`, `flare` or `pattern_hex`. These are glows, light cones and decals that the game draws as overlays.
+
+**Cost** (all 286 modules; detail parts only exist at LOD 0 and can be as heavy as the hull):
+
+| Builder setting | LOD, detail parts | Triangles, all modules | Per module |
+|---|---|---|---|
+| Fast | LOD 3, main hull only | 1.8 M | about 6k |
+| Normal | LOD 2, up to `detail_m` | 6.4 M | about 22k |
+| Detailed | LOD 1, all details | 16.3 M | about 57k |
+
+**Not used yet:** textures and materials (`libraries/material_library.xml`, `assets/textures/**`, `.gz`-packed DDS) and UVs. The builder tints by module class instead. `research/xmf.py` is the Python research parser.
 
 ## What we need from game data
 | Need | Source |

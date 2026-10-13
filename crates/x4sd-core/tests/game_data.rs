@@ -95,6 +95,37 @@ fn lists_station_modules_with_names() {
     assert!(no_shape.is_empty());
 }
 
+/// Real models: every station module decodes to a mesh whose bounds fit its part boxes.
+#[test]
+fn builds_module_models() {
+    let Some(c) = catalog() else { return };
+    let start = Instant::now();
+    let (mut total_vertices, mut total_triangles, mut empty) = (0, 0, Vec::new());
+    for m in c.station_modules().unwrap() {
+        let model = c.module_model(&m.macro_name, 1, 4).unwrap_or_else(|e| panic!("{}: {e}", m.macro_name));
+        if model.indices.is_empty() {
+            empty.push(m.macro_name.clone());
+            continue;
+        }
+        assert_eq!(model.positions.len(), model.normals.len());
+        assert!(model.indices.iter().all(|&i| (i as usize) < model.positions.len()));
+        total_vertices += model.positions.len();
+        total_triangles += model.indices.len() / 3;
+    }
+    eprintln!("models built in {:?}: {total_vertices} vertices, {total_triangles} triangles (lod 1, all details); empty: {empty:?}", start.elapsed());
+    // Assembled from child landmark pieces; has no geometry of its own (keeps its box).
+    assert_eq!(empty, ["landmarks_par_storage_01_macro"]);
+    for (lod, details) in [(2, 2), (3, 0)] {
+        let triangles: usize = c.station_modules().unwrap().iter().map(|m| c.module_model(&m.macro_name, lod, details).unwrap().indices.len() / 3).sum();
+        eprintln!("lod {lod}, details <= {details}: {triangles} triangles in all modules");
+    }
+
+    // The Argon beam: its main part spans exactly the box from the component XML.
+    let beam = c.module_model("struct_arg_base_02_macro", 1, 0).unwrap();
+    let max_z = beam.positions.iter().map(|p| p[2]).fold(f32::MIN, f32::max);
+    assert!((max_z - 400.0).abs() < 0.5, "{max_z}");
+}
+
 /// A station built with the editing operations from real modules passes validation.
 #[test]
 fn designed_station_validates() {

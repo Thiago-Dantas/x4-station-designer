@@ -8,6 +8,7 @@ pub mod design;
 pub mod game;
 pub mod geometry;
 pub mod import;
+pub mod mesh;
 pub mod plan;
 pub mod text;
 pub mod validate;

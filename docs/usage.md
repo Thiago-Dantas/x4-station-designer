@@ -14,7 +14,8 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Open file…* / *Save as…* work with plan files.
   - *Export to game* writes the plan into `constructionplan\`; then click Import in the game's build menu.
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
-- **View:** left drag orbits, right drag pans, the wheel zooms. Modules are drawn as boxes of their main parts, not the real meshes.
+- **View:** left drag orbits, right drag pans, the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
+- **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.
 
 ## Command line
 | Command | What it does |
