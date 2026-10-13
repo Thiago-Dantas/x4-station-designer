@@ -249,6 +249,63 @@ fn station_analysis() {
     }
 }
 
+/// Production planner: a target's whole chain, housed and stored; race, buy list, existing stations.
+#[test]
+fn production_planner() {
+    use x4sd_core::planner::{plan_production, producible_wares, Request, Role};
+    let Some(c) = catalog() else { return };
+    let start = Instant::now();
+    let producible: Vec<String> = producible_wares(c).unwrap().into_iter().map(|w| w.0).collect();
+    eprintln!("{} producible wares in {:?}", producible.len(), start.elapsed());
+    assert!(producible.contains(&"hullparts".to_owned()) && !producible.contains(&"ore".to_owned()), "ore is mined");
+    let req = |targets: &[(&str, u32)], race: Option<&str>, buy: &[&str]| Request {
+        targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        race: race.map(str::to_owned),
+        workforce: true,
+        storage_hours: 6.0,
+        buy: buy.iter().map(|w| w.to_string()).collect(),
+        sunlight: 1.0,
+        method: "default".to_owned(),
+    };
+    let empty = Design::new("plan").plan().clone();
+    let count = |p: &x4sd_core::planner::ProductionPlan, m: &str| p.modules.iter().find(|x| x.macro_name == m).map_or(0, |x| x.count);
+
+    let start = Instant::now();
+    let p = plan_production(c, &empty, &req(&[("hullparts", 2)], None, &[])).unwrap();
+    eprintln!("hull parts x2 in {:?}:", start.elapsed());
+    for m in &p.modules {
+        eprintln!("  {:>3} x {} ({}) {}", m.count, m.name, m.macro_name, m.role.as_str());
+    }
+    let short: Vec<String> = p.analysis.flows.iter().filter(|f| f.net() < -1e-6).map(|f| format!("{} {:.0}", f.ware, f.net())).collect();
+    eprintln!("  to supply: {short:?}; cost {:.0} Cr", p.cost.value);
+    assert_eq!(count(&p, "prod_gen_hullparts_macro"), 2);
+    for f in p.analysis.flows.iter().filter(|f| f.net() < -1e-6) {
+        assert!(!producible.contains(&f.ware), "{} is still short but could be made", f.ware);
+    }
+    let housed: u32 = p.analysis.housing.iter().map(|h| h.1).sum();
+    assert!(housed >= p.analysis.workforce_needed && p.analysis.workforce_fill == 1.0);
+    for s in p.analysis.storage.iter().filter(|s| s.volume_per_hour > 0.0) {
+        assert!(s.capacity >= 6.0 * s.volume_per_hour - 1e-6, "{} storage", s.transport);
+    }
+    assert!(p.modules.iter().any(|m| m.role == Role::Dock) && p.cost.value > 0.0);
+
+    // Buying energy cells: no solar modules. Teladi: Teladi hull parts (teladianium).
+    let bought = plan_production(c, &empty, &req(&[("hullparts", 2)], None, &["energycells"])).unwrap();
+    assert_eq!(count(&bought, "prod_gen_energycells_macro"), 0);
+    assert!(bought.analysis.flows.iter().any(|f| f.ware == "energycells" && f.net() < 0.0));
+    let teladi = plan_production(c, &empty, &req(&[("hullparts", 1)], Some("teladi"), &[])).unwrap();
+    assert_eq!(count(&teladi, "prod_tel_hullparts_macro"), 1);
+    assert!(teladi.modules.iter().any(|m| m.macro_name == "prod_tel_teladianium_macro"));
+    assert!(teladi.modules.iter().filter(|m| m.role == Role::Habitat).all(|m| m.macro_name.starts_with("hab_tel_")));
+
+    // An existing station with no targets: its shortfalls get producers.
+    let Some(plans) = sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml") else { return };
+    let yard = plans.iter().find(|p| p.name == "TerranScrapyard").unwrap();
+    let fix = plan_production(c, yard, &req(&[], Some("terran"), &[])).unwrap();
+    eprintln!("TerranScrapyard fix: {:?}", fix.modules.iter().map(|m| format!("{} x{}", m.macro_name, m.count)).collect::<Vec<_>>());
+    assert!(count(&fix, "prod_ter_energycells_macro") > 0);
+}
+
 /// Plots: the required plot holds the station; a smaller plot flags the modules outside.
 #[test]
 fn plots() {

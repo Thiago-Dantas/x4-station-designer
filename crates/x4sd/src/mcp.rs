@@ -23,6 +23,11 @@ Workflow: list_modules to find module macros -> new_design (or open_design) -> a
 module -> free_snaps to see where modules can attach -> attach_module (snap to snap; twist rotates around \
 the snap axis, usually in 90 degree steps) -> validate_design -> export_design, then the player clicks \
 Import in the game's station build menu.
+Planning a working station (\"a staffed station with 100 solar panels\"): list_wares for ware ids (solar \
+panels are Energy Cell Production, ware energycells) -> plan_production with targets (ware + number of \
+production modules); it adds the production chain, habitats with their food and medicine, storage, a dock \
+area and a pier -> place every module it lists -> analyze_station to check (wares still short must be \
+bought or mined) -> build_cost for the materials.
 Coordinates are metres in the station frame, Y up. Module indices are 1..n and are renumbered after \
 remove_module. Every edit can be undone with undo.
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
@@ -347,6 +352,16 @@ impl Server {
     #[tool(description = "Station analysis: what the whole station produces and uses per hour (net per ware, largest surplus first), workforce needed vs housed (the work bonus scales with it; workers' food and medicine are included), storage per cargo type in hours, dock areas and piers, and notes on what is missing.")]
     fn analyze_station(&self, Parameters(a): Parameters<AnalyzeArgs>) -> ToolResult {
         self.run(Op::AnalyzeStation { sunlight: a.sunlight })
+    }
+
+    #[tool(description = "Wares that some buildable station module makes: ware id and name (for plan_production targets).")]
+    fn list_wares(&self) -> ToolResult {
+        self.run(Op::ListWares)
+    }
+
+    #[tool(description = "Production planner: the modules to add to the open design to make the target wares. It adds the whole production chain, habitats for the workforce with their food and medicine, storage for N hours, and a dock area and pier if missing. Existing modules count as supply; with no targets it fixes the station's shortfalls. Returns the modules (macro, count, role), the station's analysis with them (what stays short must be bought or mined) and the cost. It doesn't place anything: attach the modules yourself.")]
+    fn plan_production(&self, Parameters(a): Parameters<ops::PlanArgs>) -> ToolResult {
+        self.run(Op::PlanProduction(a))
     }
 
     #[tool(description = "End a build stage after this module (or remove that stage end). Stages let the station be built in steps.")]

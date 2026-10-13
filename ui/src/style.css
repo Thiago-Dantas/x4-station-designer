@@ -85,6 +85,22 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #economy-notes { list-style: none; padding: 0; margin: 4px 0 0; font-size: 12px; }
 #economy-notes li { padding: 3px 6px; border-radius: 3px; margin-bottom: 3px; background: #3a1d1d; }
 #sunlight { width: 64px; }
+.planner-add { display: flex; gap: 4px; }
+.planner-add #planner-ware { flex: 1; min-width: 0; }
+.planner-add #planner-count { width: 52px; }
+#planner-targets { list-style: none; padding: 0; margin: 0; font-size: 12px; }
+#planner-targets li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+#planner-targets li span { flex: 1; }
+#planner-targets li input { width: 52px; }
+#planner-summary { color: var(--muted); font-size: 12px; white-space: pre-line; }
+#planner-result { overflow-y: auto; min-height: 0; flex: 1; font-size: 12px; }
+#planner-result h4 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; color: var(--muted); }
+.planned-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 3px; cursor: pointer; }
+.planned-row:hover { background: var(--line); }
+.planned-row span.name { flex: 1; }
+.planned-row span.n { font-variant-numeric: tabular-nums; color: var(--muted); }
+.planned-row.done span.n { color: var(--ok); }
+.planned-row button { padding: 0 6px; font-size: 11px; }
 .plot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .plot-grid input { width: 64px; }
 #btn-fit-plot { width: 100%; margin-top: 6px; }

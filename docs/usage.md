@@ -18,6 +18,19 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - Click a row to select the module.
   - *Show up to step* previews the station built up to that step; later rows are dimmed.
   - Reordering renumbers the modules; the selection follows the moved module.
+- **Planner (left, third tab):** our own take on the x4ep_planner mod. Name the wares to make and how many production modules of each (e.g. Hull Parts × 2), then *Generate plan*.
+  - It lists everything to add:
+    - the targets;
+    - the production chain for their inputs;
+    - habitats for the workforce, and the food and medicine they eat;
+    - storage for *Storage hours* of everything the station makes and uses;
+    - a dock area and a pier if there are none.
+  - It also shows the cost and the wares left to supply per hour (mined or bought, e.g. ore and ice).
+  - **Adds to the open design:** the modules already there count as supply, housing and storage. With no wares it fixes the open station's shortfalls.
+  - *Race* uses that race's modules where it has them (generic ones otherwise, then any race). *House the workforce* can be turned off.
+  - Each row shows **placed/needed** and counts down as you place modules. Click a row to arm that module.
+  - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
+  - Sunlight and build method come from the right pane. The settings are remembered.
 - **Build cost (right):** the materials to build the **selected module** (with its turrets and shields), or the **whole station** when nothing is selected.
   - Shows resource amounts and an estimated value at the game's average prices.
   - *Build method* matches the game's Preferred Build Method (Universal, Terran, Boron, …). Most modules have one recipe; shared modules that also have a Terran or Boron recipe change with it, and the others fall back to Universal. The choice is remembered.
@@ -63,7 +76,9 @@ A plan file is either the profile's `constructionplans.xml` (all saved plans) or
 ```
 claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 ```
-(add `--game-dir …` / `--profile-dir …` before `mcp` if they aren't found automatically). The server explains the workflow to the agent in its instructions.
+(add `--game-dir …` / `--profile-dir …` before `mcp` if they aren't found automatically). The server explains the workflow to the agent in its instructions, including the planning recipe for requests like "a staffed station with 100 solar panels": `list_wares`, then `plan_production`, then place the modules, then `analyze_station`.
+- **Checked:** that request through MCP gives 137 modules for ≈ 92.8 M Cr; only ice is left to supply.
+- **Not automated yet:** placing a plan's modules takes one `attach_module` per module, and nothing checks for overlaps. Auto-placement (part C in `tasks/workflow-production-planner.md`) is next.
 
 | Tool | Purpose |
 |------|---------|
@@ -74,6 +89,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `set_twist`, `move_module`, `remove_module` | Rotate around the snap axis, move unattached modules, remove a module with everything attached to it (renumbers 1..n) |
 | `undo`, `redo` | Every edit can be undone |
 | `builder_status` | Whether a builder window is open (then all tools act on it, live) |
+| `list_wares`, `plan_production` | Wares some module makes; the planner: targets (ware + production modules), race, workforce, storage hours, buy list, sunlight. Returns the modules to add with their roles, the analysis with them and the cost (it doesn't place them) |
 | `analyze_station` | Production and use per hour (net per ware), workforce needed vs housed and the bonus, storage per cargo type in hours, dock areas and piers, notes on what is missing; `sunlight` in percent |
 | `build_cost` | Resources and estimated value to build one module (with its equipment) or the whole station, for a build method; lists the methods |
 | `reattach_module`, `detach_module` | Move a placed module (with everything on it) onto another free snap (`moved_to` gives its new index), or make it free-standing |

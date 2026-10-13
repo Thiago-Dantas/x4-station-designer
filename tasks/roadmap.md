@@ -67,7 +67,7 @@ Proposed order (each step usable on its own):
 - [x] Palette in the game's build-menu category order (user request)
 - [ ] **x4ep_planner functionality** (user request; our own version from the game files; see [workflow-production-planner.md](workflow-production-planner.md)):
   - [x] A. Station analysis: production per hour, workforce, storage, docks (right pane, MCP `analyze_station`)
-  - [ ] B. Production planner: target wares to a module list, with a "to place" list
+  - [x] B. Production planner: target wares to a module list, with a "to place" list (Planner tab, MCP `plan_production`, `list_wares`)
   - [ ] C. Auto-placement of the planned modules
 - [x] Build cost in the right pane: selected module or whole station, build method (user request; see [workflow-build-cost.md](workflow-build-cost.md))
 - [x] Move placed modules (re-attach to another snap, detach, gizmo for free-standing ones) and warn about unsaved changes (user requests; see [workflow-move-and-unsaved.md](workflow-move-and-unsaved.md))

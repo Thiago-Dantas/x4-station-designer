@@ -210,5 +210,42 @@ try:
     print("6. after E", after_e, "-> after ArrowRight", after_arrow)
     assert after_e[1] > after_w[1] + 20, "E should shift the scene down"
     assert after_arrow != after_e, "an arrow key should rotate the view"
+
+    # Planner tab: Hull Parts x1 (any race), generate, place from a row, buy a chain ware.
+    cdp.js("document.getElementById('tab-planner').click()")
+    cdp.wait_for("document.querySelectorAll('#planner-wares option').length > 0")
+    cdp.js("document.querySelectorAll('#planner-targets button').forEach(b => b.click())")
+    cdp.js("{ const r = document.getElementById('planner-race'); r.value = ''; r.dispatchEvent(new Event('change')); }")
+    cdp.js("document.getElementById('planner-buy').querySelectorAll('button').forEach(b => b.click())")
+    cdp.js("document.getElementById('planner-ware').value = 'Hull Parts'; document.getElementById('planner-add').click()")
+    assert cdp.js("document.querySelectorAll('#planner-targets li').length") == 1
+    cdp.js("document.getElementById('planner-generate').click()")
+    cdp.wait_for("/^\\d+ modules to add/.test(document.getElementById('planner-summary').textContent)")
+    rows = "[...document.querySelectorAll('.planned-row')]"
+    print("7. planner:", cdp.js("document.getElementById('planner-summary').textContent").replace("\n", " | "))
+    print("   rows:", cdp.js(rows + ".map(r => r.querySelector('.name').textContent + ' ' + r.querySelector('.n').textContent).join(', ')"))
+    cdp.screenshot(os.path.join(out, "ui-7-planner.png"))
+    first = cdp.js(rows + "[0].querySelector('.name').textContent")
+    cdp.js(rows + "[0].click()")
+    cdp.wait_for("!document.getElementById('armed-panel').hidden && document.getElementById('armed-name').textContent === %r" % first)
+    print("   clicked row arms:", cdp.js("document.getElementById('armed-name').textContent"))
+    # Place it on a free snap: its row counts it.
+    cdp.js("document.getElementById('btn-frame').click()")
+    time.sleep(0.8)
+    cone = find_color(cdp.screenshot(None), (0x37, 0xD0, 0xC0), vp)
+    cdp.click(*cone)
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Attached Hull Part Production')")
+    hull_row = rows + ".find(r => r.querySelector('.name').textContent === 'Hull Part Production')"
+    cdp.wait_for(hull_row + ".querySelector('.n').textContent === '1/1'")
+    print("   placed on", cone, "->", cdp.js(hull_row + ".querySelector('.n').textContent"), "done:", cdp.js(hull_row + ".classList.contains('done')"), "|",
+          cdp.js("document.getElementById('planner-summary').textContent.split(String.fromCharCode(10))[0]"))
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))")
+    cdp.js(rows + ".find(r => r.querySelector('.name').textContent === 'Energy Cell Production').querySelector('button').click()")
+    cdp.wait_for("document.querySelectorAll('#planner-buy button').length === 1 && !%s.some(r => r.querySelector('.name').textContent === 'Energy Cell Production')" % rows)
+    print("   buying energy cells:", cdp.js("document.getElementById('planner-buy').textContent"), "|",
+          cdp.js("document.getElementById('planner-summary').textContent").replace("\n", " | "))
+    cdp.js("document.querySelector('#planner-buy button').click()")
+    cdp.wait_for("%s.some(r => r.querySelector('.name').textContent === 'Energy Cell Production')" % rows)
+    cdp.js("document.querySelectorAll('#planner-targets button').forEach(b => b.click())")
 finally:
     app.terminate()

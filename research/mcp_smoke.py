@@ -73,6 +73,12 @@ print("fit_plot:", call("fit_plot", grow_only=True)["plot"]["text"])
 print("issues:", call("validate_design")["issues"])
 a = call("analyze_station", sunlight=100)
 print("analysis: workforce", a["workforce"], "| flows", [(f["ware"], round(f["net"])) for f in a["flows"]], "| notes", a["notes"])
+wares = call("list_wares")
+print(len(wares), "producible wares, e.g.", [w["ware"] for w in wares[:5]])
+p = call("plan_production", targets=[{"ware": "computronicsubstrate", "modules": 1}], race="terran")
+print("plan:", [(m["macro"], m["count"], m["role"]) for m in p["modules"]], "| cost", round(p["cost"]["value"]),
+      "| to supply", [(f["ware"], round(f["net"])) for f in p["analysis"]["flows"] if f["net"] < 0])
+assert any(m["macro"] == "prod_ter_computronicsubstrate_macro" and m["role"] == "target" for m in p["modules"]), p["modules"]
 d = call("describe_design")
 print("design:", d["name"], "patches", d["patches"], "modules", [(m["index"], m["name"], m["position"]) for m in d["modules"]])
 print("remove beam 3:", call("remove_module", index=3), "-> modules", len(call("describe_design")["modules"]))

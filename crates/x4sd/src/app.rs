@@ -74,6 +74,8 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             move_root,
             build_cost,
             analyze_station,
+            list_wares,
+            plan_production,
             undo,
             redo,
         ])
@@ -344,6 +346,21 @@ fn analyze_station(state: State<'_, Shared>, sunlight: f64) -> CmdResult {
     let app = state.lock().unwrap();
     let catalog = catalog(&app)?;
     ops::analyze_station(&catalog, &app.design, sunlight)
+}
+
+/// Wares some buildable module makes.
+#[tauri::command]
+fn list_wares(state: State<'_, Shared>) -> CmdResult {
+    let catalog = catalog(&state.lock().unwrap())?;
+    ops::list_wares(&catalog)
+}
+
+/// The modules to add for the planner's targets (see `ops::PlanArgs`).
+#[tauri::command]
+fn plan_production(state: State<'_, Shared>, args: ops::PlanArgs) -> CmdResult {
+    let app = state.lock().unwrap();
+    let catalog = catalog(&app)?;
+    ops::plan_production(&catalog, &app.design, args)
 }
 
 /// Moves a placed module (and everything on it) onto another free snap; `focus` is its new index.

@@ -56,6 +56,17 @@ export interface StationAnalysis {
   unknown: string[];
   notes: string[];
 }
+export interface PlannedModule { macro: string; name: string; count: number; role: "target" | "chain" | "habitat" | "storage" | "dock"; ware: string | null }
+export interface PlanArgs {
+  targets: { ware: string; modules: number }[];
+  race: string | null;
+  workforce: boolean;
+  storage_hours: number;
+  buy: string[];
+  sunlight: number;
+  method: string;
+}
+export interface ProductionPlan { modules: PlannedModule[]; analysis: StationAnalysis; cost: { lines: CostLine[]; value: number; unknown: string[] }; unknown_targets: string[] }
 export interface PlanRef { file: string; source?: string; id: string; name: string; modules: number }
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -102,6 +113,8 @@ export const api = {
   moveRoot: (index: number, position: Vec3) => serial<Scene>("move_root", { index, position }),
   buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),
   analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
+  listWares: () => serial<{ ware: string; name: string }[]>("list_wares"),
+  planProduction: (args: PlanArgs) => serial<ProductionPlan>("plan_production", { args }),
   undo: () => serial<Scene>("undo"),
   redo: () => serial<Scene>("redo"),
 };

@@ -5,16 +5,47 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
-use x4sd_core::economy::analyze;
+use x4sd_core::economy::{analyze, Analysis};
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, write_plans};
+use x4sd_core::planner::{self, producible_wares, Request};
 use x4sd_core::plot::{required_plot, Plot};
 use x4sd_core::validate::{validate, validate_plot};
+
+/// A production target: this many modules making `ware`.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct Target {
+    /// Ware id, e.g. hullparts (see list_wares)
+    pub ware: String,
+    /// Production modules to add for it
+    pub modules: u32,
+}
+
+/// Production planner settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct PlanArgs {
+    /// Wares to make and how many production modules each; empty: just fix the station's shortfalls
+    #[serde(default)]
+    pub targets: Vec<Target>,
+    /// Preferred race of the modules: argon, boron, paranid, split, teladi, terran; omit for any
+    pub race: Option<String>,
+    /// Add habitats for the workforce and make their food and medicine (default true)
+    pub workforce: Option<bool>,
+    /// Storage for this many hours of everything the station makes and uses (default 6)
+    pub storage_hours: Option<f64>,
+    /// Ware ids to buy instead of making
+    pub buy: Option<Vec<String>>,
+    /// The sector's sunlight in percent (default 100)
+    pub sunlight: Option<f64>,
+    /// Build method for the cost (default: default)
+    pub method: Option<String>,
+}
 
 /// Lowercase macro -> (display name, class) of every station module.
 pub type ModuleNames = HashMap<String, (String, String)>;
@@ -55,6 +86,10 @@ pub enum Op {
     BuildCost { index: Option<u32>, method: Option<String> },
     /// Production and use per hour, workforce, storage and docks of the whole station.
     AnalyzeStation { sunlight: Option<f64> },
+    /// Wares some buildable module makes.
+    ListWares,
+    /// The modules to add for target wares (or to fix the station's shortfalls).
+    PlanProduction(PlanArgs),
 }
 
 impl Op {
@@ -70,6 +105,8 @@ impl Op {
                 | Op::ValidateDesign
                 | Op::BuildCost { .. }
                 | Op::AnalyzeStation { .. }
+                | Op::ListWares
+                | Op::PlanProduction(_)
         )
     }
 
@@ -213,6 +250,8 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         }
         Op::BuildCost { index, method } => build_cost(c, ctx.design, index, method.as_deref().unwrap_or("default")),
         Op::AnalyzeStation { sunlight } => analyze_station(c, ctx.design, sunlight.unwrap_or(100.0)),
+        Op::ListWares => list_wares(c),
+        Op::PlanProduction(args) => plan_production(c, ctx.design, args),
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
             ctx.design.mark_saved();
@@ -262,6 +301,42 @@ pub fn build_cost(catalog: &Catalog, design: &Design, index: Option<u32>, method
 /// first), workforce, storage per cargo type, docks, and notes on what is missing.
 pub fn analyze_station(catalog: &Catalog, design: &Design, sunlight: f64) -> Result<Value, String> {
     let a = analyze(catalog, design.plan(), sunlight / 100.0).map_err(|e| e.to_string())?;
+    analysis_json(catalog, &a, sunlight)
+}
+
+/// Wares some buildable module makes: [{ware, name}], by name.
+pub fn list_wares(catalog: &Catalog) -> Result<Value, String> {
+    let wares = producible_wares(catalog).map_err(|e| e.to_string())?;
+    Ok(json!(wares.into_iter().map(|(ware, name)| json!({"ware": ware, "name": name})).collect::<Vec<_>>()))
+}
+
+/// The modules to add to the design for the targets (production chain, habitats,
+/// storage, docks), the station's analysis with them, and their build cost.
+pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs) -> Result<Value, String> {
+    let sunlight = args.sunlight.unwrap_or(100.0);
+    let req = Request {
+        targets: args.targets.into_iter().map(|t| (t.ware, t.modules)).collect(),
+        race: args.race.filter(|r| !r.is_empty() && r != "any"),
+        workforce: args.workforce.unwrap_or(true),
+        storage_hours: args.storage_hours.unwrap_or(6.0),
+        buy: args.buy.unwrap_or_default(),
+        sunlight: sunlight / 100.0,
+        method: args.method.unwrap_or_else(|| "default".to_owned()),
+    };
+    let p = planner::plan_production(catalog, design.plan(), &req).map_err(|e| e.to_string())?;
+    Ok(json!({
+        "modules": p.modules.iter().map(|m| json!({"macro": m.macro_name, "name": m.name, "count": m.count, "role": m.role.as_str(), "ware": m.ware})).collect::<Vec<_>>(),
+        "analysis": analysis_json(catalog, &p.analysis, sunlight)?,
+        "cost": {
+            "lines": p.cost.lines.iter().map(|l| json!({"ware": l.ware, "name": l.name, "amount": l.amount, "value": l.value})).collect::<Vec<_>>(),
+            "value": p.cost.value,
+            "unknown": p.cost.unknown,
+        },
+        "unknown_targets": p.unknown_targets,
+    }))
+}
+
+fn analysis_json(catalog: &Catalog, a: &Analysis, sunlight: f64) -> Result<Value, String> {
     let housed: u32 = a.housing.iter().map(|h| h.1).sum();
     let mut notes = Vec::new();
     if housed < a.workforce_needed {

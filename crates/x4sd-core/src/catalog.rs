@@ -102,6 +102,8 @@ pub struct ModuleInfo {
     pub race: Option<String>,
     /// Id of the extension that defines it; `None` for the base game.
     pub source: Option<String>,
+    /// Build sets it belongs to, e.g. `factory` (player stations), `tradestation_argon`.
+    pub sets: Vec<String>,
 }
 
 /// Texture maps of a material (`libraries/material_library.xml`), as game paths
@@ -214,12 +216,14 @@ impl Catalog {
                 continue;
             }
             let ident = child(props, "identification");
+            let sets = child(child(props, "build"), "sets").into_iter().flat_map(|s| s.children());
             out.push(ModuleInfo {
                 macro_name: m.attribute("name").unwrap_or(key).to_owned(),
                 class: class.to_owned(),
                 name: ident.and_then(|i| i.attribute("name")).map_or_else(|| key.clone(), |n| self.texts.resolve(n)),
                 race: ident.and_then(|i| i.attribute("makerrace")).map(str::to_owned),
                 source: entry.source.map(|i| self.extensions[i].id.clone()),
+                sets: sets.filter_map(|s| s.attribute("ref")).map(str::to_owned).collect(),
             });
         }
         out.sort_by(|a, b| a.macro_name.cmp(&b.macro_name));

@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
-import { api, type ModuleInfo, type PlanRef, type Quality, type Scene, type Shape } from "./api";
+import { api, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape } from "./api";
 import { CLASS_COLORS, type DiffuseTexture, modelGeometry, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -176,6 +176,7 @@ function redraw() {
   renderOrder();
   void refreshCost();
   void refreshAnalysis();
+  renderPlanner();
   $("dirty").hidden = !scene.dirty;
   const title = `X4 Station Designer - ${scene.name}${scene.dirty ? " *" : ""}`;
   if (title !== windowTitle) {
@@ -460,6 +461,181 @@ async function refreshAnalysis() {
   );
 }
 
+// ---------------------------------------------------------------- planner
+
+interface PlannerState { targets: { ware: string; modules: number }[]; race: string; workforce: boolean; hours: number; buy: string[] }
+let planner: PlannerState = (() => {
+  const fallback: PlannerState = { targets: [], race: "", workforce: true, hours: 6, buy: [] };
+  try {
+    return { ...fallback, ...JSON.parse(localStorage.getItem("x4sd.planner") ?? "{}") };
+  } catch {
+    return fallback;
+  }
+})();
+let wareNames = new Map<string, string>();
+/** The last plan, and how many of each macro the design had when it was made. */
+let plan: { result: ProductionPlan; baseline: Map<string, number> } | null = null;
+
+function savePlanner() {
+  try {
+    localStorage.setItem("x4sd.planner", JSON.stringify(planner));
+  } catch {
+    // Remembering the planner is a convenience only.
+  }
+}
+
+function macroCounts() {
+  const counts = new Map<string, number>();
+  for (const e of scene?.entries ?? []) counts.set(e.macro.toLowerCase(), (counts.get(e.macro.toLowerCase()) ?? 0) + 1);
+  return counts;
+}
+
+function renderPlanner() {
+  const n = (x: number) => Math.round(x).toLocaleString("en-US");
+  $("planner-targets").replaceChildren(
+    ...planner.targets.map((t, i) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span></span><input type="number" min="1" /><button title="Remove">✕</button>`;
+      li.querySelector("span")!.textContent = wareNames.get(t.ware) ?? t.ware;
+      const count = li.querySelector("input")!;
+      count.value = String(t.modules);
+      count.onchange = () => {
+        t.modules = Math.max(1, Math.round(Number(count.value)) || 1);
+        savePlanner();
+      };
+      li.querySelector("button")!.onclick = () => {
+        planner.targets.splice(i, 1);
+        savePlanner();
+        renderPlanner();
+      };
+      return li;
+    }),
+  );
+  $("planner-buy").replaceChildren(
+    ...planner.buy.map((w) => {
+      const b = document.createElement("button");
+      b.textContent = `Buy ${wareNames.get(w) ?? w} ✕`;
+      b.title = "Bought instead of made; click to make it again";
+      b.onclick = () => {
+        planner.buy = planner.buy.filter((x) => x !== w);
+        savePlanner();
+        void generatePlan();
+      };
+      return b;
+    }),
+  );
+  if (!plan) return;
+  const { result, baseline } = plan;
+  const now = macroCounts();
+  const groups: [PlannedModule["role"], string][] = [["target", "Targets"], ["chain", "Production chain"], ["habitat", "Habitats"], ["storage", "Storage"], ["dock", "Docks"]];
+  let left = 0;
+  const rows: HTMLElement[] = [];
+  for (const [role, title] of groups) {
+    const members = result.modules.filter((m) => m.role === role);
+    if (!members.length) continue;
+    const h = document.createElement("h4");
+    h.textContent = title;
+    rows.push(h);
+    for (const m of members) {
+      const placed = Math.min(m.count, Math.max(0, (now.get(m.macro.toLowerCase()) ?? 0) - (baseline.get(m.macro.toLowerCase()) ?? 0)));
+      left += m.count - placed;
+      const row = document.createElement("div");
+      row.className = "planned-row" + (placed >= m.count ? " done" : "");
+      row.title = `${m.macro}: click to place one`;
+      row.innerHTML = `<span class="name"></span><span class="n"></span>`;
+      row.querySelector(".name")!.textContent = m.name;
+      row.querySelector(".n")!.textContent = `${placed}/${m.count}`;
+      if (role === "chain" && m.ware) {
+        const buy = document.createElement("button");
+        buy.textContent = "Buy";
+        buy.title = `Buy ${wareNames.get(m.ware) ?? m.ware} instead of making it`;
+        buy.onclick = (ev) => {
+          ev.stopPropagation();
+          planner.buy.push(m.ware!);
+          savePlanner();
+          void generatePlan();
+        };
+        row.append(buy);
+      }
+      row.onclick = () => {
+        const info = modules.find((x) => x.macro.toLowerCase() === m.macro.toLowerCase());
+        if (info) void arm(info);
+      };
+      rows.push(row);
+    }
+  }
+  $("planner-result").replaceChildren(...rows);
+  const total = result.modules.reduce((s, m) => s + m.count, 0);
+  const supply = result.analysis.flows.filter((f) => f.net < -0.5).map((f) => `${f.name} ${n(-f.net)}`);
+  $("planner-summary").textContent =
+    (total ? `${total} modules to add, ${left} still to place · ≈ ${n(result.cost.value)} Cr` : "Nothing to add: the station covers its needs") +
+    (supply.length ? `\nTo supply per hour: ${supply.join(", ")}` : "") +
+    (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "");
+}
+
+async function generatePlan() {
+  if (!scene) return;
+  let result;
+  try {
+    result = await api.planProduction({
+      targets: planner.targets,
+      race: planner.race || null,
+      workforce: planner.workforce,
+      storage_hours: planner.hours,
+      buy: planner.buy,
+      sunlight,
+      method: buildMethod,
+    });
+  } catch (e) {
+    $("planner-summary").textContent = String(e);
+    return;
+  }
+  plan = { result, baseline: macroCounts() };
+  renderPlanner();
+}
+
+async function loadPlanner() {
+  const wares = await api.listWares();
+  wareNames = new Map(wares.map((w) => [w.ware, w.name]));
+  $("planner-wares").replaceChildren(...wares.map((w) => new Option(w.name, w.name)));
+  const races = [...new Set(modules.filter((m) => m.class === "habitation" && m.race).map((m) => m.race!))].sort();
+  $("planner-race").replaceChildren(new Option("Any", ""), ...races.map((r) => new Option(r[0].toUpperCase() + r.slice(1), r)));
+  $<HTMLSelectElement>("planner-race").value = planner.race;
+  $<HTMLInputElement>("planner-workforce").checked = planner.workforce;
+  $<HTMLInputElement>("planner-hours").value = String(planner.hours);
+  renderPlanner();
+}
+
+$("planner-add").onclick = () => {
+  const text = $<HTMLInputElement>("planner-ware").value.trim().toLowerCase();
+  const ware = [...wareNames].find(([id, name]) => name.toLowerCase() === text || id === text)?.[0];
+  if (!ware) {
+    status(`No module makes "${$<HTMLInputElement>("planner-ware").value}"`);
+    return;
+  }
+  const modulesFor = Math.max(1, Math.round(Number($<HTMLInputElement>("planner-count").value)) || 1);
+  const existing = planner.targets.find((t) => t.ware === ware);
+  if (existing) existing.modules += modulesFor;
+  else planner.targets.push({ ware, modules: modulesFor });
+  $<HTMLInputElement>("planner-ware").value = "";
+  savePlanner();
+  renderPlanner();
+};
+$<HTMLInputElement>("planner-ware").onkeydown = (ev) => ev.key === "Enter" && $("planner-add").click();
+$<HTMLSelectElement>("planner-race").onchange = (ev) => {
+  planner.race = (ev.target as HTMLSelectElement).value;
+  savePlanner();
+};
+$<HTMLInputElement>("planner-workforce").onchange = (ev) => {
+  planner.workforce = (ev.target as HTMLInputElement).checked;
+  savePlanner();
+};
+$<HTMLInputElement>("planner-hours").onchange = (ev) => {
+  planner.hours = Math.max(0, Number((ev.target as HTMLInputElement).value) || 0);
+  savePlanner();
+};
+$("planner-generate").onclick = () => void generatePlan();
+
 /** `index` and every module attached to it, directly or not. */
 function subtree(index: number): Set<number> {
   const found = new Set([index]);
@@ -707,9 +883,10 @@ $<HTMLInputElement>("build-step").oninput = (ev) => {
   buildStep = scene && step < scene.entries.length ? step : null;
   redraw();
 };
-for (const [tab, panel] of [["tab-modules", "modules-tab"], ["tab-order", "order-tab"]]) {
+const tabs = [["tab-modules", "modules-tab"], ["tab-order", "order-tab"], ["tab-planner", "planner-tab"]];
+for (const [tab, panel] of tabs) {
   $(tab).onclick = () => {
-    for (const [t, p] of [["tab-modules", "modules-tab"], ["tab-order", "order-tab"]]) {
+    for (const [t, p] of tabs) {
       $(t).classList.toggle("on", t === tab);
       $(p).hidden = p !== panel;
     }
@@ -792,6 +969,7 @@ void listen<{ scene: Scene; op: string; replaced: boolean }>("scene-changed", (e
   try {
     const catalog = await api.loadCatalog();
     modules = catalog.modules;
+    void loadPlanner().catch((e) => status(`Planner: ${e}`));
     // Game order: by build-menu category, then by name.
     modules.sort((a, b) => categoryOf(a) - categoryOf(b) || a.name.localeCompare(b.name));
     const used = new Set(modules.map(categoryOf));

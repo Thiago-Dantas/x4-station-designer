@@ -1,6 +1,6 @@
 # Workflow: x4ep_planner functionality in the designer (user request)
 
-Status: **in progress**: A done, B next (started 2026-10-13)
+Status: **in progress**: A and B done, C next (started 2026-10-13)
 
 User: "next i want to add x4ep_planner mod functionality".
 
@@ -41,7 +41,7 @@ User: "next i want to add x4ep_planner mod functionality".
   - storage capacity per cargo type;
   - pier and dock checks.
   - In the right pane and as an MCP tool.
-- [ ] **B. Production planner** (like Plan): target wares and counts, or a rate. Options:
+- [x] **B. Production planner** (like Plan): target wares and counts, or a rate. Options:
   - race or build method;
   - make or buy per ware;
   - sunlight;
@@ -86,6 +86,30 @@ User: "next i want to add x4ep_planner mod functionality".
   - processing modules (`<products>`, scrap from ships);
   - ship building (build modules only add workforce).
 
+## B. Production planner: plan
+- [x] Core `planner.rs`, `plan_production(catalog, existing plan, request)`:
+  - Request: targets (ware, number of production modules to add), race (or any), workforce on/off, storage hours (6), wares to buy, sunlight, build method (cost only).
+  - It adds to the open design. The modules already there count as supply, housing and storage. With no targets it fixes the open station's shortfalls (the mod's Optimise).
+  - Loop until nothing changes:
+    1. with workforce on, add habitats until the workforce needed is housed;
+    2. analyse;
+    3. for each short ware that isn't in the buy list and has a producer, add ceil(shortfall / output per module) producers.
+  - Then add storage for N hours per cargo type, plus a dock area and a pier if there are none.
+  - Result: the modules to add (with roles: target, chain, habitat, storage, dock), the analysis after the plan (what is left short has to be bought or mined), and the cost of the additions.
+- [x] Module choice (only the `factory` build set, which excludes trade-station, Xenon and landmark variants):
+  - **Producers:** a single-ware queue that isn't `recycling`. Preference: the chosen race's module, then a generic one (no maker race), then any race; ties by name.
+  - **Habitats:** the chosen race's largest. With "any", the largest of all (ties by name).
+  - **Storage:** the largest single-type module of the race.
+  - **Dock area and pier:** the race's (by maker race, else the race code in the macro name), skipping names with `tradestation` or `venturer`.
+- [x] Ops/MCP: `plan_production`, `list_wares` (wares that some module can produce)
+- [x] Builder: a left-pane **Planner** tab:
+  - targets (ware search plus count), race, workforce, storage hours;
+  - Generate;
+  - result rows grouped by role, showing placed/needed (counting down as you place); clicking a row arms that module;
+  - a per-row "buy instead" for chain wares;
+  - the wares left to supply, and the cost.
+- [x] Tests (game data), ui_smoke, mcp_smoke, docs
+
 ## Notes
 - 2026-10-13: A done.
   - **Code:** `economy::analyze` in the core; `ops::analyze_station` adds the notes; MCP `analyze_station`; right-pane Production section with Sunlight % (remembered); `station_analysis` game-data test; ui_smoke and mcp_smoke checks.
@@ -97,3 +121,16 @@ User: "next i want to add x4ep_planner mod functionality".
     - the upkeep per worker;
     - queue items run in turn;
     - habitats are always full.
+- 2026-10-13: B done.
+  - **Code:** `planner::plan_production` and `producible_wares` in the core; `ModuleInfo.sets`; `economy::analyze_modules` and `module_flows` for counts and single modules; MCP `plan_production` and `list_wares` (30 tools); builder Planner tab; MCP instructions with the planning recipe.
+  - **Tests:** the `production_planner` game-data test, mcp_smoke and ui_smoke (generate, arm from a row, place, see 1/1, buy and undo).
+  - **Results:**
+    - Hull Parts × 2 (any race): 10 production, 2 habitats, 5 storage, 1 dock area, 1 pier, ≈ 12.2 M Cr; methane, ore and ice left to supply.
+    - Teladi uses Teladi hull parts with teladianium, and Teladi habitats.
+    - TerranScrapyard with no targets, Terran: 180 Terran solar modules for its recyclers, plus food, habitats and storage.
+    - "100 solar panels, staffed": 137 modules, ≈ 92.8 M Cr; only ice left.
+  - **Choices:**
+    - ties go to the shortest macro name (a standard dock area before a luxury one);
+    - a macro keeps the role it was first added with;
+    - targets always add on top: regenerating after placing adds them again, as in the mod.
+  - **Gap (C):** an agent has to attach every planned module by hand, and there is no overlap check.

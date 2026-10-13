@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::catalog::{Catalog, Module};
 use crate::plan::Plan;
+use crate::wares::Wares;
 use crate::Result;
 
 /// The ware whose recipe per race says what workers eat.
@@ -58,30 +59,35 @@ pub struct Analysis {
 
 /// Analyses a plan in a sector with `sunlight` (1.0 = 100%; solar output follows it).
 pub fn analyze(catalog: &Catalog, plan: &Plan, sunlight: f64) -> Result<Analysis> {
+    analyze_modules(catalog, plan.entries.iter().map(|e| (e.macro_name.as_str(), 1)), sunlight)
+}
+
+/// Like `analyze`, for module macros with counts.
+pub fn analyze_modules<'a>(catalog: &Catalog, modules: impl IntoIterator<Item = (&'a str, u32)>, sunlight: f64) -> Result<Analysis> {
     let wares = catalog.wares()?;
     let mut out = Analysis::default();
     let mut housing: BTreeMap<String, u32> = BTreeMap::new();
     let mut cargo: BTreeMap<String, f64> = BTreeMap::new();
-    let mut producers: Vec<Arc<Module>> = Vec::new();
-    for e in &plan.entries {
-        let Ok(m) = catalog.module(&e.macro_name) else {
-            out.unknown.push(e.macro_name.clone());
+    let mut producers: Vec<(Arc<Module>, u32)> = Vec::new();
+    for (macro_name, count) in modules {
+        let Ok(m) = catalog.module(macro_name) else {
+            out.unknown.push(macro_name.to_owned());
             continue;
         };
-        out.workforce_needed += m.economy.workforce;
+        out.workforce_needed += m.economy.workforce * count;
         if let Some((race, capacity)) = &m.economy.housing {
-            *housing.entry(race.clone()).or_default() += capacity;
+            *housing.entry(race.clone()).or_default() += capacity * count;
         }
         for (max, tags) in &m.economy.cargo {
-            tags.iter().for_each(|t| *cargo.entry(t.clone()).or_default() += max);
+            tags.iter().for_each(|t| *cargo.entry(t.clone()).or_default() += max * f64::from(count));
         }
         match m.class.as_str() {
-            "dockarea" => out.dock_areas += 1,
-            "pier" => out.piers += 1,
+            "dockarea" => out.dock_areas += count,
+            "pier" => out.piers += count,
             _ => {}
         }
         if !m.economy.production.is_empty() {
-            producers.push(m);
+            producers.push((m, count));
         }
     }
     let housed: u32 = housing.values().sum();
@@ -89,22 +95,15 @@ pub fn analyze(catalog: &Catalog, plan: &Plan, sunlight: f64) -> Result<Analysis
 
     // (produced, used) per ware and hour.
     let mut flows: BTreeMap<String, (f64, f64)> = BTreeMap::new();
-    for m in &producers {
-        let recipes: Option<Vec<_>> =
-            m.economy.production.iter().map(|(ware, method)| Some((ware, wares.recipe(wares.ware(ware)?, method)?))).collect();
-        let cycle: f64 = recipes.iter().flatten().map(|(_, r)| r.time).sum();
-        let (Some(recipes), true) = (recipes, cycle > 0.0) else {
+    for (m, count) in &producers {
+        let Some(module_flows) = module_flows(wares, m, out.workforce_fill, sunlight) else {
             out.unknown.push(m.macro_name.clone());
             continue;
         };
-        // Queue items run in turn; the work and sunlight bonuses add output, not inputs.
-        let cycles_per_hour = 3600.0 / cycle;
-        for (ware, r) in recipes {
-            let bonus = (1.0 + r.work * out.workforce_fill) * (1.0 + (sunlight - 1.0) * r.sunlight);
-            flows.entry(ware.clone()).or_default().0 += r.amount * cycles_per_hour * bonus;
-            for (input, amount) in &r.resources {
-                flows.entry(input.clone()).or_default().1 += amount * cycles_per_hour;
-            }
+        for (ware, produced, used) in module_flows {
+            let f = flows.entry(ware).or_default();
+            f.0 += produced * f64::from(*count);
+            f.1 += used * f64::from(*count);
         }
     }
     // Workers eat their race's upkeep recipe: its resources feed `amount` workers per cycle.
@@ -136,4 +135,24 @@ pub fn analyze(catalog: &Catalog, plan: &Plan, sunlight: f64) -> Result<Analysis
     out.unknown.sort();
     out.unknown.dedup();
     Ok(out)
+}
+
+/// One production module's (ware, produced, used) per hour at a workforce fill
+/// (0..1); `None` when a recipe is missing. Queue items run in turn; the work and
+/// sunlight bonuses add output, not inputs.
+pub(crate) fn module_flows(wares: &Wares, m: &Module, fill: f64, sunlight: f64) -> Option<Vec<(String, f64, f64)>> {
+    let recipes: Vec<_> =
+        m.economy.production.iter().map(|(ware, method)| Some((ware, wares.recipe(wares.ware(ware)?, method)?))).collect::<Option<_>>()?;
+    let cycle: f64 = recipes.iter().map(|(_, r)| r.time).sum();
+    if cycle <= 0.0 {
+        return None;
+    }
+    let cycles_per_hour = 3600.0 / cycle;
+    let mut out = Vec::new();
+    for (ware, r) in recipes {
+        let bonus = (1.0 + r.work * fill) * (1.0 + (sunlight - 1.0) * r.sunlight);
+        out.push((ware.clone(), r.amount * cycles_per_hour * bonus, 0.0));
+        out.extend(r.resources.iter().map(|(input, amount)| (input.clone(), 0.0, amount * cycles_per_hour)));
+    }
+    Some(out)
 }
