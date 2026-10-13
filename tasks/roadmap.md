@@ -21,17 +21,18 @@ Session log: [workflow-phase1-research.md](workflow-phase1-research.md)
 - [x] Injection test B: a hand-written file in `constructionplan\` was listed and imported while the game ran, with no restart
 - [x] Injection test A, live: the game doesn't re-read `constructionplans.xml` while running. Save and Export rewrite it from memory.
 - [x] **Top question answered by test C:** `offset` is authoritative. The game doesn't snap or re-derive links, and calls a plan with a floating module "OK".
-- [ ] **Snap math:** recompute each entry's offset from its predecessor's offset plus both snap transforms (and the plan rotation), and compare with the stored offsets of all player plans (5 plans, about 540 entries). Needs the component XML of every module, including DLC ones. Our designer can't place modules without this.
+- [x] **Snap math solved** (`research/snapcheck.py`): positions and orientations follow from the snap geometry for 99%+ of linked entries in the player and library plans. The Euler convention and the 180°-Y flip plus twist model are verified.
+- [x] Decide OD-3 (injection method): option B, recorded as D-5
 - [ ] Clean up the test plans in-game: the user deletes "X4SD test B" and "X4SD test C" from the plan list
 - [ ] Injection test A after a restart (low priority, since B works)
-- [ ] Study `sn_mod_support_apis` named pipes (option D)
-- [x] Decide OD-3 (injection method): option B, recorded as D-5
 
 ## Phase 2: Core library
 - [ ] Decide OD-2 (language)
-- [ ] Plan model plus lossless XML read/write (round-trip test against the player file)
-- [ ] `.cat`/`.dat` reader and module catalogue builder
-- [ ] Validator (macros, connections, DLC requirements)
+- [ ] Plan model plus lossless XML read/write. Round-trip test against `research/extracted/profile-samples/`. Number format: up to 3 decimals, trailing zeros dropped.
+- [ ] Import-file writer (D-5): a single-plan file in `<profile>\constructionplan\`, unique `player_<unix time>` id, sanitised file name
+- [ ] Virtual file system plus module catalogue: base, DLCs, **and enabled mods** (e.g. `recyclemodule_macro`); macro → component → snaps; names from `t/`
+- [ ] Snap placement: compute the child offset from (pred, pred snap, child snap, θ), as in `docs/x4-construction-plans.md`
+- [ ] Validator: unknown macros, unknown snaps, missing DLC `<patches>`, linked snaps that don't meet (about 2 cm tolerance)
 
 ## Phase 3: Agent interface
 - [ ] Decide OD-1 (CLI / MCP / both)
@@ -40,3 +41,7 @@ Session log: [workflow-phase1-research.md](workflow-phase1-research.md)
 ## Phase 4: Visual designer
 - [ ] Decide OD-5 (technology)
 - [ ] 3D view, module placement with snapping, export
+
+## Later: live bridge (option D)
+- [ ] Study `sn_mod_support_apis` named pipes
+- [ ] A mod that builds an imported plan by id (`add_build_to_expand_station`)

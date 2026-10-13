@@ -77,7 +77,27 @@ What we know about how X4 stores station plans, and the ways we could inject one
 <connection name="ConnectionSnap002" tags="snap "><offset><position x="0" y="0" z="-400"/>
   <quaternion qx="-0" qy="-1" qz="-0" qw="7.54979E-08"/></offset></connection>
 ```
-Plans write the names in lowercase (`connectionsnap002`), so matching is case-insensitive. The digit count varies (`connectionsnap03` occurs too), so don't assume `NNN`. Each snap has a local position and orientation; the second one above faces the opposite way (rotated 180° around Y). Coordinates are consistent with metres. DLC modules resolve through the DLC's own `index/` files.
+Plans write the names in lowercase (`connectionsnap002`), so matching is case-insensitive. The names vary (`connectionsnap03`, `connectionsnap_04`), so don't assume a pattern; look the name up in the component.
+
+## Snap math (verified 2026-10-13 with `research/snapcheck.py`)
+Let each module's transform be its plan `offset` (position `P`, orientation `Q`), and let `s = (p, q)` be a snap connection's offset in the module's component (local frame). For an entry with `connection` = `s_c` attached to its predecessor's `s_p`:
+
+```
+P_child = P_pred + rot(Q_pred, p_p) - rot(Q_child, p_c)          # the two snap points coincide
+Q_child = Q_pred · q_p · Ry(180°) · Rz(θ) · q_c⁻¹                # snaps face each other; θ = free twist
+```
+- **Euler convention** for `<rotation yaw pitch roll>` (degrees): `Q = Ry(yaw) · Rx(−pitch) · Rz(−roll)`, Hamilton product, applied as `v' = Q v Q⁻¹`. `<quaternion qx qy qz qw>` uses the same convention. All 48 order/sign variants were tried; this one is clearly best.
+- **Snap axis** = local +Z of the snap frame. Connecting means turning the child's snap 180° about Y so the two face each other, then optionally twisting it by θ about the snap axis.
+- **θ** is mostly 0/90/180/270°, but finer steps exist (3°, 15°, 30°, 45°…), matching the build menu's configurable angle step (`SetConstructionMapBuildAngleStep`).
+
+| Data set | Linked entries | Position within 1 cm | Orientation fits the formula | Misses |
+|----------|----------------|----------------------|------------------------------|--------|
+| Player plans (5 real + 2 test copies) | 693 | 689 | all 689 | the deliberate test C casino (1000 m), and one TerranScrapyard module 1.2 cm off (in 3 copies; rounding) |
+| Game library plans (116) | 3389 | 3358 | all 3358 | 31, all inside about 10 hand-made faction plans (`arg_shipyard`, `arg_wharf`, `tel_shipyard`, …). The same modules and snaps match hundreds of times elsewhere, so it's the plans, not the geometry. |
+
+So **the designer can compute exact offsets from snap geometry**, and the validator can flag linked entries whose snaps don't meet (tolerance about 2 cm to absorb the game's 3-decimal rounding).
+
+Not resolvable from base game and DLC data: `recyclemodule_macro` (in a player plan). It comes from a mod, so the module catalogue must also read enabled extensions. Each snap has a local position and orientation; the second one above faces the opposite way (rotated 180° around Y). Coordinates are consistent with metres. DLC modules resolve through the DLC's own `index/` files.
 
 ## Game behaviour around `constructionplans.xml` (verified in game, 2026-10-13)
 - **No live reload:** a plan added to the file while the game ran did not appear, even after reopening the build menu.
@@ -97,8 +117,9 @@ So:
 - Still unknown: what `predecessor` is used for (probably build order, the sequence tree), and how a floating module is actually built. REA is no longer needed for this question.
 
 ## Unknowns
-- The exact snap math: the child's offset from the predecessor's offset plus both snap transforms (the snap faces are flipped 180°), plus the plan's rotation around the snap axis. Verify against the stored offsets of the player's plans; see the roadmap.
 - Does the game load external edits to `constructionplans.xml` at startup (option A after a restart)? Low priority now that B works.
+- How does the game build a module whose position doesn't match its link (floating, like test C or the 31 library cases)?
+- Collision and overlap rules: the plan format doesn't stop modules from intersecting. The build menu has `SetConstructionMapCollisionDetection`.
 - How does the game handle invalid entries (unknown macro, mismatched connection, missing DLC)?
 - Are ids without the `player_` prefix accepted on import?
 

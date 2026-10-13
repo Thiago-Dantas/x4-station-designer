@@ -2,7 +2,7 @@
 
 An external station designer and toolset for **X4: Foundations**. People and AI agents (through a CLI and/or an MCP server) can build station construction plans outside the game and then get them into the game.
 
-**Status:** Phase 1, research. There is no code yet. The roadmap is in [tasks/roadmap.md](tasks/roadmap.md).
+**Status:** Phase 1 (research) is done. Next is Phase 2 (core library), starting with the language choice (OD-2). So far there are only research tools (`tools/`, `research/`). The roadmap is in [tasks/roadmap.md](tasks/roadmap.md).
 
 ## Start of every session
 1. Read [tasks/roadmap.md](tasks/roadmap.md), then any `tasks/workflow-*.md` or `tasks/subagent-*.md` not marked **done**.
@@ -16,7 +16,8 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `docs/` | Durable knowledge: goals, X4 internals, decisions |
 | `tasks/` | Roadmap (`roadmap.md`) plus one state file per workstream (`workflow-<topic>.md`, `subagent-<role>-<task>.md`) |
 | `tools/x4cat.py` | Lists and extracts files from `.cat`/`.dat` archives, with MD5 checks. Usage in [docs/x4-game-data.md](docs/x4-game-data.md#our-extractor-toolsx4catpy). |
-| `research/extracted/` | Extracted game and mod files. **Git-ignored**: never commit them. |
+| `research/extracted/` | Extracted game and mod files, plus copies of the user's plans (`profile-samples/`). **Git-ignored**: never commit them. |
+| `research/snapcheck.py` | Research script that checks plan offsets against snap geometry (base + DLC virtual file system). Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#snap-math-verified-2026-10-13-with-researchsnapcheckpy). |
 
 ## Repository
 - Private GitHub repo: `github.com/Thiago-Dantas/x4-station-designer`, branch `main`
@@ -44,6 +45,6 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 ## Docs index
 - [docs/goals.md](docs/goals.md): vision, goals, non-goals, proposed architecture
 - [docs/decisions.md](docs/decisions.md): decision log and open decisions
-- [docs/x4-construction-plans.md](docs/x4-construction-plans.md): plan XML format, snap-point geometry, ways to inject a plan
+- [docs/x4-construction-plans.md](docs/x4-construction-plans.md): plan XML format, import/export file, snap math (how offsets follow from connections), game behaviour, injection options
 - [docs/x4-plan-apis.md](docs/x4-plan-apis.md): the game's plan APIs (build-menu Lua FFI, MD actions) and how the `x4ep_planner` mod uses them
 - [docs/x4-game-data.md](docs/x4-game-data.md): install layout, `.cat`/`.dat` archives, DLCs, mods, prior art

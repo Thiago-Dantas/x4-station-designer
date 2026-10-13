@@ -1,6 +1,6 @@
 # Workflow: Phase 1 research (how X4 handles station plans)
 
-Status: **in progress** (started 2026-10-13)
+Status: **done** (2026-10-13). Low-priority leftovers are tracked in the roadmap.
 
 Goal: answer the Phase 1 questions in [roadmap.md](roadmap.md) and record the answers in `docs/`.
 User constraint: keep sub-agents to a minimum (token budget).
@@ -39,4 +39,11 @@ None, at the user's request to save tokens.
   - The game wrote `530.340` as `530.34` (trailing zero dropped).
 - 2026-10-13 15:02: cleanup. Deleted our `X4SD test B.xml` and `X4SD test C.xml` from `constructionplan\` (the user's `TerranScrapyard.xml` export stays). Copied samples into `research/extracted/profile-samples/` (git-ignored): `TerranScrapyard.xml`, the test C game export, and `constructionplans-20261013-1501.xml`. The backup `constructionplans.xml.bak-20261013-1442` is still in the profile.
   - Still to do: the user deletes the "X4SD test B" and "X4SD test C" plans from the in-game list.
-- [ ] Next: the snap-math verification (roadmap)
+- 2026-10-13: the user confirmed option B as the primary route (D-5). Committed and pushed as `9f832a5`.
+- 2026-10-13: **snap math solved** with `research/snapcheck.py` (virtual file system over base + 6 DLCs):
+  - Positions: 689/693 player-plan links and 3358/3389 library links match within 1 cm with `Q = Ry(yaw)·Rx(−pitch)·Rz(−roll)`.
+  - Orientations: every matching link fits `Q_child = Q_pred·q_p·Ry(180)·Rz(θ)·q_c⁻¹`. θ is mostly 0/90/180/270, but other steps occur.
+  - The misses are explained: test C (1000 m), one 1.2 cm rounding case (×3 copies), and 31 links in about 10 hand-made faction library plans. Those modules match hundreds of times elsewhere.
+  - Fixes on the way: DLC index paths need the `extensions/<dlc>/` prefix, separators must be collapsed (`assets\\structures\\`), and snap names vary (`connectionsnap_04`, `connectionsnap03`).
+  - `recyclemodule_macro` comes from a mod, so the catalogue needs mod support.
+- [x] Phase 1 research is done, except the low-priority leftovers in the roadmap. Next: Phase 2, OD-2 (language).

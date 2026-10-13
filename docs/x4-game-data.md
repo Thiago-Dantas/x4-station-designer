@@ -29,6 +29,12 @@ python -I tools/x4cat.py extract <file.cat> <outdir> [glob ...]   # checks MD5, 
 ```
 Extract into `research/extracted/<source>/` (git-ignored: game and mod files are not ours to commit). The tool handles one catalog at a time; to find a file, `grep "^<path> " <install>/*.cat`.
 
+### DLC index files (verified)
+- Each DLC ships complete `index/macros.xml` and `index/components.xml` (not XML diffs), with entries whose `value` starts with `extensions\ego_dlc_<name>\…`. The files inside the DLC's `ext_NN.cat` are listed without that prefix, so prepend `extensions/ego_dlc_<name>/` when building one virtual file system.
+- The DLC index files start with a UTF-8 BOM.
+- Some index values double the separator (`assets\\structures\\landmarks\\…`). Collapse repeated `\`/`/` before lookup.
+- `research/snapcheck.py` contains a working virtual file system over base `01–09.cat` plus all `ego_dlc_*` catalogs (later catalogs win), and the macro → component → snap resolution. It doesn't cover mods yet.
+
 ## What we need from game data
 | Need | Source |
 |------|--------|
