@@ -13,6 +13,9 @@ pub struct Mesh {
     pub positions: Vec<[f32; 3]>,
     /// Unit normals, one per vertex (zero when the file has none).
     pub normals: Vec<[f32; 3]>,
+    /// First texture coordinates, one per vertex (zero when the file has none).
+    /// Direct3D convention: v grows downwards in the texture.
+    pub uvs: Vec<[f32; 2]>,
     /// Triangle list.
     pub indices: Vec<u32>,
     /// Index ranges per material: (material name, first index, index count).
@@ -22,7 +25,10 @@ pub struct Mesh {
 const INDEX_BUFFER: u32 = 30;
 const USAGE_POSITION: u32 = 0;
 const USAGE_NORMAL: u32 = 3;
+const USAGE_TEXCOORD: u32 = 5;
+const DECL_FLOAT2: u32 = 1;
 const DECL_FLOAT3: u32 = 2;
+const DECL_FLOAT16_2: u32 = 15;
 const DECL_D3DCOLOR: u32 = 4;
 
 /// Byte size of a Direct3D 9 vertex element type (`D3DDECLTYPE`).
@@ -100,6 +106,15 @@ pub fn parse(data: &[u8]) -> Result<Mesh> {
                 (USAGE_NORMAL, DECL_D3DCOLOR) => {
                     mesh.normals = (0..b.count).map(|i| [2, 1, 0].map(|k| read(i, k) as f32 / 127.5 - 1.0)).collect();
                 }
+                // Only the first texture coordinate set (usage index 0).
+                (USAGE_TEXCOORD, DECL_FLOAT2) if usage >> 8 & 0xFF == 0 => {
+                    mesh.uvs = (0..b.count)
+                        .map(|i| [0, 4].map(|k| f32::from_le_bytes([read(i, k), read(i, k + 1), read(i, k + 2), read(i, k + 3)])))
+                        .collect();
+                }
+                (USAGE_TEXCOORD, DECL_FLOAT16_2) if usage >> 8 & 0xFF == 0 => {
+                    mesh.uvs = (0..b.count).map(|i| [0, 2].map(|k| f16_to_f32(u16::from_le_bytes([read(i, k), read(i, k + 1)])))).collect();
+                }
                 _ => {}
             }
             offset += decl_size(t).ok_or_else(|| bad(&format!("unknown vertex element type {t}")))?;
@@ -110,6 +125,9 @@ pub fn parse(data: &[u8]) -> Result<Mesh> {
     }
     if mesh.normals.len() != mesh.positions.len() {
         mesh.normals = vec![[0.0; 3]; mesh.positions.len()];
+    }
+    if mesh.uvs.len() != mesh.positions.len() {
+        mesh.uvs = vec![[0.0; 2]; mesh.positions.len()];
     }
 
     let ib = buffers.iter().find(|b| b.kind == INDEX_BUFFER).ok_or_else(|| bad("no index buffer"))?;
@@ -132,4 +150,15 @@ pub fn parse(data: &[u8]) -> Result<Mesh> {
         mesh.groups.push((String::new(), 0, mesh.indices.len() as u32));
     }
     Ok(mesh)
+}
+
+fn f16_to_f32(h: u16) -> f32 {
+    let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exp = (h >> 10 & 0x1F) as i32;
+    let frac = (h & 0x3FF) as f32;
+    sign * match exp {
+        0 => frac * 2f32.powi(-24),
+        31 => f32::INFINITY,
+        _ => (1.0 + frac / 1024.0) * 2f32.powi(exp - 15),
+    }
 }

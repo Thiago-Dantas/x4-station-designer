@@ -120,6 +120,24 @@ fn builds_module_models() {
         eprintln!("lod {lod}, details <= {details}: {triangles} triangles in all modules");
     }
 
+    // Textures: every material used by the beam has a diffuse map that loads.
+    let beam = c.module_model("struct_arg_base_02_macro", 1, 4).unwrap();
+    assert!(beam.uvs.iter().any(|uv| uv[0] != 0.0 || uv[1] != 0.0), "the beam has texture coordinates");
+    let mut formats = std::collections::BTreeMap::new();
+    for (material, _, _) in &beam.groups {
+        let maps = c.material(material).unwrap_or_else(|| panic!("material {material} not in the library"));
+        let texture = c.texture(maps.diffuse.as_deref().unwrap(), 1024).unwrap();
+        let (w, h, _) = &texture.mips[0];
+        assert!(*w <= 1024 && *h <= 1024, "{material}: {w}x{h}");
+        formats.insert(material.clone(), format!("{:?} {w}x{h}, {} mips", texture.format, texture.mips.len()));
+    }
+    eprintln!("beam textures: {formats:?}");
+
+    // Newer `p2` materials come from material_library_1.xml, e.g. on the scrap recycler.
+    let recycler = c.module_model("prod_gen_scrap_recycler_macro", 2, 2).unwrap();
+    let unknown: Vec<_> = recycler.groups.iter().filter(|g| c.material(&g.0).is_none()).map(|g| g.0.clone()).collect();
+    assert!(unknown.is_empty(), "materials not in any library: {unknown:?}");
+
     // The Argon beam: its main part spans exactly the box from the component XML.
     let beam = c.module_model("struct_arg_base_02_macro", 1, 0).unwrap();
     let max_z = beam.positions.iter().map(|p| p[2]).fold(f32::MIN, f32::max);

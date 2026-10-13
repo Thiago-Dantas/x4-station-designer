@@ -3,13 +3,14 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::game::{find_extensions, load_vfs, Extension};
 use crate::geometry::{Quat, Transform};
 use crate::mesh::{self, Mesh};
 use crate::plan::{Patch, Plan};
 use crate::text::Texts;
+use crate::texture::{self, Texture};
 use crate::vfs::{normalize, Vfs};
 use crate::{Error, Result};
 
@@ -87,6 +88,14 @@ pub struct ModuleInfo {
     pub source: Option<String>,
 }
 
+/// Texture maps of a material (`libraries/material_library.xml`), as game paths
+/// without extension.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MaterialMaps {
+    pub diffuse: Option<String>,
+    pub normal: Option<String>,
+}
+
 struct IndexEntry {
     path: String,
     source: Option<usize>,
@@ -99,6 +108,8 @@ pub struct Catalog {
     components: HashMap<String, IndexEntry>,
     texts: Texts,
     cache: Mutex<HashMap<String, Arc<Module>>>,
+    /// `collection.material` (lowercase) -> maps; read on first use.
+    materials: OnceLock<HashMap<String, MaterialMaps>>,
 }
 
 impl Catalog {
@@ -114,6 +125,7 @@ impl Catalog {
             components: HashMap::new(),
             texts: Texts::default(),
             cache: Mutex::new(HashMap::new()),
+            materials: OnceLock::new(),
         };
         let text_files = std::iter::once("t/0001-l044.xml".to_owned())
             .chain(catalog.extensions.iter().map(|e| format!("extensions/{}/t/0001-l044.xml", e.folder)));
@@ -150,6 +162,7 @@ impl Catalog {
             components: HashMap::new(),
             texts: Texts::default(),
             cache: Mutex::new(cache),
+            materials: OnceLock::new(),
         }
     }
 
@@ -201,6 +214,48 @@ impl Catalog {
         let module = Arc::new(self.read_module(&key)?);
         self.cache.lock().unwrap().insert(key, module.clone());
         Ok(module)
+    }
+
+    /// Texture maps of a mesh material such as `generic.generic_p1_hulltexture`.
+    pub fn material(&self, name: &str) -> Option<MaterialMaps> {
+        self.materials.get_or_init(|| self.read_materials()).get(&name.to_ascii_lowercase()).cloned()
+    }
+
+    /// A texture by game path without extension (`assets/textures/...`), from its
+    /// `.gz` or `.dds` file, with mip levels down to `max_size` pixels.
+    pub fn texture(&self, path: &str, max_size: u32) -> Result<Texture> {
+        let file = [".gz", ".dds"].iter().map(|ext| format!("{path}{ext}")).find(|f| self.vfs.contains(f));
+        let file = file.ok_or_else(|| Error(format!("texture not found: {path}")))?;
+        texture::parse_dds(&texture::gunzip(&self.vfs.read(&file)?)?, max_size).map_err(|e| Error(format!("{file}: {e}")))
+    }
+
+    /// The material libraries (`material_library.xml` and `material_library_1.xml`,
+    /// which holds the newer `p2*` materials), of the base game and of extensions
+    /// (whose files add materials through `<diff><add>`).
+    fn read_materials(&self) -> HashMap<String, MaterialMaps> {
+        let roots = std::iter::once(String::new()).chain(self.extensions.iter().map(|e| format!("extensions/{}/", e.folder)));
+        let files = roots.flat_map(|root| {
+            std::iter::once(format!("{root}libraries/material_library.xml"))
+                .chain((1..10).map(move |n| format!("{root}libraries/material_library_{n}.xml")))
+        });
+        let mut out = HashMap::new();
+        for file in files.filter(|f| self.vfs.contains(f)) {
+            let Ok(xml) = self.vfs.read_text(&file) else { continue };
+            let Ok(doc) = roxmltree::Document::parse(&xml) else { continue };
+            for m in doc.descendants().filter(|n| n.has_tag_name("material")) {
+                let collection = m.ancestors().find(|a| a.has_tag_name("collection")).and_then(|c| c.attribute("name"));
+                let (Some(collection), Some(name)) = (collection, m.attribute("name")) else { continue };
+                let map = |kind: &str| {
+                    m.descendants()
+                        .find(|p| p.has_tag_name("property") && p.attribute("type") == Some("BitMap") && p.attribute("name") == Some(kind))
+                        .and_then(|p| p.attribute("value"))
+                        .map(normalize)
+                };
+                let maps = MaterialMaps { diffuse: map("diffuse_map"), normal: map("normal_map") };
+                out.insert(format!("{collection}.{name}").to_ascii_lowercase(), maps);
+            }
+        }
+        out
     }
 
     /// Whether the index knows this macro (modules, equipment, anything).
@@ -296,6 +351,7 @@ impl Catalog {
                 w.map(|v| v as f32)
             }));
             model.normals.extend(mesh.normals.iter().map(|n| part.transform.rotation.rotate(n.map(f64::from)).map(|v| v as f32)));
+            model.uvs.extend(&mesh.uvs);
             for (material, first, count) in mesh.groups.iter().filter(|g| !is_effect_material(&g.0)) {
                 let start = model.indices.len() as u32;
                 let range = *first as usize..(*first + *count) as usize;

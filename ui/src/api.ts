@@ -32,6 +32,9 @@ export const api = {
   moduleShape: (macroName: string) => invoke<Shape>("module_shape", { macroName }),
   /** Raw model bytes; see `module_model` in app.rs. */
   moduleModel: (macroName: string, quality: Quality) => invoke<ArrayBuffer>("module_model", { macroName, quality }),
+  materialMaps: (name: string) => invoke<{ diffuse: string | null; normal: string | null }>("material_maps", { name }),
+  /** Raw texture bytes; see `texture` in app.rs. */
+  texture: (path: string) => invoke<ArrayBuffer>("texture", { path }),
   scene: () => invoke<Scene>("scene"),
   newDesign: (name: string) => invoke<Scene>("new_design", { name }),
   listGamePlans: () => invoke<PlanRef[]>("list_game_plans"),

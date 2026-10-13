@@ -27,6 +27,7 @@ button.danger:hover { border-color: var(--bad); color: var(--bad); }
 #toolbar { display: flex; gap: 6px; align-items: center; padding: 6px 8px; background: var(--panel); border-bottom: 1px solid var(--line); }
 #toolbar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
 #design-name { width: 240px; }
+#toolbar .toggle { display: flex; align-items: center; gap: 4px; color: var(--text); cursor: pointer; }
 #patches { color: var(--muted); font-size: 12px; }
 
 main { flex: 1; display: flex; min-height: 0; }

@@ -128,6 +128,16 @@ So:
 - **Our tool has to compute exact offsets from snap geometry**, and our validator has to check that each linked pair of snaps actually meets, because the game won't catch it.
 - Still unknown: what `predecessor` is used for (probably build order, the sequence tree), and how a floating module is actually built. REA is no longer needed for this question.
 
+## Build order and stages (2026-10-13)
+- **Order = entry order (verified in data).** In all 4,000+ entries we have (player and library plans), a predecessor always has a lower `index` than its child. So `index` order is a valid build order: a module comes after the module it attaches to.
+  - **Hypothesis:** the builder constructs modules in that order. To check in game, export a plan with a changed order and watch the build.
+- **Stages (verified in the Lua and schema).** `entry@bookmark="1"` closes a build stage. The build menu reads it as `bookmarknum` and shows "[Stage N]" plus a "Toggle Bookmark" button, but only when `IsCheatVersion()` (Egosoft's internal build).
+  - MD actions can build up to a stage: `add_build_to_expand_station <stage>` ("use 0 to construct whole sequence"), and `create_station` / station state with `<stage>`.
+  - 42 library plans use stages, e.g. `arg_claytronics_prefab_08` with 7. Player plans have none.
+  - **Unknown:** whether stages matter for a station the player builds through the build menu.
+- **Priorities** have no field in the format; a priority is a position in the order. Reordering is safe as long as every module stays after its predecessor (offsets are authoritative, so geometry doesn't change).
+- **Planned:** a build-order viewer and editor in the builder (see roadmap).
+
 ## Unknowns
 - Does the game load external edits to `constructionplans.xml` at startup (option A after a restart)? Low priority now that B works.
 - How does the game build a module whose position doesn't match its link (floating, like test C or the 31 library cases)?

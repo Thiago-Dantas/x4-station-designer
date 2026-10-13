@@ -143,8 +143,14 @@ def find_color(png, rgb, box):
     return (sum(x for x, _ in near) // len(near), sum(y for _, y in near) // len(near))
 
 
-def start_builder(exe, port, *args):
+# One port for every script: WebView2 refuses to start (and Tauri panics) when a
+# previous instance's processes still hold the profile with different arguments.
+PORT = 9333
+
+
+def start_builder(exe, *args):
     """Starts x4sd in builder mode with remote debugging; returns (process, Cdp)."""
+    port = PORT
     env = dict(os.environ, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=f"--remote-debugging-port={port}")
     app = subprocess.Popen([exe, *args], env=env)
     for _ in range(80):

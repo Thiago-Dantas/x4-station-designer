@@ -50,6 +50,8 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             load_catalog,
             module_shape,
             module_model,
+            material_maps,
+            texture,
             scene,
             new_design,
             list_game_plans,
@@ -110,8 +112,10 @@ fn module_shape(state: State<'_, Shared>, macro_name: String) -> CmdResult {
     Ok(json!({"macro": module.macro_name, "class": module.class, "snaps": snaps, "boxes": boxes}))
 }
 
-/// A module's real model as raw little-endian bytes: u32 vertex count, u32 index
-/// count, f32 positions (x, y, z), f32 normals (x, y, z), u32 indices. Game frame.
+/// A module's real model as raw little-endian bytes, game frame:
+/// u32 vertex count, u32 index count, u32 group count; per group u32 first
+/// index, u32 index count, u32 name length, material name (padded to 4 bytes);
+/// then f32 positions (x, y, z), f32 normals (x, y, z), f32 uvs (u, v), u32 indices.
 /// `quality`: "fast" (LOD 3, hull only), "normal" (LOD 2, large and medium
 /// details) or "detailed" (LOD 1, all details).
 #[tauri::command]
@@ -126,13 +130,62 @@ async fn module_model(state: State<'_, Shared>, macro_name: String, quality: Str
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
-    let mut bytes = Vec::with_capacity(8 + model.positions.len() * 24 + model.indices.len() * 4);
-    bytes.extend((model.positions.len() as u32).to_le_bytes());
-    bytes.extend((model.indices.len() as u32).to_le_bytes());
+    let mut bytes = Vec::with_capacity(12 + model.positions.len() * 32 + model.indices.len() * 4);
+    for n in [model.positions.len(), model.indices.len(), model.groups.len()] {
+        bytes.extend((n as u32).to_le_bytes());
+    }
+    for (name, first, count) in &model.groups {
+        bytes.extend(first.to_le_bytes());
+        bytes.extend(count.to_le_bytes());
+        bytes.extend((name.len() as u32).to_le_bytes());
+        bytes.extend(name.as_bytes());
+        bytes.resize(bytes.len().next_multiple_of(4), 0);
+    }
     for v in model.positions.iter().chain(&model.normals) {
         v.iter().for_each(|f| bytes.extend(f.to_le_bytes()));
     }
+    for uv in &model.uvs {
+        uv.iter().for_each(|f| bytes.extend(f.to_le_bytes()));
+    }
     model.indices.iter().for_each(|i| bytes.extend(i.to_le_bytes()));
+    Ok(Response::new(bytes))
+}
+
+/// Texture maps of a mesh material: `{"diffuse": path | null, "normal": path | null}`.
+#[tauri::command]
+fn material_maps(state: State<'_, Shared>, name: String) -> CmdResult {
+    let maps = catalog(&state.lock().unwrap())?.material(&name).unwrap_or_default();
+    Ok(json!({"diffuse": maps.diffuse, "normal": maps.normal}))
+}
+
+/// A texture as raw bytes: u32 format (1 BC1, 2 BC2, 3 BC3, 4 BC4, 5 BC5, 7 BC7),
+/// u32 mip count, then per mip u32 width, u32 height, u32 byte length, blocks.
+/// Mips larger than 1024 pixels are dropped.
+#[tauri::command]
+async fn texture(state: State<'_, Shared>, path: String) -> Result<Response, String> {
+    use x4sd_core::texture::Format;
+    let catalog = catalog(&state.lock().unwrap())?;
+    let t = tauri::async_runtime::spawn_blocking(move || catalog.texture(&path, 1024))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    let code: u32 = match t.format {
+        Format::Bc1 => 1,
+        Format::Bc2 => 2,
+        Format::Bc3 => 3,
+        Format::Bc4 => 4,
+        Format::Bc5 => 5,
+        Format::Bc7 => 7,
+    };
+    let mut bytes = Vec::new();
+    bytes.extend(code.to_le_bytes());
+    bytes.extend((t.mips.len() as u32).to_le_bytes());
+    for (w, h, data) in &t.mips {
+        for n in [*w, *h, data.len() as u32] {
+            bytes.extend(n.to_le_bytes());
+        }
+        bytes.extend(data);
+    }
     Ok(Response::new(bytes))
 }
 

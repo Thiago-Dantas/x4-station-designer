@@ -16,6 +16,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
 - **View:** left drag orbits; right drag **or WASD** pans (W/S up and down, A/D left and right on screen, smooth while held, speed follows the zoom); the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
 - **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.
+- **Textures** (toolbar, on by default): the game's diffuse textures on the models. Without them, models are tinted by module class. The status bar reports how many loaded and their GPU memory, typically about 10 MB in 0.2 s. Turn them off on weak graphics hardware. The choice is remembered.
 
 ## Command line
 | Command | What it does |

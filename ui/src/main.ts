@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
 import { api, type ModuleInfo, type PlanRef, type Quality, type Scene, type Shape } from "./api";
-import { CLASS_COLORS, modelGeometry, View3D } from "./view3d";
+import { CLASS_COLORS, type DiffuseTexture, modelGeometry, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -13,6 +13,17 @@ const view = new View3D($("viewport"));
 const shapes = new Map<string, Shape>();
 /** Real models per macro at the current quality (null: none, boxes are drawn). */
 const models = new Map<string, BufferGeometry | null>();
+/** Diffuse textures per game material (null: none or unsupported). */
+const textures = new Map<string, DiffuseTexture | null>();
+// On by default: measured at about 0.2 s and 10 MB for an 84- or 332-module station,
+// with no frame-rate cost (models are instanced). The toggle turns them off.
+let showTextures = (() => {
+  try {
+    return localStorage.getItem("x4sd.textures") !== "off";
+  } catch {
+    return true;
+  }
+})();
 let quality: Quality = (() => {
   try {
     return (localStorage.getItem("x4sd.quality") as Quality | null) ?? "normal";
@@ -53,6 +64,31 @@ async function modelOf(macro: string) {
   }
 }
 
+/** Loads the diffuse textures of every material the scene's models use. */
+async function loadTextures() {
+  const names = new Set<string>();
+  for (const e of scene?.entries ?? []) {
+    for (const n of models.get(e.macro.toLowerCase())?.userData.materials ?? []) names.add(n.toLowerCase());
+  }
+  const missing = [...names].filter((n) => !textures.has(n));
+  if (missing.length === 0) return;
+  const started = performance.now();
+  status(`Loading ${missing.length} textures…`);
+  await Promise.all(
+    missing.map(async (n) => {
+      try {
+        const maps = await api.materialMaps(n);
+        textures.set(n, maps.diffuse ? view.diffuseTexture(await api.texture(maps.diffuse)) : null);
+      } catch {
+        textures.set(n, null);
+      }
+    }),
+  );
+  const loaded = [...textures.values()].filter((t) => t);
+  const mb = loaded.reduce((sum, t) => sum + (t?.bytes ?? 0), 0) / 1048576;
+  status(`Textures: ${loaded.length} loaded (${mb.toFixed(1)} MB GPU memory) in ${((performance.now() - started) / 1000).toFixed(1)} s`, "good");
+}
+
 /** Runs a command that returns the new scene, then redraws. Errors go to the status bar. */
 async function apply(action: Promise<Scene>, done?: string, frame = false) {
   try {
@@ -60,6 +96,7 @@ async function apply(action: Promise<Scene>, done?: string, frame = false) {
     const macros = [...new Set(scene.entries.map((e) => e.macro))];
     if (macros.some((x) => !models.has(x.toLowerCase()))) status("Loading models…");
     await Promise.all(macros.flatMap((x) => [shapeOf(x), modelOf(x)]));
+    if (showTextures) await loadTextures();
     if (selected !== null && !scene.entries.some((e) => e.index === selected)) selected = null;
     redraw();
     if (frame) view.frame();
@@ -81,7 +118,7 @@ function moduleName(macro: string) {
 
 function redraw() {
   if (!scene) return;
-  view.render(scene, shapes, models, selected, armed !== null);
+  view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null);
   $<HTMLInputElement>("design-name").value = scene.name;
   const count = `${scene.entries.length} module${scene.entries.length === 1 ? "" : "s"}`;
   $("patches").textContent = scene.patches.length ? `${count} · Needs: ${scene.patches.join(", ")}` : count;
@@ -273,6 +310,17 @@ $("btn-export").onclick = exportToGame;
 $("btn-undo").onclick = () => apply(api.undo());
 $("btn-redo").onclick = () => apply(api.redo());
 $("btn-frame").onclick = () => view.frame();
+$<HTMLInputElement>("textures").checked = showTextures;
+$<HTMLInputElement>("textures").onchange = async (ev) => {
+  showTextures = (ev.target as HTMLInputElement).checked;
+  try {
+    localStorage.setItem("x4sd.textures", showTextures ? "on" : "off");
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+  if (showTextures) await loadTextures();
+  redraw();
+};
 $<HTMLSelectElement>("quality").value = quality;
 $<HTMLSelectElement>("quality").onchange = async (ev) => {
   quality = (ev.target as HTMLSelectElement).value as Quality;

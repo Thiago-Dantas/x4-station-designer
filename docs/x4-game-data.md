@@ -104,7 +104,35 @@ Component XML describes every part in a `<connection tags="part ...">` with `<pa
 | Normal | LOD 2, up to `detail_m` | 6.4 M | about 22k |
 | Detailed | LOD 1, all details | 16.3 M | about 57k |
 
-**Not used yet:** textures and materials (`libraries/material_library.xml`, `assets/textures/**`, `.gz`-packed DDS) and UVs. The builder tints by module class instead. `research/xmf.py` is the Python research parser.
+`research/xmf.py` is the Python research parser.
+
+### Textures (verified 2026-10-13)
+**Material lookup.** A mesh material name such as `generic.generic_p1_hulltexture` is `collection.material` in the material libraries:
+- `libraries/material_library.xml` (`p1` materials);
+- `libraries/material_library_1.xml` (the newer `p2*` collections: `p2generic`, `p2argon`, …; 204 materials);
+- the DLCs' `libraries/material_library.xml`, as `<diff><add sel="/materiallibrary">`.
+
+A material lists `BitMap` properties: `diffuse_map`, `normal_map`, `smooth_map`, `metal_map`, plus layers for paint, dirt and detail. Values are game paths without extension.
+
+**Files.** `<path>.gz` is a gzip-packed DDS; `<path>-small.gz` is a 128×256 version. Full ones are 2048×4096 with 13 mips.
+- Formats seen: BC1, BC3, BC4 (single channel, e.g. aged-hull diffuse maps) and BC5 (some normal maps).
+- Block-compressed data goes to the GPU as is (WebGL `s3tc` and `rgtc` extensions).
+- **Mip levels above 1024 px are skipped,** so a texture costs 0.2–0.7 MB instead of 5–11 MB.
+
+**In the builder:**
+- Only diffuse maps are used.
+- BC4 is shown as grey via a small shader patch.
+- Game UVs and DDS data both use Direct3D's top-left origin, uploaded unflipped.
+- Normal, smoothness and metal maps are not used yet. Normal maps use game-specific channel packing (BC3 or BC5).
+
+**Cost (measured):**
+
+| Plan | Modules | Textures | GPU memory | Load time | Frame rate |
+|---|---|---|---|---|---|
+| TerranScrapyard | 84 | 18 | 9.3 MB | 0.2 s | no change (240 fps) |
+| megashipyard terran | 332 | 18 | 10.5 MB | 0.2 s | no change (240 fps) |
+
+The megashipyard first dropped from 240 to 68 fps with textures, because there was one draw call per module per material. Drawing **instanced per module type** fixed that, in both modes.
 
 ## What we need from game data
 | Need | Source |

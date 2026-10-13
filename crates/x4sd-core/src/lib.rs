@@ -11,6 +11,7 @@ pub mod import;
 pub mod mesh;
 pub mod plan;
 pub mod text;
+pub mod texture;
 pub mod validate;
 pub mod vfs;
 

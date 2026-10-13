@@ -19,7 +19,7 @@ exe, out = sys.argv[1], sys.argv[2]
 profile = os.path.join(out, "profile")
 os.makedirs(profile, exist_ok=True)
 
-app, cdp = start_builder(exe, 9334, "--profile-dir", profile)
+app, cdp = start_builder(exe, "--profile-dir", profile)
 try:
     cdp.wait_for("document.getElementById('status').textContent.includes('modules loaded')")
     print("builder up:", cdp.js("document.getElementById('patches').textContent"))
