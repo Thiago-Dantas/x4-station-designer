@@ -5,6 +5,7 @@
 
 pub mod catalog;
 pub mod design;
+pub mod economy;
 pub mod game;
 pub mod geometry;
 pub mod import;

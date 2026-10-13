@@ -45,6 +45,17 @@ export interface Scene {
 }
 export interface CostLine { ware: string; name: string; amount: number; value: number | null }
 export interface BuildCost { method: string; methods: { id: string; name: string }[]; lines: CostLine[]; value: number; unknown: string[] }
+export interface Flow { ware: string; name: string; produced: number; used: number; net: number }
+export interface StationAnalysis {
+  sunlight: number;
+  flows: Flow[];
+  workforce: { needed: number; housed: number; by_race: { race: string; capacity: number }[]; fill: number };
+  storage: { transport: string; capacity: number; volume_per_hour: number; hours: number | null }[];
+  dock_areas: number;
+  piers: number;
+  unknown: string[];
+  notes: string[];
+}
 export interface PlanRef { file: string; source?: string; id: string; name: string; modules: number }
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -90,6 +101,7 @@ export const api = {
   detachModule: (index: number) => serial<Scene>("detach_module", { index }),
   moveRoot: (index: number, position: Vec3) => serial<Scene>("move_root", { index, position }),
   buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),
+  analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
   undo: () => serial<Scene>("undo"),
   redo: () => serial<Scene>("redo"),
 };

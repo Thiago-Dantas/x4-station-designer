@@ -199,6 +199,56 @@ fn build_costs() {
     assert!(with_equipment > module_only, "turrets and shields add to the module's cost");
 }
 
+/// Station analysis: production rates, workforce bonus and upkeep, sunlight, storage.
+#[test]
+fn station_analysis() {
+    use x4sd_core::economy::{analyze, Analysis};
+    let Some(c) = catalog() else { return };
+    let net = |a: &Analysis, ware: &str| a.flows.iter().find(|f| f.ware == ware).map_or(0.0, |f| f.net());
+    let close = |a: f64, b: f64| (a - b).abs() < 1e-6;
+
+    // Energy cells: 175 per 60 s, unstaffed.
+    let mut d = Design::new("economy");
+    d.add_root(c, "prod_gen_energycells_macro", Transform::IDENTITY).unwrap();
+    let a = analyze(c, d.plan(), 1.0).unwrap();
+    assert!(close(net(&a, "energycells"), 10_500.0), "{:?}", a.flows);
+    assert_eq!((a.workforce_needed, a.workforce_fill), (90, 0.0));
+
+    // An argon L habitat staffs it (+43%) and its 1000 workers eat food rations and medical supplies.
+    let far = Transform { position: [3000.0, 0.0, 0.0], ..Transform::IDENTITY };
+    d.add_root(c, "hab_arg_l_01_macro", far).unwrap();
+    let a = analyze(c, d.plan(), 1.0).unwrap();
+    assert_eq!((a.housing.clone(), a.workforce_fill), (vec![("argon".to_owned(), 1000)], 1.0));
+    assert!(close(net(&a, "energycells"), 15_015.0), "{:?}", a.flows);
+    assert!(close(net(&a, "foodrations"), -2250.0) && close(net(&a, "medicalsupplies"), -1350.0), "{:?}", a.flows);
+    // Solar output follows the sunlight.
+    assert!(close(net(&analyze(c, d.plan(), 0.5).unwrap(), "energycells"), 7507.5));
+    // Container storage: none yet, but energy cells, food and medicine need it.
+    let container = a.storage.iter().find(|s| s.transport == "container").expect("container flow");
+    assert_eq!(container.capacity, 0.0);
+    assert!(container.volume_per_hour > 15_015.0);
+
+    // The player's plans: every module is known; print a summary.
+    let Some(plans) = sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml") else { return };
+    for plan in plans.iter().filter(|p| !p.name.starts_with("X4SD")) {
+        let a = analyze(c, plan, 1.0).unwrap();
+        let top: Vec<String> = a.flows.iter().take(3).map(|f| format!("{} {:+.0}", f.ware, f.net())).collect();
+        let short: Vec<String> = a.flows.iter().rev().take(3).filter(|f| f.net() < 0.0).map(|f| format!("{} {:.0}", f.ware, f.net())).collect();
+        eprintln!(
+            "[{}] workforce {}/{} housed {:?}; top {top:?}; short {short:?}; storage {:?}; docks {} piers {}; unknown {:?}",
+            plan.name,
+            a.housing.iter().map(|h| h.1).sum::<u32>(),
+            a.workforce_needed,
+            a.housing,
+            a.storage.iter().map(|s| format!("{} {:.0}/{:.0}", s.transport, s.capacity, s.volume_per_hour)).collect::<Vec<_>>(),
+            a.dock_areas,
+            a.piers,
+            a.unknown
+        );
+        assert!(a.unknown.iter().all(|m| m == "recyclemodule_macro"), "{:?}", a.unknown);
+    }
+}
+
 /// Plots: the required plot holds the station; a smaller plot flags the modules outside.
 #[test]
 fn plots() {

@@ -19,6 +19,14 @@ pub struct Recipe {
     pub method: String,
     /// Resources per build: (ware id, amount).
     pub resources: Vec<(String, f64)>,
+    /// Seconds per production cycle.
+    pub time: f64,
+    /// Wares made per cycle.
+    pub amount: f64,
+    /// Output bonus with a full workforce (`<effect type="work" product>`), e.g. 0.43.
+    pub work: f64,
+    /// How much output follows the sector's sunlight (`<effect type="sunlight">`), 0..1.
+    pub sunlight: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +37,10 @@ pub struct Ware {
     /// Average price in credits, if the ware is traded.
     pub average_price: Option<f64>,
     pub recipes: Vec<Recipe>,
+    /// Cargo type it is stored as: `container`, `solid`, `liquid`, ...
+    pub transport: String,
+    /// m³ per unit.
+    pub volume: f64,
 }
 
 /// A build method players can choose (the game's "Preferred Build Method").
@@ -117,6 +129,8 @@ impl Wares {
                 name: w.attribute("name").map_or_else(|| id.to_owned(), |n| texts.resolve(n)),
                 average_price: child("price").and_then(|p| p.attribute("average")).and_then(|v| v.parse().ok()),
                 recipes: w.children().filter(|c| c.has_tag_name("production")).map(recipe).collect(),
+                transport: w.attribute("transport").unwrap_or_default().to_owned(),
+                volume: w.attribute("volume").and_then(|v| v.parse().ok()).unwrap_or(0.0),
             };
             self.wares.insert(id.to_owned(), ware);
         }
@@ -192,6 +206,10 @@ impl Wares {
 }
 
 fn recipe(p: roxmltree::Node) -> Recipe {
+    let num = |n: roxmltree::Node, a: &str| n.attribute(a).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    let effect = |kind: &str| {
+        p.descendants().find(|e| e.has_tag_name("effect") && e.attribute("type") == Some(kind)).map_or(0.0, |e| num(e, "product"))
+    };
     Recipe {
         method: p.attribute("method").unwrap_or("default").to_owned(),
         resources: p
@@ -199,5 +217,9 @@ fn recipe(p: roxmltree::Node) -> Recipe {
             .filter(|w| w.has_tag_name("ware"))
             .filter_map(|w| Some((w.attribute("ware")?.to_owned(), w.attribute("amount")?.parse().ok()?)))
             .collect(),
+        time: num(p, "time"),
+        amount: num(p, "amount"),
+        work: effect("work"),
+        sunlight: effect("sunlight"),
     }
 }

@@ -192,6 +192,12 @@ pub struct CostArgs {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct AnalyzeArgs {
+    /// The sector's sunlight in percent; solar output (energy cells) follows it (default 100)
+    sunlight: Option<f64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct StageArgs {
     /// Module index
     index: u32,
@@ -336,6 +342,11 @@ impl Server {
     #[tool(description = "Build materials: the resources (and estimated value at average prices) to build one module with its equipment, or the whole station. Also lists the build methods.")]
     fn build_cost(&self, Parameters(a): Parameters<CostArgs>) -> ToolResult {
         self.run(Op::BuildCost { index: a.index, method: a.method })
+    }
+
+    #[tool(description = "Station analysis: what the whole station produces and uses per hour (net per ware, largest surplus first), workforce needed vs housed (the work bonus scales with it; workers' food and medicine are included), storage per cargo type in hours, dock areas and piers, and notes on what is missing.")]
+    fn analyze_station(&self, Parameters(a): Parameters<AnalyzeArgs>) -> ToolResult {
+        self.run(Op::AnalyzeStation { sunlight: a.sunlight })
     }
 
     #[tool(description = "End a build stage after this module (or remove that stage end). Stages let the station be built in steps.")]

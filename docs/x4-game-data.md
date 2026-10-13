@@ -160,6 +160,21 @@ The megashipyard first dropped from 240 to 68 fps with textures, because there w
 - **Mods:** they patch wares with `<replace>` too (prices, production times, a few recipes). Our reader (`crates/x4sd-core/src/wares.rs`) applies only `<add>`. It skips extension files that aren't valid XML: `faction_fix_pack` ships a broken `wares.xml`.
 - **Totals:** the player's plans at average prices: TerranScrapyard ≈ 48.9 M Cr, defense station ≈ 95 M Cr (mostly turrets and shields; one disc alone 0.64 M, with its 24 groups 7.9 M), megashipyard ≈ 315 M Cr.
 
+### Production, workforce and storage (data verified 2026-10-13; maths are hypotheses)
+- **Production modules:** the macro's `<production wares="X"><queue ware="X" method="…"/>` names the ware and the recipe method (`default` if absent).
+  - The scrap recyclers queue several wares: `<queue><item ware method="recycling"/>…`.
+  - `<workforce max="N"/>` is the staff it needs, e.g. energy cells 90 and hull parts 270.
+- **Rate:** the ware's `<production time amount method>` in `wares.xml`, inputs in `<primary>`.
+  - `<effects>`: `work` (output bonus at full staff, e.g. energy cells 0.43, 67 recipes) and `sunlight` (energy cells, product 1).
+  - Example: 175 energy cells per 60 s = 10,500 per hour; 15,015 fully staffed (hypothesis: the bonus adds output, not input).
+- **Habitats:** `<workforce race="argon" capacity="1000"/>`. Workers eat the `workunit_busy` recipe of their race (argon uses `default`).
+  - Example: 200 workers per 600 s eat food rations 75 and medical supplies 45, so 1000 argon workers use 2250 and 1350 per hour (scale is a hypothesis).
+- **Welfare modules:** `<workforce growthrate>` (growth only).
+- **Storage:** `<cargo max tags>`, with tags `container`, `solid`, `liquid` or several. Ware `transport` and `volume` (m³) come from `wares.xml`.
+- **Processing modules:** `<products><ware amount/>` (scrap from ships).
+- **Reader:** `crates/x4sd-core/src/economy.rs` (`ModuleEconomy` in `catalog.rs`).
+- **Player's plans:** TerranScrapyard: 10,000 of 11,665 workers housed (bonus 86%), hull parts +12,645 per hour, energy cells −758,820 per hour (the scrap recyclers).
+
 ## What we need from game data
 | Need | Source |
 |------|--------|

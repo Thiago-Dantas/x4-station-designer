@@ -175,6 +175,7 @@ function redraw() {
   view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null || moving !== null, buildStep, moving !== null ? subtree(moving) : null);
   renderOrder();
   void refreshCost();
+  void refreshAnalysis();
   $("dirty").hidden = !scene.dirty;
   const title = `X4 Station Designer - ${scene.name}${scene.dirty ? " *" : ""}`;
   if (title !== windowTitle) {
@@ -397,6 +398,66 @@ async function refreshCost() {
   $("cost-total").textContent = scene.entries.length
     ? `≈ ${n(cost.value)} Cr at average prices` + (cost.unknown.length ? ` (no recipe: ${cost.unknown.join(", ")})` : "")
     : "Nothing placed yet";
+}
+
+/** Sector sunlight for the production figures, in percent; remembered. */
+let sunlight = (() => {
+  try {
+    return Number(localStorage.getItem("x4sd.sunlight") ?? "100") || 100;
+  } catch {
+    return 100;
+  }
+})();
+let analyzed: { scene: Scene; sunlight: number } | null = null;
+
+/** Right pane: what the whole station makes and uses per hour, its workforce, storage and docks. */
+async function refreshAnalysis() {
+  if (!scene || (analyzed?.scene === scene && analyzed.sunlight === sunlight)) return;
+  const request = { scene, sunlight };
+  analyzed = request;
+  let a;
+  try {
+    a = await api.analyzeStation(sunlight);
+  } catch (e) {
+    $("economy-summary").textContent = String(e);
+    return;
+  }
+  if (analyzed !== request) return; // a newer request is on its way
+  const n = (x: number) => Math.round(x).toLocaleString("en-US");
+  const w = a.workforce;
+  const races = w.by_race.map((r) => `${r.race} ${n(r.capacity)}`).join(", ");
+  $("economy-summary").textContent = scene.entries.length
+    ? `Workforce: ${n(w.housed)} housed${races ? ` (${races})` : ""}, ${n(w.needed)} needed` +
+      (w.needed ? ` · bonus ${Math.round(w.fill * 100)}%` : "") +
+      `\nDocks: ${a.dock_areas} dock area${a.dock_areas === 1 ? "" : "s"}, ${a.piers} pier${a.piers === 1 ? "" : "s"}` +
+      (a.flows.length ? "\nNet per hour:" : "")
+    : "Nothing placed yet";
+  $("economy-flows").replaceChildren(
+    ...a.flows
+      .filter((f) => Math.abs(f.net) >= 0.5)
+      .map((f) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td></td><td class="n"></td>`;
+        row.title = `Made ${n(f.produced)}, used ${n(f.used)} per hour`;
+        row.children[0].textContent = f.name;
+        row.children[1].textContent = (f.net > 0 ? "+" : "") + n(f.net);
+        row.children[1].className = `n ${f.net > 0 ? "up" : "down"}`;
+        return row;
+      }),
+  );
+  $("economy-storage").textContent = a.storage.length
+    ? "Storage: " +
+      a.storage
+        .map((s) => `${s.transport} ${n(s.capacity)} m³` + (s.hours === null ? "" : ` (≈ ${s.hours < 10 ? s.hours.toFixed(1) : n(s.hours)} h)`))
+        .join(" · ")
+    : "";
+  $("economy-notes").replaceChildren(
+    ...a.notes.map((t) => {
+      const li = document.createElement("li");
+      li.textContent = t;
+      return li;
+    }),
+  );
 }
 
 /** `index` and every module attached to it, directly or not. */
@@ -623,6 +684,18 @@ $<HTMLSelectElement>("build-method").onchange = (ev) => {
   }
   void refreshCost();
 };
+$<HTMLInputElement>("sunlight").onchange = (ev) => {
+  const value = Number((ev.target as HTMLInputElement).value);
+  if (!Number.isFinite(value) || value < 0) return;
+  sunlight = value;
+  try {
+    localStorage.setItem("x4sd.sunlight", String(sunlight));
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+  void refreshAnalysis();
+};
+$<HTMLInputElement>("sunlight").value = String(sunlight);
 $("btn-move").onclick = startMove;
 $("btn-detach").onclick = () => selected !== null && apply(api.detachModule(selected), "Detached: it now stands on its own");
 $("btn-build-first").onclick = () => selected !== null && apply(api.buildFirst(selected), "Moved to the front of the build order");

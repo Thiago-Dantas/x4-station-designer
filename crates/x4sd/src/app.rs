@@ -73,6 +73,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             detach_module,
             move_root,
             build_cost,
+            analyze_station,
             undo,
             redo,
         ])
@@ -335,6 +336,14 @@ fn build_cost(state: State<'_, Shared>, index: Option<u32>, method: String) -> C
     let app = state.lock().unwrap();
     let catalog = catalog(&app)?;
     ops::build_cost(&catalog, &app.design, index, &method)
+}
+
+/// The whole station's production, workforce, storage and docks at `sunlight` percent.
+#[tauri::command]
+fn analyze_station(state: State<'_, Shared>, sunlight: f64) -> CmdResult {
+    let app = state.lock().unwrap();
+    let catalog = catalog(&app)?;
+    ops::analyze_station(&catalog, &app.design, sunlight)
 }
 
 /// Moves a placed module (and everything on it) onto another free snap; `focus` is its new index.

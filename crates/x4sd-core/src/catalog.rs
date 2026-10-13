@@ -62,6 +62,21 @@ pub struct Module {
     pub shape: Vec<ShapeBox>,
     /// Visible parts with meshes (see `Catalog::module_model`).
     pub parts: Vec<Part>,
+    /// What it produces, needs and holds (see `economy`).
+    pub economy: ModuleEconomy,
+}
+
+/// A module's part in the station economy, from its macro `<properties>`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ModuleEconomy {
+    /// Production queue: (ware, recipe method), run in turn.
+    pub production: Vec<(String, String)>,
+    /// Workers it needs at full staff (`<workforce max>`).
+    pub workforce: u32,
+    /// Workers it houses: (race, capacity).
+    pub housing: Option<(String, u32)>,
+    /// Cargo storage: (capacity in m³, cargo types such as `container`).
+    pub cargo: Vec<(f64, Vec<String>)>,
 }
 
 impl Module {
@@ -342,6 +357,7 @@ impl Catalog {
             snaps,
             shape,
             parts,
+            economy: economy(macro_el.children().find(|n| n.has_tag_name("properties"))),
         })
     }
 
@@ -461,6 +477,37 @@ fn merge_index(map: &mut HashMap<String, IndexEntry>, xml: &str, source: Option<
 fn is_effect_material(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
     ["fx", "lightcone", "decal", "effects.", "gradient", "laser", "flare", "pattern_hex"].iter().any(|k| n.contains(k))
+}
+
+/// Production queue (`<production><queue ware method/>`, or `<queue><item …/>` for
+/// several wares), workforce and cargo from a macro's `<properties>`.
+fn economy(props: Option<roxmltree::Node>) -> ModuleEconomy {
+    let mut out = ModuleEconomy::default();
+    for p in props.iter().flat_map(|p| p.children()) {
+        match p.tag_name().name() {
+            "production" => {
+                for q in p.children().filter(|c| c.has_tag_name("queue")) {
+                    let items = std::iter::once(q).chain(q.children().filter(|c| c.has_tag_name("item")));
+                    out.production.extend(items.filter_map(|i| {
+                        Some((i.attribute("ware")?.to_owned(), i.attribute("method").unwrap_or("default").to_owned()))
+                    }));
+                }
+            }
+            "workforce" => {
+                out.workforce = p.attribute("max").and_then(|v| v.parse().ok()).unwrap_or(0);
+                if let (Some(race), Some(capacity)) = (p.attribute("race"), p.attribute("capacity").and_then(|v| v.parse().ok())) {
+                    out.housing = Some((race.to_owned(), capacity));
+                }
+            }
+            "cargo" => {
+                if let Some(max) = p.attribute("max").and_then(|v| v.parse().ok()) {
+                    out.cargo.push((max, p.attribute("tags").unwrap_or_default().split_whitespace().map(str::to_owned).collect()));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 fn child<'a, 'i>(node: Option<roxmltree::Node<'a, 'i>>, tag: &str) -> Option<roxmltree::Node<'a, 'i>> {

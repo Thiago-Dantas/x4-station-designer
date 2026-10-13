@@ -51,6 +51,27 @@ try:
     station_cost = cdp.js("document.getElementById('cost-total').textContent")
     print("   cost:", cdp.js("document.getElementById('cost-title').textContent"), "|", station_cost, "|",
           cdp.js("[...document.querySelectorAll('#cost-lines tr')].map(r => r.children[0].textContent + ' ' + r.children[1].textContent).join(', ')"))
+    # Production (right pane): flows, workforce, storage; solar output follows the sunlight
+    # (remembered, so start from 100%).
+    sun = "{ const s = document.getElementById('sunlight'); s.value = %d; s.dispatchEvent(new Event('change')); }"
+    cdp.js(sun % 100)
+    cdp.wait_for("document.getElementById('economy-summary').textContent.startsWith('Workforce')")
+    flows = "[...document.querySelectorAll('#economy-flows tr')].map(r => r.children[0].textContent + ' ' + r.children[1].textContent)"
+    cells = "(%s.find(t => t.startsWith('Energy Cells')) ?? '')" % flows
+    print("   production:", cdp.js("document.getElementById('economy-summary').textContent").replace("\n", " | "))
+    print("   flows:", cdp.js(flows + ".length"), "rows; first", cdp.js(flows + ".slice(0, 3).join(', ')"), "; last", cdp.js(flows + ".slice(-3).join(', ')"))
+    print("   storage:", cdp.js("document.getElementById('economy-storage').textContent"), "| notes:",
+          cdp.js("[...document.querySelectorAll('#economy-notes li')].map(l => l.textContent).join('; ')"))
+    full_sun = cdp.js(cells)
+    made = cdp.js("[...document.querySelectorAll('#economy-flows tr')].find(r => r.children[0].textContent === 'Energy Cells')?.title ?? ''")
+    if made.startswith("Made 0,") or not made:
+        print("   no solar modules in this plan (%s): sunlight can't change it" % made)
+    else:
+        cdp.js(sun % 50)
+        cdp.wait_for("%s !== %r" % (cells, full_sun))
+        print("   energy cells at 100%% / 50%% sunlight: %s / %s" % (full_sun, cdp.js(cells)))
+        cdp.js(sun % 100)
+        cdp.wait_for("%s === %r" % (cells, full_sun))
     # Clicking a module selects it (modules are instanced per type; the pick maps instance -> entry).
     centre = cdp.js("(() => { const r = document.getElementById('viewport').getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)] })()")
     cdp.click(*centre)

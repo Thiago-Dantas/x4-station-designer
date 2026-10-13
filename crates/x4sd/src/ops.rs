@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
+use x4sd_core::economy::analyze;
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, write_plans};
@@ -52,6 +53,8 @@ pub enum Op {
     DetachModule { index: u32 },
     /// Resources to build one module (with its equipment) or the whole station.
     BuildCost { index: Option<u32>, method: Option<String> },
+    /// Production and use per hour, workforce, storage and docks of the whole station.
+    AnalyzeStation { sunlight: Option<f64> },
 }
 
 impl Op {
@@ -66,6 +69,7 @@ impl Op {
                 | Op::FreeSnaps { .. }
                 | Op::ValidateDesign
                 | Op::BuildCost { .. }
+                | Op::AnalyzeStation { .. }
         )
     }
 
@@ -208,6 +212,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             describe(ctx)
         }
         Op::BuildCost { index, method } => build_cost(c, ctx.design, index, method.as_deref().unwrap_or("default")),
+        Op::AnalyzeStation { sunlight } => analyze_station(c, ctx.design, sunlight.unwrap_or(100.0)),
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
             ctx.design.mark_saved();
@@ -250,6 +255,52 @@ pub fn build_cost(catalog: &Catalog, design: &Design, index: Option<u32>, method
         "lines": cost.lines.iter().map(|l| json!({"ware": l.ware, "name": l.name, "amount": l.amount, "value": l.value})).collect::<Vec<_>>(),
         "value": cost.value,
         "unknown": cost.unknown,
+    }))
+}
+
+/// The station's economy at `sunlight` percent: flows per hour (largest surplus
+/// first), workforce, storage per cargo type, docks, and notes on what is missing.
+pub fn analyze_station(catalog: &Catalog, design: &Design, sunlight: f64) -> Result<Value, String> {
+    let a = analyze(catalog, design.plan(), sunlight / 100.0).map_err(|e| e.to_string())?;
+    let housed: u32 = a.housing.iter().map(|h| h.1).sum();
+    let mut notes = Vec::new();
+    if housed < a.workforce_needed {
+        notes.push(format!(
+            "Workforce: {housed} of {} housed, so the workforce bonus is at {:.0}%",
+            a.workforce_needed,
+            a.workforce_fill * 100.0
+        ));
+    }
+    let wares = catalog.wares().map_err(|e| e.to_string())?;
+    for s in a.storage.iter().filter(|s| s.capacity == 0.0 && s.volume_per_hour > 0.0) {
+        let stored = a.flows.iter().filter(|f| wares.ware(&f.ware).is_some_and(|w| w.transport == s.transport));
+        notes.push(format!("No {} storage, needed for {}", s.transport, stored.map(|f| f.name.as_str()).collect::<Vec<_>>().join(", ")));
+    }
+    if !a.flows.is_empty() && a.dock_areas + a.piers == 0 {
+        notes.push("No dock area or pier: ships can't trade with the station".to_owned());
+    }
+    if !a.unknown.is_empty() {
+        notes.push(format!("Not counted (no production data): {}", a.unknown.join(", ")));
+    }
+    Ok(json!({
+        "sunlight": sunlight,
+        "flows": a.flows.iter().map(|f| json!({"ware": f.ware, "name": f.name, "produced": f.produced, "used": f.used, "net": f.net()})).collect::<Vec<_>>(),
+        "workforce": {
+            "needed": a.workforce_needed,
+            "housed": housed,
+            "by_race": a.housing.iter().map(|(race, n)| json!({"race": race, "capacity": n})).collect::<Vec<_>>(),
+            "fill": a.workforce_fill,
+        },
+        "storage": a.storage.iter().map(|s| json!({
+            "transport": s.transport,
+            "capacity": s.capacity,
+            "volume_per_hour": s.volume_per_hour,
+            "hours": (s.volume_per_hour > 0.0).then(|| s.capacity / s.volume_per_hour),
+        })).collect::<Vec<_>>(),
+        "dock_areas": a.dock_areas,
+        "piers": a.piers,
+        "unknown": a.unknown,
+        "notes": notes,
     }))
 }
 
