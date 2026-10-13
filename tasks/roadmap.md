@@ -6,7 +6,7 @@ Master list of milestones. Each active workstream gets its own `tasks/workflow-<
 - [x] CLAUDE.md, docs/, tasks/ skeleton ([workflow-project-setup.md](workflow-project-setup.md))
 - [x] Decide on git and hosting: private GitHub repo (D-3)
 - [x] `git init`, set repo-local `user.email` = dant12@gmail.com, initial commit
-- [ ] Push to `github.com/Thiago-Dantas/x4-station-designer`. Waiting for the user to create the empty private repo.
+- [x] Pushed to `github.com/Thiago-Dantas/x4-station-designer` (private)
 
 ## Phase 1: Research: how X4 handles station plans
 - [ ] Extract `libraries/constructionplans.xml` and compare its format with the player file

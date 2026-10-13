@@ -1,6 +1,6 @@
 # Workflow: Project setup (Phase 0)
 
-Status: **in progress**. Only the GitHub push is left (2026-10-13).
+Status: **done** (2026-10-13)
 
 Goal: create the project skeleton (CLAUDE.md, docs/, tasks/) with first-pass, verified knowledge of how X4 stores station plans.
 
@@ -18,7 +18,7 @@ Goal: create the project skeleton (CLAUDE.md, docs/, tasks/) with first-pass, ve
 - [x] User decision: the `offset` question will be answered with REA (D-4)
 - [x] User decision: git with a private GitHub repo (D-3). `gh` is not installed, so the user creates the repo on github.com. Commits use the repo-local email dant12@gmail.com.
 - [x] `git init -b main` and initial commit
-- [ ] Add remote `https://github.com/Thiago-Dantas/x4-station-designer.git` and push (Git Credential Manager already holds the Thiago-Dantas login)
+- [x] Added remote `https://github.com/Thiago-Dantas/x4-station-designer.git`. The stored GCM login had expired, so the user did the first push from their own terminal, which refreshed it.
 
 ## Sub-agents
 None.

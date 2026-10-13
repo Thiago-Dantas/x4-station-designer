@@ -19,7 +19,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 ## Repository
 - Private GitHub repo: `github.com/Thiago-Dantas/x4-station-designer`, branch `main`
 - Commits use the repo-local `user.email` = dant12@gmail.com. The global git config holds a work email, so don't change the local setting.
-- `gh` CLI is not installed. Pushes go through Git Credential Manager (account `Thiago-Dantas`).
+- `gh` CLI is not installed. Pushes go through Git Credential Manager (account `Thiago-Dantas`). If the push fails with an authentication error, ask the user to run `git push` once in their own terminal; that opens the GitHub sign-in.
 - Commit and push only when the user asks.
 
 ## Key local paths
