@@ -2,7 +2,7 @@
 
 An external station designer and toolset for **X4: Foundations**. People and AI agents (through a CLI and/or an MCP server) can build station construction plans outside the game and then get them into the game.
 
-**Status:** Phase 3 (designer app) is well under way. `x4sd.exe` is the visual builder, the CLI and the MCP server in one file. Next: the live link between builder and agents (D-7). The roadmap is in [tasks/roadmap.md](tasks/roadmap.md). Stack: Rust + Tauri 2 + Three.js (D-6). Build steps are in [docs/dev-setup.md](docs/dev-setup.md).
+**Status:** Phase 3 (designer app) is done (MVP). `x4sd.exe` is the visual builder, the CLI and the MCP server in one file, and agents edit the open builder live (D-7). Phase 4 (polish and release) is proposed. The roadmap is in [tasks/roadmap.md](tasks/roadmap.md). Stack: Rust + Tauri 2 + Three.js (D-6). Build steps are in [docs/dev-setup.md](docs/dev-setup.md).
 
 ## Start of every session
 1. Read [tasks/roadmap.md](tasks/roadmap.md), then any `tasks/workflow-*.md` or `tasks/subagent-*.md` not marked **done**.
@@ -16,11 +16,11 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `docs/` | Durable knowledge: goals, X4 internals, decisions |
 | `tasks/` | Roadmap (`roadmap.md`) plus one state file per workstream (`workflow-<topic>.md`, `subagent-<role>-<task>.md`) |
 | `Cargo.toml`, `crates/x4sd-core/` | Rust workspace. `x4sd-core` modules: `plan` (model, XML read/write), `vfs` (archives), `game` (extensions, profile), `catalog` (module → snaps, station-module list, required patches), `design` (editing operations + undo), `text` (`{page,id}` names), `geometry` (snap math), `validate`, `import` (import-file writer). `tests/game_data.rs` runs against the real install (`X4_GAME_DIR`) and skips when it's missing. |
-| `crates/x4sd/` | The `x4sd` binary (D-8): builder with no arguments (`app.rs`, Tauri 2; `tauri.conf.json`, `capabilities/`, `icons/`), MCP server (`mcp.rs`, `x4sd mcp`), CLI (`main.rs`). |
+| `crates/x4sd/` | The `x4sd` binary (D-8): builder with no arguments (`app.rs`, Tauri 2; `tauri.conf.json`, `capabilities/`, `icons/`), MCP server (`mcp.rs`, `x4sd mcp`), shared agent operations (`ops.rs`), live link builder⇄MCP (`link.rs`, D-7), CLI (`main.rs`). |
 | `ui/` | Builder frontend: Vite + TypeScript + Three.js (`src/main.ts` UI, `src/view3d.ts` 3D view, `src/api.ts` commands). Build it before `cargo build` (see dev-setup). | Commands in [docs/usage.md](docs/usage.md). |
 | `tools/x4cat.py` | Lists and extracts files from `.cat`/`.dat` archives, with MD5 checks. Usage in [docs/x4-game-data.md](docs/x4-game-data.md#our-extractor-toolsx4catpy). |
 | `research/extracted/` | Extracted game and mod files, plus copies of the user's plans (`profile-samples/`). **Git-ignored**: never commit them. |
-| `research/ui_smoke.py` | Drives the builder through WebView2's DevTools protocol (clicks, screenshots) |
+| `research/cdp.py`, `ui_smoke.py`, `link_smoke.py` | DevTools client for WebView2; builder smoke test (clicks, screenshots); live-link smoke test (agent edits an open builder) |
 | `research/mcp_smoke.py` | Drives `x4sd mcp` like an agent (build, validate, export a station) |
 | `research/snapcheck.py` | Research script that checks plan offsets against snap geometry (base + DLC virtual file system). Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#snap-math-verified-2026-10-13-with-researchsnapcheckpy). |
 

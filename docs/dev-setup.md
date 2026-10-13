@@ -28,6 +28,7 @@ Smoke tests of the built exe (each runs the real program):
 ```powershell
 python -I research\mcp_smoke.py target\release\x4sd.exe <scratch profile dir>   # MCP, like an agent
 python -I research\ui_smoke.py  target\release\x4sd.exe <scratch dir>           # builder, through WebView2's DevTools protocol; saves screenshots
+python -I research\link_smoke.py target\release\x4sd.exe <scratch dir>           # live link: an agent edits the open builder (scratch profile)
 ```
 
 ### Builder stack notes

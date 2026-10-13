@@ -38,7 +38,7 @@ Session log: [workflow-phase2-core.md](workflow-phase2-core.md)
 - [x] Validator: unknown macros/equipment/snaps, missing predecessors, snap gaps (5 cm) and misalignment (0.5°), missing `<patches>`
 - [x] Module display names from `t/` (`text.rs`) and the list of buildable station modules (`Catalog::station_modules`, 287 modules)
 
-## Phase 3: Designer app: visual builder plus agent tooling on one shared design
+## Phase 3: Designer app: visual builder plus agent tooling on one shared design ✅
 The visual builder is first-class (G6), so it's built alongside the tooling, not after it.
 - [x] Decide OD-6: live link, with the builder as the hub (D-7)
 - [x] Decide OD-1: both MCP and CLI from one exe (D-8). The UI technology is settled by D-6 (Tauri + WebView2 + Three.js).
@@ -48,7 +48,19 @@ Proposed order (each step usable on its own):
 - [x] **MCP server** (`x4sd mcp`, stdio, official Rust SDK `rmcp`): tools mirroring the design operations, plus list/validate/export
 - [x] **Module shapes for the 3D view** (`Module::shape`, part boxes): research bounding boxes or sizes in component XML (`<parts>` / `<size>`). Real meshes (`.xmf`) come later, if ever.
 - [x] **Builder (Tauri + Three.js):** palette (search the 287 modules), 3D view with snap markers, drag a module onto a snap to attach, rotate in steps around the snap axis, validation panel, export button
-- [ ] **Live link (D-7):** the builder listens on a local socket. `x4sd mcp` forwards operations to it when it runs, and edits files headless when it doesn't.
+- [x] **Live link (D-7):** the builder listens on a local socket. `x4sd mcp` forwards operations to it when it runs, and edits its own design headless when it doesn't.
+
+## Phase 4: Polish and release (proposed, not yet agreed)
+- [ ] Try a full round trip in the game: design in the builder, Export, Import in the build menu, build it
+- [ ] Builder usability:
+  - [ ] preview of the armed module on the hovered snap
+  - [ ] snap labels
+  - [ ] better camera on small designs
+  - [ ] move unattached modules in the UI
+- [ ] Equipment (shields/turrets per module group) in the model, the builder and MCP
+- [ ] Real module meshes from `.xmf` instead of boxes
+- [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`
+- [ ] Automated checks (CI) for the parts that don't need the game installed
 
 ## Later: live bridge (option D)
 - [ ] Study `sn_mod_support_apis` named pipes

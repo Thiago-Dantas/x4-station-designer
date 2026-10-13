@@ -1,6 +1,6 @@
 # Workflow: Phase 3, designer app (builder + CLI + MCP)
 
-Status: **in progress** (started 2026-10-13)
+Status: **done** (2026-10-13), the MVP
 
 Order agreed with the user (foundation first): core editing operations, CLI, MCP, module shapes, builder, live link. See [roadmap.md](roadmap.md) Phase 3 and decisions D-6/D-7/D-8.
 
@@ -10,7 +10,13 @@ Order agreed with the user (foundation first): core editing operations, CLI, MCP
 - [x] 3. MCP server `x4sd mcp` (rmcp 3.5.1, stdio): 17 tools over `design`. `research/mcp_smoke.py` builds, validates and exports a Terran station end to end. Exe is 3.8 MB.
 - [x] 4. Module shapes: part boxes from component `<size>` (detail, collision and invisible parts skipped; a snap-bounds fallback for one partless landmark). All 287 modules have snaps + shape.
 - [x] 5. Builder (Tauri 2 + Three.js): palette, 3D boxes, snap cones, click/drag to attach, twist, remove, undo/redo, live checks, open/save/export. One 12.6 MB exe (builder + CLI + MCP). `research/ui_smoke.py` drives it via WebView2 DevTools (open TerranScrapyard, place + attach by clicking a cone, undo).
-- [ ] 6. Live link builder ⇄ MCP
+- [x] 6. Live link builder ⇄ MCP:
+  - `ops.rs`: a shared serde-tagged `Op` enum plus `execute`.
+  - `link.rs`: 127.0.0.1:47823, JSON lines, greeting `{"x4sd": version}`.
+  - The builder runs agent operations on its open design and emits `scene-changed`.
+  - `x4sd mcp` forwards when a builder is up, and tells the agent once if the link breaks.
+  - New tool `builder_status` (18 tools now).
+  - `research/link_smoke.py` confirms an agent-built station appears in the builder (scratch profile). Headless MCP, the UI smoke test and all tests pass.
 
 ## Sub-agents
 None.
