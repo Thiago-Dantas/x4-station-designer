@@ -21,8 +21,8 @@ pub struct Flow {
     pub name: String,
     pub produced: f64,
     pub used: f64,
-    /// A raw material: mined, never made, so a shortfall of it doesn't make a station
-    /// less self-sufficient.
+    /// A raw material (mined or salvaged scrap): brought in, never made, so a shortfall
+    /// of it doesn't make a station less self-sufficient.
     pub raw: bool,
 }
 
@@ -33,7 +33,7 @@ impl Flow {
 }
 
 impl Analysis {
-    /// Every made ware is covered: only raw materials (mined) may be short.
+    /// Every made ware is covered: only raw materials (mined or scrap) may be short.
     pub fn self_sufficient(&self) -> bool {
         self.flows.iter().all(|f| f.raw || f.net() >= -1e-6)
     }
@@ -140,7 +140,7 @@ pub fn analyze_modules<'a>(catalog: &Catalog, modules: impl IntoIterator<Item = 
         .into_iter()
         .map(|(ware, (produced, used))| {
             let known = wares.ware(&ware);
-            Flow { name: known.map_or_else(|| ware.clone(), |w| w.name.clone()), raw: known.is_some_and(|w| w.minable), ware, produced, used }
+            Flow { name: known.map_or_else(|| ware.clone(), |w| w.name.clone()), raw: known.is_some_and(|w| w.raw), ware, produced, used }
         })
         .collect();
     out.flows.sort_by(|a, b| b.net().total_cmp(&a.net()));

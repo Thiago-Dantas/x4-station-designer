@@ -307,6 +307,9 @@ fn production_planner() {
     let fix = plan_production(c, yard, &req(&[], Some("terran"), &[])).unwrap();
     eprintln!("TerranScrapyard fix: {:?}", fix.modules.iter().map(|m| format!("{} x{}", m.macro_name, m.count)).collect::<Vec<_>>());
     assert!(count(&fix, "prod_ter_energycells_macro") > 0);
+    // Scrap metal is raw (salvaged, brought in): the fixed scrapyard is self-sufficient.
+    assert!(fix.analysis.flows.iter().any(|f| f.ware == "scrapmetal" && f.raw && f.net() < 0.0));
+    assert!(fix.analysis.self_sufficient(), "{:?}", fix.analysis.flows.iter().filter(|f| f.net() < 0.0).map(|f| &f.ware).collect::<Vec<_>>());
 }
 
 /// Plots: the required plot holds the station; a smaller plot flags the modules outside.
