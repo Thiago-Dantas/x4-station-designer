@@ -54,6 +54,9 @@ User: "next i want to add x4ep_planner mod functionality".
 
 ## Decisions
 - 2026-10-13: the user wants all three, in the order A, then B, then C.
+- 2026-10-13 (user): **self-sufficient** ignores raw materials. Ore, ice, silicon, methane, helium, hydrogen and the like are mined.
+  - In the code: wares tagged `minable` are `raw`, and `Analysis::self_sufficient()` means only raw wares may be short.
+  - The analysis notes "Not self-sufficient" otherwise. The planner summary splits to mine and to buy. The MCP instructions define it.
 
 ## A. Station analysis: plan
 - [x] Core: `Module.economy`: production queue (ware, method), workforce max, habitat (race, capacity), cargo (max, tags). `Recipe` gains time, amount, work and sunlight effects; `Ware` gains volume and transport.

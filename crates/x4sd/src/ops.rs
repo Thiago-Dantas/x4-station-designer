@@ -354,12 +354,17 @@ fn analysis_json(catalog: &Catalog, a: &Analysis, sunlight: f64) -> Result<Value
     if !a.flows.is_empty() && a.dock_areas + a.piers == 0 {
         notes.push("No dock area or pier: ships can't trade with the station".to_owned());
     }
+    let short: Vec<&str> = a.flows.iter().filter(|f| !f.raw && f.net() < -1e-6).map(|f| f.name.as_str()).collect();
+    if !short.is_empty() {
+        notes.push(format!("Not self-sufficient: short of {} (make or buy them)", short.join(", ")));
+    }
     if !a.unknown.is_empty() {
         notes.push(format!("Not counted (no production data): {}", a.unknown.join(", ")));
     }
     Ok(json!({
         "sunlight": sunlight,
-        "flows": a.flows.iter().map(|f| json!({"ware": f.ware, "name": f.name, "produced": f.produced, "used": f.used, "net": f.net()})).collect::<Vec<_>>(),
+        "flows": a.flows.iter().map(|f| json!({"ware": f.ware, "name": f.name, "produced": f.produced, "used": f.used, "net": f.net(), "raw": f.raw})).collect::<Vec<_>>(),
+        "self_sufficient": a.self_sufficient(),
         "workforce": {
             "needed": a.workforce_needed,
             "housed": housed,

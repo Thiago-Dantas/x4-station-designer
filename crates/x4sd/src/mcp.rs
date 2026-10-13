@@ -27,7 +27,9 @@ Planning a working station (\"a staffed station with 100 solar panels\"): list_w
 panels are Energy Cell Production, ware energycells) -> plan_production with targets (ware + number of \
 production modules); it adds the production chain, habitats with their food and medicine, storage, a dock \
 area and a pier -> place every module it lists -> analyze_station to check (wares still short must be \
-bought or mined) -> build_cost for the materials.
+bought or mined) -> build_cost for the materials. Self-sufficient means every made ware is produced on \
+the station; raw materials (ore, ice, silicon, nividium, methane, helium, hydrogen: flows with raw=true) are \
+always mined, never planned, so a self-sufficient station still lists them as short (self_sufficient=true).
 Coordinates are metres in the station frame, Y up. Module indices are 1..n and are renumbered after \
 remove_module. Every edit can be undone with undo.
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
@@ -359,7 +361,7 @@ impl Server {
         self.run(Op::ListWares)
     }
 
-    #[tool(description = "Production planner: the modules to add to the open design to make the target wares. It adds the whole production chain, habitats for the workforce with their food and medicine, storage for N hours, and a dock area and pier if missing. Existing modules count as supply; with no targets it fixes the station's shortfalls. Returns the modules (macro, count, role), the station's analysis with them (what stays short must be bought or mined) and the cost. It doesn't place anything: attach the modules yourself.")]
+    #[tool(description = "Production planner: the modules to add to the open design to make the target wares. It adds the whole production chain, habitats for the workforce with their food and medicine, storage for N hours, and a dock area and pier if missing. Existing modules count as supply; with no targets it fixes the station's shortfalls. Returns the modules (macro, count, role), the station's analysis with them (raw materials stay short: they are mined; self_sufficient says whether every made ware is covered) and the cost. It doesn't place anything: attach the modules yourself.")]
     fn plan_production(&self, Parameters(a): Parameters<ops::PlanArgs>) -> ToolResult {
         self.run(Op::PlanProduction(a))
     }

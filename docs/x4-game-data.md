@@ -173,6 +173,9 @@ The megashipyard first dropped from 240 to 68 fps with textures, because there w
 - **Storage:** `<cargo max tags>`, with tags `container`, `solid`, `liquid` or several. Ware `transport` and `volume` (m³) come from `wares.xml`.
 - **Processing modules:** `<products><ware amount/>` (scrap from ships).
 - **Reader:** `crates/x4sd-core/src/economy.rs` (`ModuleEconomy` in `catalog.rs`).
+- **Raw materials:** wares tagged `minable` in `wares.xml`: ore, ice, silicon, nividium (solid) and methane, helium, hydrogen (liquid). No module makes them; they are mined.
+  - Scrap metal isn't minable (`tags="recycling"`). It comes from processing modules and salvage.
+  - Verified 2026-10-13 in the base game and DLC `wares.xml`.
 - **Build sets** (`<build><sets><set ref>`): `factory` is the set for player stations.
   - Trade-station storage (`tradestation_argon`), Xenon modules (`factory_xenon`) and landmarks lack it.
   - Some factory-set docks and piers are still trade-station or venturer variants.

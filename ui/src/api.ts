@@ -45,10 +45,12 @@ export interface Scene {
 }
 export interface CostLine { ware: string; name: string; amount: number; value: number | null }
 export interface BuildCost { method: string; methods: { id: string; name: string }[]; lines: CostLine[]; value: number; unknown: string[] }
-export interface Flow { ware: string; name: string; produced: number; used: number; net: number }
+export interface Flow { ware: string; name: string; produced: number; used: number; net: number; raw: boolean }
 export interface StationAnalysis {
   sunlight: number;
   flows: Flow[];
+  /** Every made ware is covered; raw materials (mined) may be short. */
+  self_sufficient: boolean;
   workforce: { needed: number; housed: number; by_race: { race: string; capacity: number }[]; fill: number };
   storage: { transport: string; capacity: number; volume_per_hour: number; hours: number | null }[];
   dock_areas: number;

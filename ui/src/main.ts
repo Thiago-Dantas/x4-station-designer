@@ -440,7 +440,7 @@ async function refreshAnalysis() {
         const row = document.createElement("tr");
         row.innerHTML = `<td></td><td class="n"></td>`;
         row.title = `Made ${n(f.produced)}, used ${n(f.used)} per hour`;
-        row.children[0].textContent = f.name;
+        row.children[0].textContent = f.raw ? `${f.name} (mined)` : f.name;
         row.children[1].textContent = (f.net > 0 ? "+" : "") + n(f.net);
         row.children[1].className = `n ${f.net > 0 ? "up" : "down"}`;
         return row;
@@ -566,10 +566,16 @@ function renderPlanner() {
   }
   $("planner-result").replaceChildren(...rows);
   const total = result.modules.reduce((s, m) => s + m.count, 0);
-  const supply = result.analysis.flows.filter((f) => f.net < -0.5).map((f) => `${f.name} ${n(-f.net)}`);
+  const short = (raw: boolean) =>
+    result.analysis.flows
+      .filter((f) => f.net < -0.5 && f.raw === raw)
+      .map((f) => `${f.name} ${n(-f.net)}`)
+      .join(", ");
   $("planner-summary").textContent =
     (total ? `${total} modules to add, ${left} still to place · ≈ ${n(result.cost.value)} Cr` : "Nothing to add: the station covers its needs") +
-    (supply.length ? `\nTo supply per hour: ${supply.join(", ")}` : "") +
+    (result.analysis.self_sufficient ? " · self-sufficient" : "") +
+    (short(true) ? `\nTo mine per hour: ${short(true)}` : "") +
+    (short(false) ? `\nTo buy per hour: ${short(false)}` : "") +
     (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "");
 }
 

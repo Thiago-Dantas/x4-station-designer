@@ -279,8 +279,10 @@ fn production_planner() {
     let short: Vec<String> = p.analysis.flows.iter().filter(|f| f.net() < -1e-6).map(|f| format!("{} {:.0}", f.ware, f.net())).collect();
     eprintln!("  to supply: {short:?}; cost {:.0} Cr", p.cost.value);
     assert_eq!(count(&p, "prod_gen_hullparts_macro"), 2);
+    // Self-sufficient: only raw materials (mined, never made) are left short.
+    assert!(p.analysis.self_sufficient(), "{short:?}");
     for f in p.analysis.flows.iter().filter(|f| f.net() < -1e-6) {
-        assert!(!producible.contains(&f.ware), "{} is still short but could be made", f.ware);
+        assert!(f.raw && !producible.contains(&f.ware), "{} is still short but could be made", f.ware);
     }
     let housed: u32 = p.analysis.housing.iter().map(|h| h.1).sum();
     assert!(housed >= p.analysis.workforce_needed && p.analysis.workforce_fill == 1.0);
@@ -292,7 +294,8 @@ fn production_planner() {
     // Buying energy cells: no solar modules. Teladi: Teladi hull parts (teladianium).
     let bought = plan_production(c, &empty, &req(&[("hullparts", 2)], None, &["energycells"])).unwrap();
     assert_eq!(count(&bought, "prod_gen_energycells_macro"), 0);
-    assert!(bought.analysis.flows.iter().any(|f| f.ware == "energycells" && f.net() < 0.0));
+    assert!(bought.analysis.flows.iter().any(|f| f.ware == "energycells" && f.net() < 0.0 && !f.raw));
+    assert!(!bought.analysis.self_sufficient(), "energy cells are bought");
     let teladi = plan_production(c, &empty, &req(&[("hullparts", 1)], Some("teladi"), &[])).unwrap();
     assert_eq!(count(&teladi, "prod_tel_hullparts_macro"), 1);
     assert!(teladi.modules.iter().any(|m| m.macro_name == "prod_tel_teladianium_macro"));

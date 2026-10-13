@@ -25,7 +25,8 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - habitats for the workforce, and the food and medicine they eat;
     - storage for *Storage hours* of everything the station makes and uses;
     - a dock area and a pier if there are none.
-  - It also shows the cost and the wares left to supply per hour (mined or bought, e.g. ore and ice).
+  - It also shows the cost and what is left per hour, split into **to mine** (raw materials such as ore and ice, which are never made) and **to buy**.
+  - **Self-sufficient** (shown when it applies) means every made ware is produced on the station; raw materials are always mined.
   - **Adds to the open design:** the modules already there count as supply, housing and storage. With no wares it fixes the open station's shortfalls.
   - *Race* uses that race's modules where it has them (generic ones otherwise, then any race). *House the workforce* can be turned off.
   - Each row shows **placed/needed** and counts down as you place modules. Click a row to arm that module.
@@ -42,6 +43,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - storage per cargo type, with the hours it holds of everything the station makes and uses;
   - notes on what is missing (housing, a storage type, a dock).
   - Workers' food and medicine count as use.
+  - Raw materials (ore, ice, silicon, nividium, methane, helium, hydrogen) are marked *(mined)*. A shortfall of any other ware is noted as "Not self-sufficient".
   - *Sunlight %* is the sector's sunlight, which solar output (energy cells) follows. It is remembered.
   - The rules and which parts are still hypotheses are in [tasks/workflow-production-planner.md](../tasks/workflow-production-planner.md).
 - **Plot (right):** the plot the station must fit, in whole km per side from the station origin (+X, −X, +Y, −Y, +Z, −Z; each axis 1–20 km, as in the game), drawn as a box (green when everything fits, red when not).
@@ -77,7 +79,8 @@ A plan file is either the profile's `constructionplans.xml` (all saved plans) or
 claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 ```
 (add `--game-dir …` / `--profile-dir …` before `mcp` if they aren't found automatically). The server explains the workflow to the agent in its instructions, including the planning recipe for requests like "a staffed station with 100 solar panels": `list_wares`, then `plan_production`, then place the modules, then `analyze_station`.
-- **Checked:** that request through MCP gives 137 modules for ≈ 92.8 M Cr; only ice is left to supply.
+- **Self-sufficient** means every made ware is produced on the station. Raw materials are mined, never planned (user's definition, 2026-10-13). Flows carry `raw`, and the analysis has `self_sufficient`.
+- **Checked:** that request through MCP gives 137 modules for ≈ 92.8 M Cr, `self_sufficient: true`; only ice is left, to be mined.
 - **Not automated yet:** placing a plan's modules takes one `attach_module` per module, and nothing checks for overlaps. Auto-placement (part C in `tasks/workflow-production-planner.md`) is next.
 
 | Tool | Purpose |

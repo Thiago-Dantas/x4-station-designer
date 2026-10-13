@@ -41,6 +41,8 @@ pub struct Ware {
     pub transport: String,
     /// m³ per unit.
     pub volume: f64,
+    /// A raw material that is mined, not made (`tags="minable"`: ore, ice, hydrogen, ...).
+    pub minable: bool,
 }
 
 /// A build method players can choose (the game's "Preferred Build Method").
@@ -131,6 +133,7 @@ impl Wares {
                 recipes: w.children().filter(|c| c.has_tag_name("production")).map(recipe).collect(),
                 transport: w.attribute("transport").unwrap_or_default().to_owned(),
                 volume: w.attribute("volume").and_then(|v| v.parse().ok()).unwrap_or(0.0),
+                minable: w.attribute("tags").is_some_and(|t| t.split_whitespace().any(|t| t == "minable")),
             };
             self.wares.insert(id.to_owned(), ware);
         }
