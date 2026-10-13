@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use crate::game::{find_extensions, load_vfs, Extension};
 use crate::geometry::{Quat, Transform};
 use crate::plan::{Patch, Plan};
+use crate::text::Texts;
 use crate::vfs::{normalize, Vfs};
 use crate::{Error, Result};
 
@@ -36,6 +37,25 @@ impl Module {
     }
 }
 
+/// Macro classes of buildable station modules (the others under `assets/structures`
+/// are landmarks, props and asteroids).
+pub const STATION_MODULE_CLASSES: &[&str] = &[
+    "connectionmodule", "storage", "production", "dockarea", "defencemodule", "habitation",
+    "buildmodule", "pier", "welfaremodule", "processingmodule", "ventureplatform", "radar",
+];
+
+/// A buildable station module, for listings (palette, `list-modules`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModuleInfo {
+    pub macro_name: String,
+    pub class: String,
+    /// Display name (English).
+    pub name: String,
+    pub race: Option<String>,
+    /// Id of the extension that defines it; `None` for the base game.
+    pub source: Option<String>,
+}
+
 struct IndexEntry {
     path: String,
     source: Option<usize>,
@@ -46,6 +66,7 @@ pub struct Catalog {
     extensions: Vec<Extension>,
     macros: HashMap<String, IndexEntry>,
     components: HashMap<String, IndexEntry>,
+    texts: Texts,
     cache: Mutex<HashMap<String, Arc<Module>>>,
 }
 
@@ -60,8 +81,15 @@ impl Catalog {
             extensions,
             macros: HashMap::new(),
             components: HashMap::new(),
+            texts: Texts::default(),
             cache: Mutex::new(HashMap::new()),
         };
+        let text_files = std::iter::once("t/0001-l044.xml".to_owned())
+            .chain(catalog.extensions.iter().map(|e| format!("extensions/{}/t/0001-l044.xml", e.folder)));
+        for path in text_files.filter(|p| catalog.vfs.contains(p)).collect::<Vec<_>>() {
+            let xml = catalog.vfs.read_text(&path)?;
+            catalog.texts.merge(&xml).map_err(|e| Error(format!("{path}: {e}")))?;
+        }
         for (kind, source) in [("macros", None), ("components", None)]
             .into_iter()
             .chain((0..catalog.extensions.len()).flat_map(|i| [("macros", Some(i)), ("components", Some(i))]))
@@ -83,6 +111,41 @@ impl Catalog {
     /// Enabled extensions, in load order.
     pub fn extensions(&self) -> &[Extension] {
         &self.extensions
+    }
+
+    /// Game texts (English), for resolving `{page,id}` names.
+    pub fn texts(&self) -> &Texts {
+        &self.texts
+    }
+
+    /// Every buildable station module: a structure macro of a station-module class
+    /// that belongs to at least one build set. Sorted by macro name.
+    pub fn station_modules(&self) -> Result<Vec<ModuleInfo>> {
+        let mut out = Vec::new();
+        for (key, entry) in &self.macros {
+            let path = format!("{}.xml", entry.path);
+            if !entry.path.contains("assets/structures/") || !self.vfs.contains(&path) {
+                continue;
+            }
+            let xml = self.vfs.read_text(&path)?;
+            let doc = roxmltree::Document::parse(&xml).map_err(|e| Error(format!("{path}: {e}")))?;
+            let Some(m) = doc.descendants().find(|n| n.has_tag_name("macro")) else { continue };
+            let class = m.attribute("class").unwrap_or_default();
+            let props = m.children().find(|n| n.has_tag_name("properties"));
+            if !STATION_MODULE_CLASSES.contains(&class) || child(child(props, "build"), "sets").is_none() {
+                continue;
+            }
+            let ident = child(props, "identification");
+            out.push(ModuleInfo {
+                macro_name: m.attribute("name").unwrap_or(key).to_owned(),
+                class: class.to_owned(),
+                name: ident.and_then(|i| i.attribute("name")).map_or_else(|| key.clone(), |n| self.texts.resolve(n)),
+                race: ident.and_then(|i| i.attribute("makerrace")).map(str::to_owned),
+                source: entry.source.map(|i| self.extensions[i].id.clone()),
+            });
+        }
+        out.sort_by(|a, b| a.macro_name.cmp(&b.macro_name));
+        Ok(out)
     }
 
     pub fn module(&self, macro_name: &str) -> Result<Arc<Module>> {
@@ -185,6 +248,10 @@ fn merge_index(map: &mut HashMap<String, IndexEntry>, xml: &str, source: Option<
         }
     }
     Ok(())
+}
+
+fn child<'a, 'i>(node: Option<roxmltree::Node<'a, 'i>>, tag: &str) -> Option<roxmltree::Node<'a, 'i>> {
+    node.and_then(|n| n.children().find(|c| c.has_tag_name(tag)))
 }
 
 /// A component `<offset>`: position plus quaternion (or yaw/pitch/roll), missing values 0.

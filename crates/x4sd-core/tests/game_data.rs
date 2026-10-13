@@ -59,6 +59,21 @@ fn resolves_base_dlc_and_mod_modules() {
     }
 }
 
+#[test]
+fn lists_station_modules_with_names() {
+    let Some(c) = catalog() else { return };
+    let start = Instant::now();
+    let modules = c.station_modules().unwrap();
+    eprintln!("{} station modules listed in {:?}", modules.len(), start.elapsed());
+    let find = |m: &str| modules.iter().find(|x| x.macro_name == m).unwrap_or_else(|| panic!("{m} not listed"));
+    assert_eq!(find("struct_arg_base_02_macro").name, "Argon Base Connection Structure 02");
+    assert_eq!(find("hab_ter_l_01_macro").name, "Terran L Living Quarters");
+    assert_eq!(find("prod_gen_energycells_macro").name, "Energy Cell Production");
+    let unresolved: Vec<_> = modules.iter().filter(|m| m.name.contains('{')).map(|m| (&m.macro_name, &m.name)).collect();
+    eprintln!("names with unresolved references: {unresolved:?}");
+    assert!(modules.iter().all(|m| !m.name.is_empty()));
+}
+
 /// Player plans: the only real problem is the deliberately moved casino of test C.
 #[test]
 fn validates_player_plans() {

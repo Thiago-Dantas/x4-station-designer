@@ -45,6 +45,17 @@ Extract into `research/extracted/<source>/` (git-ignored: game and mod files are
 - Some index values double the separator (`assets\\structures\\landmarks\\…`). Collapse repeated `\`/`/` before lookup.
 - The Rust implementation (`crates/x4sd-core`: `vfs`, `game`, `catalog`) covers the base game, DLCs and enabled mods. It loads 80 extensions in about 0.55 s (release build). `research/snapcheck.py` is the original Python version (base + DLCs only).
 
+### Texts (verified)
+- English is `t/0001-l044.xml` in the base catalogs (`<language id="44"><page id><t id>`). It also holds the DLC module names; only Ventures ships its own `t/` file. Extension text files may be full documents or diffs that add `<page>`/`<t>` elements.
+- A text can be built from other texts: `(Argon Base Connection Structure 02){20202,101} {20104,50001} {20111,5102}` shows as "Argon Base Connection Structure 02".
+  - Text in parentheses is a developer comment and is dropped.
+  - `{page,id}` references resolve recursively.
+  - `\(` and `\)` are literal parentheses.
+- Implemented in `crates/x4sd-core/src/text.rs`. All 287 station module names resolve fully.
+
+### Buildable station modules (verified)
+Structure macros (`assets/structures/**`) whose `class` is one of `connectionmodule`, `storage`, `production`, `dockarea`, `defencemodule`, `habitation`, `buildmodule`, `pier`, `welfaremodule`, `processingmodule`, `ventureplatform` or `radar`, **and** that have `<properties><build><sets>`. That gives 287 modules on the dev machine (base + DLCs + mods). The other classes under `assets/structures` are landmarks, props and asteroids. The display name is `identification@name`; the race is `identification@makerrace`. Whether the *player* can build a module depends on owned blueprints, which is savegame state and out of scope.
+
 ## What we need from game data
 | Need | Source |
 |------|--------|

@@ -26,24 +26,29 @@ Session log: [workflow-phase1-research.md](workflow-phase1-research.md)
 - [X] Clean up the test plans in-game: the user deletes "X4SD test B" and "X4SD test C" from the plan list
 - [ ] Injection test A after a restart (low priority, since B works)
 
-## Phase 2: Core library
-- [x] Decide OD-2: Rust + Tauri (D-6)
+## Phase 2: Core library ✅
 Session log: [workflow-phase2-core.md](workflow-phase2-core.md)
 
+- [x] Decide OD-2: Rust + Tauri (D-6)
 - [x] Set up the dev toolchain: Rust on H:, Windows SDK on D: (`docs/dev-setup.md`), Cargo workspace. The Tauri CLI moves to Phase 3.
 - [x] Plan model plus lossless XML read/write (`crates/x4sd-core/src/plan.rs`). Strict reader; values round-trip exactly on all game files; structure and positions byte-identical to the game's output.
 - [x] Import-file writer (D-5): a single-plan file in `<profile>\constructionplan\`, unique `player_<unix time>` id, sanitised file name, no overwrite by default
 - [x] Virtual file system plus module catalogue: base, DLCs **and enabled mods** (`recyclemodule_macro` resolves); macro → component → snaps; required `<patches>` (only `save` extensions)
 - [x] Snap placement (`geometry::attach`) and measurement (`geometry::fit`). Reproduces all 534 linked placements in the player plans.
 - [x] Validator: unknown macros/equipment/snaps, missing predecessors, snap gaps (5 cm) and misalignment (0.5°), missing `<patches>`
-- [ ] Module display names from `t/` (`{page,id}` references) and the list of buildable station modules (for the builder's palette). These may move to Phase 3, where they're first needed.
+- [x] Module display names from `t/` (`text.rs`) and the list of buildable station modules (`Catalog::station_modules`, 287 modules)
 
 ## Phase 3: Designer app: visual builder plus agent tooling on one shared design
 The visual builder is first-class (G6), so it's built alongside the tooling, not after it.
-- [ ] Decide OD-6 (how the builder and the tooling share a design)
-- [ ] Decide OD-1 (CLI / MCP / both). The UI technology is settled by D-6 (Tauri + WebView2 + Three.js).
-- [ ] Visual builder: 3D view, drag and drop of modules with snapping, rotation around the snap axis, validation feedback, export to an import file
-- [ ] Agent tooling over the same core operations (add, attach, rotate, remove, validate, export)
+- [x] Decide OD-6: live link, with the builder as the hub (D-7)
+- [x] Decide OD-1: both MCP and CLI from one exe (D-8). The UI technology is settled by D-6 (Tauri + WebView2 + Three.js).
+Proposed order (each step usable on its own):
+- [ ] **Design editing in the core:** operations on an open plan (add a root module, attach a module to a snap with a twist, rotate, move a root, remove with descendants, rename), plus undo/redo. The builder, CLI and MCP all go through these.
+- [ ] **CLI** (`crates/x4sd`, one binary): `list-modules`, `validate <file>`, `export <file>` (to `constructionplan\`), `show <file>`
+- [ ] **MCP server** (`x4sd mcp`, stdio, official Rust SDK `rmcp`): tools mirroring the design operations, plus list/validate/export
+- [ ] **Module shapes for the 3D view:** research bounding boxes or sizes in component XML (`<parts>` / `<size>`). Real meshes (`.xmf`) come later, if ever.
+- [ ] **Builder (Tauri + Three.js):** palette (search the 287 modules), 3D view with snap markers, drag a module onto a snap to attach, rotate in steps around the snap axis, validation panel, export button
+- [ ] **Live link (D-7):** the builder listens on a local socket. `x4sd mcp` forwards operations to it when it runs, and edits files headless when it doesn't.
 
 ## Later: live bridge (option D)
 - [ ] Study `sn_mod_support_apis` named pipes

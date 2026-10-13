@@ -1,6 +1,6 @@
 # Workflow: Phase 2, core library (Rust)
 
-Status: **in progress** (started 2026-10-13)
+Status: **done** (2026-10-13)
 
 Goal: a Rust core library that reads and writes X4 plans losslessly, and later the catalogue, snap placement, validator and import-file writer (see [roadmap.md](roadmap.md) Phase 2). Stack: D-6.
 
@@ -16,7 +16,9 @@ Goal: a Rust core library that reads and writes X4 plans losslessly, and later t
 - [x] `catalog`: index merge (full `<index>` and `<diff><add sel='/index'>`), module → component → snaps, `required_patches`
 - [x] `geometry` (Quat, Transform, `attach`, `fit`), `validate`, `import`
 - [x] `tests/game_data.rs` against the real install: 5 tests pass. Clippy is clean.
-- [ ] Next: module display names + the station-module list (maybe in Phase 3), then Phase 3 (OD-6 first)
+- [x] `text` (name resolution) + `Catalog::station_modules` (287 modules, all names resolved, 0.12 s in debug)
+- [x] The user decided OD-6 → D-7 (live link) and OD-1 → D-8 (MCP + CLI)
+- [x] Phase 2 done. Phase 3 steps are in the roadmap.
 
 ## Sub-agents
 None.

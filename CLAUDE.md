@@ -2,7 +2,7 @@
 
 An external station designer and toolset for **X4: Foundations**. People and AI agents (through a CLI and/or an MCP server) can build station construction plans outside the game and then get them into the game.
 
-**Status:** Phase 2 (core library, Rust) is nearly done: plan I/O, archive reader, module catalogue (base + DLCs + mods), snap placement, validator and import-file writer all work and are tested against the real game data. The roadmap is in [tasks/roadmap.md](tasks/roadmap.md). Stack: Rust + Tauri (D-6). Build from PowerShell: `cargo test -p x4sd-core` (see [docs/dev-setup.md](docs/dev-setup.md)).
+**Status:** Phase 2 (core library, Rust) is done: plan I/O, archive reader, module catalogue (base + DLCs + mods, 287 station modules with names), snap placement, validator and import-file writer, all tested against the real game data. Next is Phase 3, the designer app (builder + CLI + MCP, D-6/D-7/D-8). The roadmap is in [tasks/roadmap.md](tasks/roadmap.md). Stack: Rust + Tauri (D-6). Build from PowerShell: `cargo test -p x4sd-core` (see [docs/dev-setup.md](docs/dev-setup.md)).
 
 ## Start of every session
 1. Read [tasks/roadmap.md](tasks/roadmap.md), then any `tasks/workflow-*.md` or `tasks/subagent-*.md` not marked **done**.
@@ -15,7 +15,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `CLAUDE.md` | Entry point: rules, key paths, doc index |
 | `docs/` | Durable knowledge: goals, X4 internals, decisions |
 | `tasks/` | Roadmap (`roadmap.md`) plus one state file per workstream (`workflow-<topic>.md`, `subagent-<role>-<task>.md`) |
-| `Cargo.toml`, `crates/x4sd-core/` | Rust workspace. `x4sd-core` modules: `plan` (model, XML read/write), `vfs` (archives), `game` (extensions, profile), `catalog` (module → snaps, required patches), `geometry` (snap math), `validate`, `import` (import-file writer). `tests/game_data.rs` runs against the real install (`X4_GAME_DIR`) and skips when it's missing. |
+| `Cargo.toml`, `crates/x4sd-core/` | Rust workspace. `x4sd-core` modules: `plan` (model, XML read/write), `vfs` (archives), `game` (extensions, profile), `catalog` (module → snaps, station-module list, required patches), `text` (`{page,id}` names), `geometry` (snap math), `validate`, `import` (import-file writer). `tests/game_data.rs` runs against the real install (`X4_GAME_DIR`) and skips when it's missing. |
 | `tools/x4cat.py` | Lists and extracts files from `.cat`/`.dat` archives, with MD5 checks. Usage in [docs/x4-game-data.md](docs/x4-game-data.md#our-extractor-toolsx4catpy). |
 | `research/extracted/` | Extracted game and mod files, plus copies of the user's plans (`profile-samples/`). **Git-ignored**: never commit them. |
 | `research/snapcheck.py` | Research script that checks plan offsets against snap geometry (base + DLC virtual file system). Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#snap-math-verified-2026-10-13-with-researchsnapcheckpy). |
