@@ -34,3 +34,7 @@ None.
   - `x4sd.exe` detaches a console created only for it (double-click).
   - One UI-smoke run timed out on the attach click, and 3 reruns passed. A suspected cause is a leftover WebView2 process holding the debug port; not confirmed.
 - 2026-10-13: the game is found through `%ProgramFiles(x86)%\Steam\steamapps\libraryfolders.vdf` (6 libraries here; X4 on F:).
+- 2026-10-13 (follow-up, user request): WASD pans like a right drag (screen space, smooth while held, speed scales with the camera distance; ignored while typing). ui_smoke checks it: D shifts the scene about 320 px left, W about 325 px down.
+- 2026-10-13: fixed the flaky UI smoke runs, which were test problems.
+  - `wait_for` now tolerates the page still loading.
+  - The cone click aims at the cone's middle; the old tip click sometimes missed the raycast. 3/3 runs pass.

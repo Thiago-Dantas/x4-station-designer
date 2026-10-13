@@ -69,8 +69,11 @@ class Cdp:
     def wait_for(self, expression, timeout=20):
         end = time.time() + timeout
         while time.time() < end:
-            if self.js(expression):
-                return
+            try:
+                if self.js(expression):
+                    return
+            except RuntimeError:
+                pass  # page still loading (element not there yet)
             time.sleep(0.25)
         raise TimeoutError(expression)
 
@@ -79,6 +82,13 @@ class Cdp:
         if name:
             open(name, "wb").write(png)
         return png
+
+    def hold_key(self, code, key, seconds):
+        """Presses a key (e.g. "KeyD", "d"), holds it, releases it."""
+        vk = ord(key.upper())
+        self.call("Input.dispatchKeyEvent", type="keyDown", code=code, key=key, windowsVirtualKeyCode=vk)
+        time.sleep(seconds)
+        self.call("Input.dispatchKeyEvent", type="keyUp", code=code, key=key, windowsVirtualKeyCode=vk)
 
     def click(self, x, y):
         for kind in ("mouseMoved", "mousePressed", "mouseReleased"):
@@ -127,8 +137,9 @@ def find_color(png, rgb, box):
                 ys.append(y)
     if not xs:
         return None
-    # One blob only: the pixels near the first match (several cones share the colour).
-    near = [(x, y) for x, y in zip(xs, ys) if abs(x - xs[0]) < 30 and abs(y - ys[0]) < 30]
+    # One blob only (several cones share the colour): the pixels near the first match,
+    # which is a cone's thin tip; their centre lies well inside the cone.
+    near = [(x, y) for x, y in zip(xs, ys) if abs(x - xs[0]) < 60 and abs(y - ys[0]) < 60]
     return (sum(x for x, _ in near) // len(near), sum(y for _, y in near) // len(near))
 
 

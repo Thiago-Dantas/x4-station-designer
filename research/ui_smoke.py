@@ -66,5 +66,19 @@ try:
     time.sleep(0.5)
     print("4. after Ctrl+Z, undo enabled:", not cdp.js("document.getElementById('btn-undo').disabled"),
           "| redo enabled:", not cdp.js("document.getElementById('btn-redo').disabled"))
+
+    # WASD pans like a right drag: holding D moves the view right (the scene shifts left),
+    # holding W moves it up (the scene shifts down).
+    time.sleep(0.5)
+    before = find_color(cdp.screenshot(None), (0x37, 0xD0, 0xC0), vp)
+    cdp.hold_key("KeyD", "d", 0.4)
+    time.sleep(0.3)
+    after_d = find_color(cdp.screenshot(None), (0x37, 0xD0, 0xC0), vp)
+    cdp.hold_key("KeyW", "w", 0.4)
+    time.sleep(0.3)
+    after_w = find_color(cdp.screenshot(os.path.join(out, "ui-5-panned.png")), (0x37, 0xD0, 0xC0), vp)
+    print("5. cone", before, "-> after D", after_d, "-> after W", after_w)
+    assert after_d[0] < before[0] - 20, "D should shift the scene left"
+    assert after_w[1] > after_d[1] + 20, "W should shift the scene down"
 finally:
     app.terminate()

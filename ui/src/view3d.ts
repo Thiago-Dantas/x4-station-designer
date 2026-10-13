@@ -59,6 +59,9 @@ export class View3D {
   private raycaster = new THREE.Raycaster();
   private hovered: THREE.Mesh | null = null;
   private snapGeometry = new THREE.ConeGeometry(55, 160, 16).translate(0, 80, 0);
+  /** WASD keys held down; they pan like a right-mouse drag. */
+  private panKeys = new Set<string>();
+  private clock = new THREE.Clock();
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -81,10 +84,38 @@ export class View3D {
     this.scene.add(grid, this.station, this.snaps);
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
+    this.bindPanKeys();
     this.renderer.setAnimationLoop(() => {
+      this.keyPan(this.clock.getDelta());
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     });
+  }
+
+  private bindPanKeys() {
+    const codes = ["KeyW", "KeyA", "KeyS", "KeyD"];
+    const typing = (ev: KeyboardEvent) =>
+      ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.target instanceof HTMLTextAreaElement;
+    window.addEventListener("keydown", (ev) => {
+      if (codes.includes(ev.code) && !typing(ev) && !ev.ctrlKey && !ev.altKey) this.panKeys.add(ev.code);
+    });
+    window.addEventListener("keyup", (ev) => this.panKeys.delete(ev.code));
+    window.addEventListener("blur", () => this.panKeys.clear());
+  }
+
+  /** Pans in screen space, like OrbitControls' right-drag; speed scales with the zoom. */
+  private keyPan(seconds: number) {
+    if (this.panKeys.size === 0) return;
+    const held = (code: string) => (this.panKeys.has(code) ? 1 : 0);
+    const right = held("KeyD") - held("KeyA");
+    const up = held("KeyW") - held("KeyS");
+    if (right === 0 && up === 0) return;
+    const step = this.camera.position.distanceTo(this.controls.target) * 0.8 * Math.min(seconds, 0.1);
+    const offset = new THREE.Vector3()
+      .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0), right * step)
+      .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1), up * step);
+    this.camera.position.add(offset);
+    this.controls.target.add(offset);
   }
 
   /** Redraws the station. `shapes` must hold every macro in the scene; `models`
