@@ -1,5 +1,7 @@
-//! `x4sd`: the X4 station designer. For now the command line; the builder
-//! (no arguments) and the MCP server (`x4sd mcp`) follow (D-8).
+//! `x4sd`: the X4 station designer. Command line and MCP server (`x4sd mcp`);
+//! the builder (no arguments) follows (D-8).
+
+mod mcp;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -27,6 +29,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Serve AI agents over MCP (stdio)
+    Mcp,
     /// List buildable station modules
     ListModules {
         /// Only this class, e.g. production, habitation, connectionmodule
@@ -85,6 +89,9 @@ fn run(cli: Cli) -> Result<ExitCode> {
     };
 
     match cli.command {
+        Command::Mcp => {
+            mcp::serve(cli.game_dir.clone().or_else(find_game_dir), profile)?;
+        }
         Command::ListModules { class, race, search } => {
             let search = search.map(|s| s.to_lowercase());
             let modules = catalog()?.station_modules()?;

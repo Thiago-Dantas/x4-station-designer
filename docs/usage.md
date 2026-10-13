@@ -13,4 +13,26 @@
 
 A plan file is either the profile's `constructionplans.xml` (all saved plans) or a single-plan file like the ones the game exports. Exit code 2 means an error (file not found, game not found, ambiguous plan, and so on).
 
-Still to come (Phase 3): `x4sd mcp` (MCP server for agents), and `x4sd` without arguments opening the visual builder.
+## MCP server for AI agents
+`x4sd mcp` speaks MCP over stdio. Register it with an MCP client, for example Claude Code:
+```
+claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
+```
+(add `--game-dir …` / `--profile-dir …` before `mcp` if they aren't found automatically). The server explains the workflow to the agent in its instructions.
+
+| Tool | Purpose |
+|------|---------|
+| `list_modules`, `module_snaps` | Find modules (class/race/text filters) and their snap points |
+| `new_design`, `open_design`, `describe_design`, `rename_design` | Start or load a design; see every module with index, name, position, link and free snaps |
+| `add_module` | Place a module on its own (the first one, or a separate part) |
+| `attach_module`, `free_snaps` | Connect a module's snap to a free snap of a placed module, optionally twisted |
+| `set_twist`, `move_module`, `remove_module` | Rotate around the snap axis, move unattached modules, remove a module with everything attached to it (renumbers 1..n) |
+| `undo`, `redo` | Every edit can be undone |
+| `validate_design` | Same checks as `x4sd validate` |
+| `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import |
+
+For now the MCP server keeps its own open design (headless). Once the builder exists, it will edit the design open in the builder live (D-7).
+
+`research/mcp_smoke.py <x4sd.exe> <profile dir>` drives the server like an agent: it builds, validates and exports a small Terran station.
+
+Still to come (Phase 3): `x4sd` without arguments opening the visual builder.

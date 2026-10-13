@@ -16,9 +16,10 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `docs/` | Durable knowledge: goals, X4 internals, decisions |
 | `tasks/` | Roadmap (`roadmap.md`) plus one state file per workstream (`workflow-<topic>.md`, `subagent-<role>-<task>.md`) |
 | `Cargo.toml`, `crates/x4sd-core/` | Rust workspace. `x4sd-core` modules: `plan` (model, XML read/write), `vfs` (archives), `game` (extensions, profile), `catalog` (module → snaps, station-module list, required patches), `design` (editing operations + undo), `text` (`{page,id}` names), `geometry` (snap math), `validate`, `import` (import-file writer). `tests/game_data.rs` runs against the real install (`X4_GAME_DIR`) and skips when it's missing. |
-| `crates/x4sd/` | The `x4sd` binary: CLI now; MCP server and builder later (D-8). Commands in [docs/usage.md](docs/usage.md). |
+| `crates/x4sd/` | The `x4sd` binary: CLI (`main.rs`) and MCP server (`mcp.rs`, `x4sd mcp`); the builder follows (D-8). Commands in [docs/usage.md](docs/usage.md). |
 | `tools/x4cat.py` | Lists and extracts files from `.cat`/`.dat` archives, with MD5 checks. Usage in [docs/x4-game-data.md](docs/x4-game-data.md#our-extractor-toolsx4catpy). |
 | `research/extracted/` | Extracted game and mod files, plus copies of the user's plans (`profile-samples/`). **Git-ignored**: never commit them. |
+| `research/mcp_smoke.py` | Drives `x4sd mcp` like an agent (build, validate, export a station) |
 | `research/snapcheck.py` | Research script that checks plan offsets against snap geometry (base + DLC virtual file system). Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#snap-math-verified-2026-10-13-with-researchsnapcheckpy). |
 
 ## Repository
@@ -48,7 +49,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 ## Docs index
 - [docs/goals.md](docs/goals.md): vision, goals, non-goals, proposed architecture
 - [docs/decisions.md](docs/decisions.md): decision log and open decisions
-- [docs/usage.md](docs/usage.md): how to use `x4sd` (commands)
+- [docs/usage.md](docs/usage.md): how to use `x4sd` (CLI commands, MCP setup and tools)
 - [docs/dev-setup.md](docs/dev-setup.md): installed toolchain (Rust on H:, Windows SDK on D:), how to build and test
 - [docs/x4-construction-plans.md](docs/x4-construction-plans.md): plan XML format, import/export file, snap math (how offsets follow from connections), game behaviour, injection options
 - [docs/x4-plan-apis.md](docs/x4-plan-apis.md): the game's plan APIs (build-menu Lua FFI, MD actions) and how the `x4ep_planner` mod uses them
