@@ -13,6 +13,7 @@ Screenshots go to <scratch dir>/ui-*.png.
 """
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # UI text (≈, ×) on a cp1252 console
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -44,10 +45,18 @@ try:
           cdp.js("[...document.querySelectorAll('#issues li')].map(l => l.textContent).join('; ')"))
     time.sleep(1.0)
     cdp.screenshot(os.path.join(out, "ui-2-terranscrapyard.png"))
+    # Build cost (right pane): the whole station while nothing is selected.
+    cdp.wait_for("document.getElementById('cost-title').textContent.includes('whole station')")
+    cdp.wait_for("document.getElementById('cost-total').textContent.startsWith('≈')")
+    station_cost = cdp.js("document.getElementById('cost-total').textContent")
+    print("   cost:", cdp.js("document.getElementById('cost-title').textContent"), "|", station_cost, "|",
+          cdp.js("[...document.querySelectorAll('#cost-lines tr')].map(r => r.children[0].textContent + ' ' + r.children[1].textContent).join(', ')"))
     # Clicking a module selects it (modules are instanced per type; the pick maps instance -> entry).
     centre = cdp.js("(() => { const r = document.getElementById('viewport').getBoundingClientRect(); return [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)] })()")
     cdp.click(*centre)
     cdp.wait_for("!document.getElementById('selection-panel').hidden")
+    cdp.wait_for("document.getElementById('cost-title').textContent.startsWith('Build cost: ') && !document.getElementById('cost-title').textContent.includes('whole station')")
+    print("   module cost:", cdp.js("document.getElementById('cost-title').textContent"), "|", cdp.js("document.getElementById('cost-total').textContent"))
     print("   selected:", cdp.js("document.getElementById('sel-name').textContent"), "|",
           cdp.js("document.getElementById('sel-details').textContent.split(String.fromCharCode(10))[0]"))
 

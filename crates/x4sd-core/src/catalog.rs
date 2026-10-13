@@ -11,6 +11,7 @@ use crate::mesh::{self, Mesh};
 use crate::plan::{Patch, Plan};
 use crate::text::Texts;
 use crate::texture::{self, Texture};
+use crate::wares::Wares;
 use crate::vfs::{normalize, Vfs};
 use crate::{Error, Result};
 
@@ -110,6 +111,8 @@ pub struct Catalog {
     cache: Mutex<HashMap<String, Arc<Module>>>,
     /// `collection.material` (lowercase) -> maps; read on first use.
     materials: OnceLock<HashMap<String, MaterialMaps>>,
+    /// Wares and recipes (build costs); read on first use.
+    wares: OnceLock<Result<Wares>>,
 }
 
 impl Catalog {
@@ -126,6 +129,7 @@ impl Catalog {
             texts: Texts::default(),
             cache: Mutex::new(HashMap::new()),
             materials: OnceLock::new(),
+            wares: OnceLock::new(),
         };
         let text_files = std::iter::once("t/0001-l044.xml".to_owned())
             .chain(catalog.extensions.iter().map(|e| format!("extensions/{}/t/0001-l044.xml", e.folder)));
@@ -163,6 +167,7 @@ impl Catalog {
             texts: Texts::default(),
             cache: Mutex::new(cache),
             materials: OnceLock::new(),
+            wares: OnceLock::new(),
         }
     }
 
@@ -214,6 +219,12 @@ impl Catalog {
         let module = Arc::new(self.read_module(&key)?);
         self.cache.lock().unwrap().insert(key, module.clone());
         Ok(module)
+    }
+
+    /// Wares with their build recipes (base game and enabled extensions), for costs.
+    pub fn wares(&self) -> Result<&Wares> {
+        let folders: Vec<String> = self.extensions.iter().map(|e| e.folder.clone()).collect();
+        self.wares.get_or_init(|| Wares::load(&self.vfs, &folders, &self.texts)).as_ref().map_err(Clone::clone)
     }
 
     /// Texture maps of a mesh material such as `generic.generic_p1_hulltexture`.

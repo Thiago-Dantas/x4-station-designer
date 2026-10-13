@@ -151,6 +151,15 @@ A material lists `BitMap` properties: `diffuse_map`, `normal_map`, `smooth_map`,
 
 The megashipyard first dropped from 240 to 68 fps with textures, because there was one draw call per module per material. Drawing **instanced per module type** fixed that, in both modes.
 
+### Wares, recipes and build methods (verified 2026-10-13)
+- **Module wares:** a module or equipment ware in `libraries/wares.xml` names its macro in `<component ref>`. It has one `<production method="…">` recipe per build method (`<primary><ware ware amount>`) and a `<price min average max>`.
+  - Example: Energy Cell Production (default) = claytronics 260, energy cells 520, hull parts 951.
+- **Build methods:** `<wares><production><method id name tags>`. Players can pick argon, default ("Universal"), paranid, teladi, boron, closedloop, split and terran; processing, recycling, research and xenon are `noplayerbuild`.
+- **DLC patches:** `<add sel="/wares">` (new wares), `<add sel="/wares/production">` (methods) and `<add sel="/wares/ware[@id='X']">` (extra recipes, e.g. 132 Terran ones).
+- **After merging:** 302 of 325 module wares have only `default`. Terran modules' `default` already uses Terran wares. 19 shared modules also have terran/boron recipes; otherwise the game falls back to `default`.
+- **Mods:** they patch wares with `<replace>` too (prices, production times, a few recipes). Our reader (`crates/x4sd-core/src/wares.rs`) applies only `<add>`. It skips extension files that aren't valid XML: `faction_fix_pack` ships a broken `wares.xml`.
+- **Totals:** the player's plans at average prices: TerranScrapyard ≈ 48.9 M Cr, defense station ≈ 95 M Cr (mostly turrets and shields; one disc alone 0.64 M, with its 24 groups 7.9 M), megashipyard ≈ 315 M Cr.
+
 ## What we need from game data
 | Need | Source |
 |------|--------|

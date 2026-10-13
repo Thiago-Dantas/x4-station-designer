@@ -73,6 +73,10 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #inspector .row { display: flex; gap: 6px; }
 .hint, .help p { color: var(--muted); font-size: 12px; }
 #btn-place-root { width: 100%; margin-top: 4px; }
+#cost-lines { width: 100%; border-collapse: collapse; font-size: 12px; }
+#cost-lines td { padding: 2px 0; }
+#cost-lines td.n { text-align: right; font-variant-numeric: tabular-nums; }
+#cost-lines td.v { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; padding-left: 8px; }
 .plot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .plot-grid input { width: 64px; }
 #btn-fit-plot { width: 100%; margin-top: 6px; }

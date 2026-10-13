@@ -9,6 +9,7 @@ DevTools protocol that the builder shows the agent's station, and screenshots it
 import os
 import subprocess
 import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # UI text (≈, ×) on a cp1252 console
 import time
 
 here = os.path.dirname(os.path.abspath(__file__))

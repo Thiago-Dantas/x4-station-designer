@@ -15,6 +15,7 @@ pub mod text;
 pub mod texture;
 pub mod validate;
 pub mod vfs;
+pub mod wares;
 
 use std::fmt;
 

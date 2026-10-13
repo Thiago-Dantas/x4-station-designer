@@ -43,6 +43,8 @@ export interface Scene {
   /** After a build-order change: the moved module's new index (modules are renumbered). */
   focus?: number;
 }
+export interface CostLine { ware: string; name: string; amount: number; value: number | null }
+export interface BuildCost { method: string; methods: { id: string; name: string }[]; lines: CostLine[]; value: number; unknown: string[] }
 export interface PlanRef { file: string; source?: string; id: string; name: string; modules: number }
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -87,6 +89,7 @@ export const api = {
     serial<Scene>("reattach_module", { index, snap, to, toSnap, twist }),
   detachModule: (index: number) => serial<Scene>("detach_module", { index }),
   moveRoot: (index: number, position: Vec3) => serial<Scene>("move_root", { index, position }),
+  buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),
   undo: () => serial<Scene>("undo"),
   redo: () => serial<Scene>("redo"),
 };

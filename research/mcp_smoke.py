@@ -10,6 +10,7 @@ import os
 import socket
 import subprocess
 import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # UI text (≈, ×) on a cp1252 console
 
 exe, profile = sys.argv[1], sys.argv[2]
 if os.environ.get("X4SD_EXPECT_BUILDER") != "1":

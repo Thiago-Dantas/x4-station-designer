@@ -7,6 +7,7 @@ the frame rate, switches textures on, waits for them, measures again.
 """
 import os
 import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # UI text (≈, ×) on a cp1252 console
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

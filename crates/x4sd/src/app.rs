@@ -72,6 +72,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             reattach_module,
             detach_module,
             move_root,
+            build_cost,
             undo,
             redo,
         ])
@@ -326,6 +327,14 @@ fn build_first(state: State<'_, Shared>, index: u32) -> CmdResult {
 #[tauri::command]
 fn build_last(state: State<'_, Shared>, index: u32) -> CmdResult {
     reorder(&state, |d| d.build_last(index))
+}
+
+/// Build materials for module `index` (with its equipment) or, without, the whole station.
+#[tauri::command]
+fn build_cost(state: State<'_, Shared>, index: Option<u32>, method: String) -> CmdResult {
+    let app = state.lock().unwrap();
+    let catalog = catalog(&app)?;
+    ops::build_cost(&catalog, &app.design, index, &method)
 }
 
 /// Moves a placed module (and everything on it) onto another free snap; `focus` is its new index.

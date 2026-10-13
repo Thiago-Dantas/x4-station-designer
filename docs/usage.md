@@ -18,6 +18,10 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - Click a row to select the module.
   - *Show up to step* previews the station built up to that step; later rows are dimmed.
   - Reordering renumbers the modules; the selection follows the moved module.
+- **Build cost (right):** the materials to build the **selected module** (with its turrets and shields), or the **whole station** when nothing is selected.
+  - Shows resource amounts and an estimated value at the game's average prices.
+  - *Build method* matches the game's Preferred Build Method (Universal, Terran, Boron, …). Most modules have one recipe; shared modules that also have a Terran or Boron recipe change with it, and the others fall back to Universal. The choice is remembered.
+  - Not reflected: mods that *replace* ware prices or recipes. Mods that *add* wares or recipes are included.
 - **Plot (right):** the plot the station must fit, in whole km per side from the station origin (+X, −X, +Y, −Y, +Z, −Z; each axis 1–20 km, as in the game), drawn as a box (green when everything fits, red when not).
   - New designs start at 2×2×2 km; opened plans start on the smallest plot that holds them.
   - *Fit plot to station* sets that minimum.
@@ -61,6 +65,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `set_twist`, `move_module`, `remove_module` | Rotate around the snap axis, move unattached modules, remove a module with everything attached to it (renumbers 1..n) |
 | `undo`, `redo` | Every edit can be undone |
 | `builder_status` | Whether a builder window is open (then all tools act on it, live) |
+| `build_cost` | Resources and estimated value to build one module (with its equipment) or the whole station, for a build method; lists the methods |
 | `reattach_module`, `detach_module` | Move a placed module (with everything on it) onto another free snap (`moved_to` gives its new index), or make it free-standing |
 | `move_in_build_order`, `build_first`, `build_last`, `set_stage_end` | Reorder the build (renumbers; the result includes `moved_to`) and set stage ends. `describe_design` lists modules in build order with `stage_end`. |
 | `set_plot`, `fit_plot` | Set the plot (km per side), or fit it to the station (optionally only growing it). `describe_design` shows the plot, the size needed and whether it fits; `validate_design` includes plot issues. |

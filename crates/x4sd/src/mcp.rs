@@ -184,6 +184,14 @@ pub struct ReattachArgs {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct CostArgs {
+    /// Module index; omit for the whole station
+    index: Option<u32>,
+    /// Build method: default (Universal), terran, boron, ... (default: default)
+    method: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct StageArgs {
     /// Module index
     index: u32,
@@ -323,6 +331,11 @@ impl Server {
     #[tool(description = "Make an attached module free-standing where it is (whatever is attached to it stays attached).")]
     fn detach_module(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
         self.run(Op::DetachModule { index: a.index })
+    }
+
+    #[tool(description = "Build materials: the resources (and estimated value at average prices) to build one module with its equipment, or the whole station. Also lists the build methods.")]
+    fn build_cost(&self, Parameters(a): Parameters<CostArgs>) -> ToolResult {
+        self.run(Op::BuildCost { index: a.index, method: a.method })
     }
 
     #[tool(description = "End a build stage after this module (or remove that stage end). Stages let the station be built in steps.")]

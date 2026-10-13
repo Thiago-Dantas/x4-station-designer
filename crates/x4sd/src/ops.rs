@@ -50,6 +50,8 @@ pub enum Op {
     /// Move a module (and everything on it) onto another free snap.
     ReattachModule { index: u32, to: u32, to_snap: String, snap: Option<String>, twist: Option<f64> },
     DetachModule { index: u32 },
+    /// Resources to build one module (with its equipment) or the whole station.
+    BuildCost { index: Option<u32>, method: Option<String> },
 }
 
 impl Op {
@@ -58,7 +60,12 @@ impl Op {
         // Save and export count: they change whether the design has unsaved changes.
         !matches!(
             self,
-            Op::ListModules { .. } | Op::ModuleSnaps { .. } | Op::DescribeDesign | Op::FreeSnaps { .. } | Op::ValidateDesign
+            Op::ListModules { .. }
+                | Op::ModuleSnaps { .. }
+                | Op::DescribeDesign
+                | Op::FreeSnaps { .. }
+                | Op::ValidateDesign
+                | Op::BuildCost { .. }
         )
     }
 
@@ -200,6 +207,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             ctx.design.detach(index).map_err(err)?;
             describe(ctx)
         }
+        Op::BuildCost { index, method } => build_cost(c, ctx.design, index, method.as_deref().unwrap_or("default")),
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
             ctx.design.mark_saved();
@@ -226,6 +234,23 @@ fn default_snap(design: &Design, catalog: &Catalog, index: u32) -> Result<String
     }
     let module = catalog.module(&e.macro_name).map_err(|e| e.to_string())?;
     module.snaps.first().map(|s| s.name.clone()).ok_or(format!("{} has no snaps", e.macro_name))
+}
+
+/// Resources for one entry (module + its equipment) or the whole plan, with an
+/// estimated value at average prices and the build methods to choose from.
+pub fn build_cost(catalog: &Catalog, design: &Design, index: Option<u32>, method: &str) -> Result<Value, String> {
+    let wares = catalog.wares().map_err(|e| e.to_string())?;
+    if let Some(i) = index {
+        design.plan().entries.iter().find(|e| e.index == i).ok_or(format!("no entry {i}"))?;
+    }
+    let cost = wares.plan_cost(design.plan(), index, method);
+    Ok(json!({
+        "method": method,
+        "methods": wares.methods().iter().map(|m| json!({"id": m.id, "name": m.name})).collect::<Vec<_>>(),
+        "lines": cost.lines.iter().map(|l| json!({"ware": l.ware, "name": l.name, "amount": l.amount, "value": l.value})).collect::<Vec<_>>(),
+        "value": cost.value,
+        "unknown": cost.unknown,
+    }))
 }
 
 /// After a reorder: the module's new index plus the renumbered design.

@@ -166,6 +166,39 @@ fn designed_station_validates() {
     assert_eq!(validate(&parse_plans(&xml).unwrap()[0], c), Vec::<Issue>::new(), "still valid after f32/mm rounding");
 }
 
+/// Build costs: module recipes from wares.xml (+ DLC patches), method fallback, equipment.
+#[test]
+fn build_costs() {
+    let Some(c) = catalog() else { return };
+    let start = Instant::now();
+    let w = c.wares().unwrap();
+    eprintln!("wares loaded in {:?}; methods: {:?}", start.elapsed(), w.methods().iter().map(|m| format!("{} ({})", m.id, m.name)).collect::<Vec<_>>());
+    let amounts = |cost: &x4sd_core::wares::Cost| cost.lines.iter().map(|l| (l.ware.clone(), l.amount)).collect::<std::collections::BTreeMap<_, _>>();
+
+    let cells = w.cost([("prod_gen_energycells_macro", 1.0)], "default");
+    assert_eq!(amounts(&cells), [("claytronics".into(), 260.0), ("energycells".into(), 520.0), ("hullparts".into(), 951.0)].into());
+    assert!(cells.value > 0.0);
+    // Terran modules: their default recipe uses Terran wares; an unknown method falls back to default.
+    let hab = w.cost([("hab_ter_l_01_macro", 2.0)], "terran");
+    assert_eq!(amounts(&hab), [("computronicsubstrate".into(), 160.0), ("energycells".into(), 1186.0), ("siliconcarbide".into(), 330.0)].into());
+    assert!(w.methods().iter().any(|m| m.id == "terran") && !w.methods().iter().any(|m| m.id == "xenon"), "xenon is NPC-only");
+
+    // Whole plans, equipment included; every module of the player's plans has a recipe.
+    let Some(plans) = sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml") else { return };
+    for plan in plans.iter().filter(|p| !p.name.starts_with("X4SD")) {
+        let cost = w.plan_cost(plan, None, "default");
+        eprintln!("[{}] {:.0} Cr, {} resources, unknown {:?}", plan.name, cost.value, cost.lines.len(), cost.unknown);
+        assert!(cost.value > 0.0);
+        assert!(cost.unknown.iter().all(|m| m == "recyclemodule_macro"), "{:?}", cost.unknown);
+    }
+    let defence = plans.iter().find(|p| p.name == "defense station").unwrap();
+    let armed = defence.entries.iter().find(|e| !e.upgrades.is_empty()).expect("a module with turrets");
+    let module_only = w.cost([(armed.macro_name.as_str(), 1.0)], "default").value;
+    let with_equipment = w.plan_cost(defence, Some(armed.index), "default").value;
+    eprintln!("#{} {}: {module_only:.0} Cr alone, {with_equipment:.0} Cr with its {} turret/shield groups", armed.index, armed.macro_name, armed.upgrades.len());
+    assert!(with_equipment > module_only, "turrets and shields add to the module's cost");
+}
+
 /// Plots: the required plot holds the station; a smaller plot flags the modules outside.
 #[test]
 fn plots() {

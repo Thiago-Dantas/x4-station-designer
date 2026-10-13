@@ -174,6 +174,7 @@ function redraw() {
   if (buildStep !== null && buildStep >= scene.entries.length) buildStep = null;
   view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null || moving !== null, buildStep, moving !== null ? subtree(moving) : null);
   renderOrder();
+  void refreshCost();
   $("dirty").hidden = !scene.dirty;
   const title = `X4 Station Designer - ${scene.name}${scene.dirty ? " *" : ""}`;
   if (title !== windowTitle) {
@@ -352,6 +353,51 @@ function renderRaceFilter() {
 }
 
 let windowTitle = "";
+
+/** Build method for costs (the game's Preferred Build Method), remembered. */
+let buildMethod = (() => {
+  try {
+    return localStorage.getItem("x4sd.method") ?? "default";
+  } catch {
+    return "default";
+  }
+})();
+let costRequest = 0;
+
+/** Right pane: what the selected module (with its equipment) or the whole station needs. */
+async function refreshCost() {
+  if (!scene) return;
+  const request = ++costRequest;
+  const sel = entry(selected);
+  let cost;
+  try {
+    cost = await api.buildCost(sel?.index ?? null, buildMethod);
+  } catch (e) {
+    $("cost-total").textContent = String(e);
+    return;
+  }
+  if (request !== costRequest) return; // a newer request is on its way
+  $("cost-title").textContent = sel ? `Build cost: ${sel.name ?? sel.macro}` : "Build cost: whole station";
+  const methodSelect = $<HTMLSelectElement>("build-method");
+  if (methodSelect.options.length !== cost.methods.length) {
+    methodSelect.replaceChildren(...cost.methods.map((m) => new Option(m.name, m.id)));
+  }
+  methodSelect.value = buildMethod;
+  const n = (x: number) => Math.round(x).toLocaleString("en-US");
+  $("cost-lines").replaceChildren(
+    ...cost.lines.map((l) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `<td></td><td class="n"></td><td class="v"></td>`;
+      row.children[0].textContent = l.name;
+      row.children[1].textContent = n(l.amount);
+      row.children[2].textContent = l.value === null ? "" : `${n(l.value)} Cr`;
+      return row;
+    }),
+  );
+  $("cost-total").textContent = scene.entries.length
+    ? `≈ ${n(cost.value)} Cr at average prices` + (cost.unknown.length ? ` (no recipe: ${cost.unknown.join(", ")})` : "")
+    : "Nothing placed yet";
+}
 
 /** `index` and every module attached to it, directly or not. */
 function subtree(index: number): Set<number> {
@@ -568,6 +614,15 @@ $<HTMLSelectElement>("quality").onchange = async (ev) => {
 $("btn-twist-left").onclick = () => twistSelected(-90);
 $("btn-twist-right").onclick = () => twistSelected(90);
 $("btn-remove").onclick = removeSelected;
+$<HTMLSelectElement>("build-method").onchange = (ev) => {
+  buildMethod = (ev.target as HTMLSelectElement).value;
+  try {
+    localStorage.setItem("x4sd.method", buildMethod);
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+  void refreshCost();
+};
 $("btn-move").onclick = startMove;
 $("btn-detach").onclick = () => selected !== null && apply(api.detachModule(selected), "Detached: it now stands on its own");
 $("btn-build-first").onclick = () => selected !== null && apply(api.buildFirst(selected), "Moved to the front of the build order");
