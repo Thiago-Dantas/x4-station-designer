@@ -1,6 +1,7 @@
 // Builder UI: palette, 3D view, inspector. All edits go to the Rust core
 // through the Tauri commands in api.ts, which return the new scene.
 import "./style.css";
+import { listen } from "@tauri-apps/api/event";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { api, type ModuleInfo, type PlanRef, type Scene, type Shape } from "./api";
 import { CLASS_COLORS, View3D } from "./view3d";
@@ -60,7 +61,8 @@ function redraw() {
   if (!scene) return;
   view.render(scene, shapes, selected, armed !== null);
   $<HTMLInputElement>("design-name").value = scene.name;
-  $("patches").textContent = scene.patches.length ? `Needs: ${scene.patches.join(", ")}` : "";
+  const count = `${scene.entries.length} module${scene.entries.length === 1 ? "" : "s"}`;
+  $("patches").textContent = scene.patches.length ? `${count} · Needs: ${scene.patches.join(", ")}` : count;
   $<HTMLButtonElement>("btn-undo").disabled = !scene.can_undo;
   $<HTMLButtonElement>("btn-redo").disabled = !scene.can_redo;
 
@@ -302,6 +304,11 @@ window.addEventListener("keydown", (ev) => {
     select(null);
   }
 });
+
+// An AI agent edited the design through the live link (x4sd mcp).
+void listen<{ scene: Scene; op: string; replaced: boolean }>("scene-changed", (ev) =>
+  apply(Promise.resolve(ev.payload.scene), `Agent: ${ev.payload.op.replace(/_/g, " ")}`, ev.payload.replaced),
+);
 
 // ---------------------------------------------------------------- start
 

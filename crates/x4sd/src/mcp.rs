@@ -1,10 +1,7 @@
-//! `x4sd mcp`: MCP server over stdio for AI agents (D-8). Headless for now: it
-//! edits its own open design; the live link to the builder comes later (D-7).
-//!
-//! Every tool goes through `x4sd_core::design`, the same operations the
-//! builder and CLI use.
+//! `x4sd mcp`: MCP server over stdio for AI agents (D-8). When the builder is
+//! running, every operation goes to the design open there (D-7, `link.rs`);
+//! otherwise the server keeps its own design (headless).
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -13,13 +10,12 @@ use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{schemars, tool, tool_handler, tool_router, ServerHandler, ServiceExt};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
-use x4sd_core::geometry::{Quat, Transform};
-use x4sd_core::import::{new_plan_id, write_import_file};
-use x4sd_core::plan::{parse_plans, write_plans};
-use x4sd_core::validate::validate;
+
+use crate::link::Client;
+use crate::ops::{self, Ctx, ModuleNames, Op};
 
 const INSTRUCTIONS: &str = "\
 Designs X4: Foundations station construction plans and puts them into the game.
@@ -28,7 +24,9 @@ module -> free_snaps to see where modules can attach -> attach_module (snap to s
 the snap axis, usually in 90 degree steps) -> validate_design -> export_design, then the player clicks \
 Import in the game's station build menu.
 Coordinates are metres in the station frame, Y up. Module indices are 1..n and are renumbered after \
-remove_module. Every edit can be undone with undo.";
+remove_module. Every edit can be undone with undo.
+If the X4 Station Designer builder window is open, all tools work on the design shown there and the \
+user sees every change live (builder_status tells which).";
 
 #[derive(Clone)]
 pub struct Server {
@@ -39,9 +37,11 @@ pub struct Server {
 struct State {
     game_dir: Option<PathBuf>,
     profile_dir: Option<PathBuf>,
-    catalog: Option<Arc<Catalog>>,
-    names: HashMap<String, String>,
-    design: Option<Design>,
+    /// Connection to a running builder, if any.
+    link: Option<Client>,
+    /// Own catalogue and design, used when no builder runs.
+    local: Option<(Catalog, ModuleNames)>,
+    design: Design,
 }
 
 type ToolResult = Result<String, String>;
@@ -146,181 +146,102 @@ pub struct NoArgs {}
 #[tool_router]
 impl Server {
     pub fn new(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> Server {
-        let state = State { game_dir, profile_dir, catalog: None, names: HashMap::new(), design: None };
+        let state = State { game_dir, profile_dir, link: None, local: None, design: Design::new("New station") };
         Server { state: Arc::new(Mutex::new(state)), tool_router: Self::tool_router() }
+    }
+
+    #[tool(description = "Whether a builder window is running: if so, all tools act on the design shown there, live.")]
+    fn builder_status(&self, Parameters(_): Parameters<NoArgs>) -> ToolResult {
+        let mut state = self.state.lock().unwrap();
+        if state.link.is_none() {
+            state.link = Client::connect();
+        }
+        Ok(json!({"builder": state.link.is_some()}).to_string())
     }
 
     #[tool(description = "List buildable station modules (base game, DLCs, enabled mods): macro, class, race, source, display name.")]
     fn list_modules(&self, Parameters(a): Parameters<ListModulesArgs>) -> ToolResult {
-        let catalog = self.catalog()?;
-        let search = a.search.map(|s| s.to_lowercase());
-        let modules: Vec<Value> = catalog
-            .station_modules()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .filter(|m| a.class.as_ref().is_none_or(|c| m.class.eq_ignore_ascii_case(c)))
-            .filter(|m| a.race.as_ref().is_none_or(|r| m.race.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(r))))
-            .filter(|m| search.as_ref().is_none_or(|s| m.name.to_lowercase().contains(s) || m.macro_name.to_lowercase().contains(s)))
-            .map(|m| json!({"macro": m.macro_name, "class": m.class, "race": m.race, "source": m.source, "name": m.name}))
-            .collect();
-        Ok(json!(modules).to_string())
+        self.run(Op::ListModules { class: a.class, race: a.race, search: a.search })
     }
 
     #[tool(description = "A module's snap connections: name, position and facing direction in the module's own frame.")]
     fn module_snaps(&self, Parameters(a): Parameters<MacroArgs>) -> ToolResult {
-        let module = self.catalog()?.module(&a.r#macro).map_err(|e| e.to_string())?;
-        let snaps: Vec<Value> = module.snaps.iter().map(|s| snap_json(&s.name, &s.transform)).collect();
-        Ok(json!({"macro": module.macro_name, "class": module.class, "snaps": snaps}).to_string())
+        self.run(Op::ModuleSnaps { r#macro: a.r#macro })
     }
 
     #[tool(description = "Start a new, empty design (replaces the open one).")]
     fn new_design(&self, Parameters(a): Parameters<NameArgs>) -> ToolResult {
-        self.state.lock().unwrap().design = Some(Design::new(&a.name));
-        self.describe_design(Parameters(NoArgs {}))
+        self.run(Op::NewDesign { name: a.name })
     }
 
     #[tool(description = "Open a plan from a plan file for editing (replaces the open design).")]
     fn open_design(&self, Parameters(a): Parameters<FileArgs>) -> ToolResult {
-        let xml = std::fs::read_to_string(&a.file).map_err(|e| format!("{}: {e}", a.file))?;
-        let mut plans = parse_plans(&xml).map_err(|e| e.to_string())?;
-        if let Some(w) = &a.plan {
-            plans.retain(|p| &p.id == w || &p.name == w);
-        }
-        if plans.len() != 1 {
-            let names: Vec<_> = plans.iter().map(|p| p.name.as_str()).collect();
-            return Err(format!("{} plans match; pass plan= one of {names:?}", plans.len()));
-        }
-        self.state.lock().unwrap().design = Some(Design::from_plan(plans.remove(0)));
-        self.describe_design(Parameters(NoArgs {}))
+        self.run(Op::OpenDesign { file: a.file, plan: a.plan })
     }
 
     #[tool(description = "The open design: id, name, DLC patches, and every module with index, macro, name, position, what it is attached to, and its free snaps.")]
     fn describe_design(&self, Parameters(_): Parameters<NoArgs>) -> ToolResult {
-        let catalog = self.catalog()?;
-        let state = self.state.lock().unwrap();
-        let design = state.design.as_ref().ok_or("no open design; use new_design or open_design")?;
-        let plan = design.plan();
-        let modules: Vec<Value> = plan
-            .entries
-            .iter()
-            .map(|e| {
-                let p = design.world(e.index).map(|t| t.position).unwrap_or_default();
-                let free: Vec<String> = design.free_snaps(&catalog, e.index).map(|v| v.into_iter().map(|s| s.name).collect()).unwrap_or_default();
-                json!({
-                    "index": e.index,
-                    "macro": e.macro_name,
-                    "name": state.names.get(&e.macro_name.to_ascii_lowercase()),
-                    "position": round3(p),
-                    "attached": e.predecessor.as_ref().map(|pr| json!({"to": pr.index, "to_snap": pr.connection, "snap": e.connection})),
-                    "free_snaps": free,
-                })
-            })
-            .collect();
-        let patches: Vec<&str> = plan.patches.iter().map(|p| p.extension.as_str()).collect();
-        Ok(json!({"id": plan.id, "name": plan.name, "patches": patches, "modules": modules}).to_string())
+        self.run(Op::DescribeDesign)
     }
 
     #[tool(description = "Rename the open design.")]
     fn rename_design(&self, Parameters(a): Parameters<NameArgs>) -> ToolResult {
-        self.edit(|d, _| {
-            d.rename(&a.name);
-            Ok(json!({"name": a.name}))
-        })
+        self.run(Op::RenameDesign { name: a.name })
     }
 
     #[tool(description = "Place a module on its own (not attached), e.g. the first module of a station. Returns its index.")]
     fn add_module(&self, Parameters(a): Parameters<PlaceArgs>) -> ToolResult {
-        let at = transform(a.position, a.yaw, a.pitch, a.roll);
-        self.edit(|d, c| Ok(json!({"index": d.add_root(c, &a.r#macro, at)?})))
+        self.run(Op::AddModule { r#macro: a.r#macro, position: a.position, yaw: a.yaw, pitch: a.pitch, roll: a.roll })
     }
 
     #[tool(description = "Add a module by connecting one of its snaps to a free snap of a placed module. Returns the new index.")]
     fn attach_module(&self, Parameters(a): Parameters<AttachArgs>) -> ToolResult {
-        self.edit(|d, c| {
-            let snap = match &a.snap {
-                Some(s) => s.clone(),
-                None => c.module(&a.r#macro)?.snaps.first().map(|s| s.name.clone()).ok_or_else(|| {
-                    x4sd_core::Error(format!("{} has no snaps", a.r#macro))
-                })?,
-            };
-            let index = d.attach(c, &a.r#macro, &snap, a.to, &a.to_snap, a.twist.unwrap_or(0.0))?;
-            Ok(json!({"index": index, "snap": snap}))
-        })
+        self.run(Op::AttachModule { r#macro: a.r#macro, snap: a.snap, to: a.to, to_snap: a.to_snap, twist: a.twist })
     }
 
     #[tool(description = "Rotate an attached module around its snap axis to an absolute twist (degrees). Everything attached to it moves along.")]
     fn set_twist(&self, Parameters(a): Parameters<TwistArgs>) -> ToolResult {
-        self.edit(|d, c| {
-            d.set_twist(c, a.index, a.twist)?;
-            Ok(json!({"index": a.index, "twist": a.twist}))
-        })
+        self.run(Op::SetTwist { index: a.index, twist: a.twist })
     }
 
     #[tool(description = "Move a module that is not attached to anything (and everything attached to it).")]
     fn move_module(&self, Parameters(a): Parameters<MoveArgs>) -> ToolResult {
-        let at = transform(Some(a.position), a.yaw, a.pitch, a.roll);
-        self.edit(|d, _| {
-            d.move_root(a.index, at)?;
-            Ok(json!({"index": a.index}))
-        })
+        self.run(Op::MoveModule { index: a.index, position: a.position, yaw: a.yaw, pitch: a.pitch, roll: a.roll })
     }
 
     #[tool(description = "Remove a module and everything attached to it. The remaining modules are renumbered 1..n.")]
     fn remove_module(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
-        self.edit(|d, c| Ok(json!({"removed": d.remove(c, a.index)?})))
+        self.run(Op::RemoveModule { index: a.index })
     }
 
     #[tool(description = "Free snaps of a placed module, where new modules can attach: name, station-frame position and facing direction.")]
     fn free_snaps(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
-        let catalog = self.catalog()?;
-        let state = self.state.lock().unwrap();
-        let design = state.design.as_ref().ok_or("no open design")?;
-        let snaps = design.free_snaps(&catalog, a.index).map_err(|e| e.to_string())?;
-        Ok(json!(snaps.iter().map(|s| snap_json(&s.name, &s.world)).collect::<Vec<_>>()).to_string())
+        self.run(Op::FreeSnaps { index: a.index })
     }
 
     #[tool(description = "Undo the last edit.")]
     fn undo(&self, Parameters(_): Parameters<NoArgs>) -> ToolResult {
-        let mut state = self.state.lock().unwrap();
-        let design = state.design.as_mut().ok_or("no open design")?;
-        Ok(json!({"undone": design.undo()}).to_string())
+        self.run(Op::Undo)
     }
 
     #[tool(description = "Redo the last undone edit.")]
     fn redo(&self, Parameters(_): Parameters<NoArgs>) -> ToolResult {
-        let mut state = self.state.lock().unwrap();
-        let design = state.design.as_mut().ok_or("no open design")?;
-        Ok(json!({"redone": design.redo()}).to_string())
+        self.run(Op::Redo)
     }
 
     #[tool(description = "Check the open design for problems the game does not catch (unknown modules, modules off their snaps, missing DLC patches). An empty list means it is fine.")]
     fn validate_design(&self, Parameters(_): Parameters<NoArgs>) -> ToolResult {
-        let catalog = self.catalog()?;
-        let state = self.state.lock().unwrap();
-        let design = state.design.as_ref().ok_or("no open design")?;
-        let issues: Vec<String> = validate(design.plan(), &catalog).iter().map(|i| i.to_string()).collect();
-        Ok(json!({"issues": issues}).to_string())
+        self.run(Op::ValidateDesign)
     }
 
     #[tool(description = "Save the open design to a plan file (single-plan format, like the game's exports).")]
     fn save_design(&self, Parameters(a): Parameters<SaveArgs>) -> ToolResult {
-        let state = self.state.lock().unwrap();
-        let design = state.design.as_ref().ok_or("no open design")?;
-        std::fs::write(&a.file, write_plans(std::slice::from_ref(design.plan()))).map_err(|e| format!("{}: {e}", a.file))?;
-        Ok(json!({"saved": a.file}).to_string())
+        self.run(Op::SaveDesign { file: a.file })
     }
 
     #[tool(description = "Put the open design into the game: writes it to the player profile's constructionplan folder. The player then clicks Import in the station build menu.")]
     fn export_design(&self, Parameters(a): Parameters<ExportArgs>) -> ToolResult {
-        let state = self.state.lock().unwrap();
-        let design = state.design.as_ref().ok_or("no open design")?;
-        let profile = state.profile_dir.as_ref().ok_or("player profile not found")?;
-        let mut plan = design.plan().clone();
-        if a.new_id.unwrap_or(false) {
-            plan.id = new_plan_id();
-        }
-        let path = write_import_file(profile, &plan, a.overwrite.unwrap_or(false)).map_err(|e| e.to_string())?;
-        Ok(json!({"file": path, "id": plan.id, "next": "In game: station build menu > Import > select the plan"}).to_string())
+        self.run(Op::ExportDesign { new_id: a.new_id, overwrite: a.overwrite })
     }
 }
 
@@ -334,46 +255,32 @@ impl ServerHandler for Server {
 }
 
 impl Server {
-    /// The catalogue, loaded on first use (about half a second).
-    fn catalog(&self) -> Result<Arc<Catalog>, String> {
+    /// Runs an operation in the builder if one is running, else on the own design.
+    fn run(&self, op: Op) -> ToolResult {
         let mut state = self.state.lock().unwrap();
-        if let Some(c) = &state.catalog {
-            return Ok(c.clone());
+        if state.link.is_none() {
+            state.link = Client::connect();
         }
-        let game = state.game_dir.clone().ok_or("X4 install not found; start with --game-dir or set X4_GAME_DIR")?;
-        let catalog = Arc::new(Catalog::load(&game, state.profile_dir.as_deref()).map_err(|e| e.to_string())?);
-        state.names = catalog
-            .station_modules()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .map(|m| (m.macro_name.to_ascii_lowercase(), m.name))
-            .collect();
-        state.catalog = Some(catalog.clone());
-        Ok(catalog)
+        if let Some(link) = state.link.as_mut() {
+            return match link.send(&op) {
+                Ok(result) => result.map(|v| v.to_string()),
+                Err(e) => {
+                    state.link = None;
+                    Err(format!(
+                        "lost the connection to the builder ({e}); the operation may not have been applied. \
+                         Further calls use the builder again if it is reopened, otherwise a separate headless design."
+                    ))
+                }
+            };
+        }
+        if state.local.is_none() {
+            let game = state.game_dir.clone().ok_or("X4 install not found; start with --game-dir or set X4_GAME_DIR")?;
+            state.local = Some(ops::load(&game, state.profile_dir.as_deref()).map_err(|e| e.to_string())?);
+        }
+        let State { local: Some((catalog, names)), design, profile_dir, .. } = &mut *state else { unreachable!() };
+        let mut ctx = Ctx { catalog, names, design, profile_dir: profile_dir.as_deref() };
+        ops::execute(op, &mut ctx).map(|v| v.to_string())
     }
-
-    /// Runs an editing operation on the open design.
-    fn edit(&self, op: impl FnOnce(&mut Design, &Catalog) -> x4sd_core::Result<Value>) -> ToolResult {
-        let catalog = self.catalog()?;
-        let mut state = self.state.lock().unwrap();
-        let design = state.design.as_mut().ok_or("no open design; use new_design or open_design")?;
-        op(design, &catalog).map(|v| v.to_string()).map_err(|e| e.to_string())
-    }
-}
-
-fn transform(position: Option<[f64; 3]>, yaw: Option<f64>, pitch: Option<f64>, roll: Option<f64>) -> Transform {
-    Transform {
-        position: position.unwrap_or_default(),
-        rotation: Quat::from_euler(yaw.unwrap_or(0.0), pitch.unwrap_or(0.0), roll.unwrap_or(0.0)),
-    }
-}
-
-fn round3(v: [f64; 3]) -> [f64; 3] {
-    v.map(|x| (x * 1000.0).round() / 1000.0 + 0.0)
-}
-
-fn snap_json(name: &str, t: &Transform) -> Value {
-    json!({"name": name, "position": round3(t.position), "facing": round3(t.rotation.rotate([0.0, 0.0, 1.0]))})
 }
 
 pub fn serve(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core::Result<()> {

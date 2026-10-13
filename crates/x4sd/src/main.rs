@@ -2,7 +2,9 @@
 //! builder; `x4sd mcp` serves AI agents; the other commands are the CLI (D-8).
 
 mod app;
+mod link;
 mod mcp;
+mod ops;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

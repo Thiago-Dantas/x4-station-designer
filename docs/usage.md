@@ -42,9 +42,10 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `attach_module`, `free_snaps` | Connect a module's snap to a free snap of a placed module, optionally twisted |
 | `set_twist`, `move_module`, `remove_module` | Rotate around the snap axis, move unattached modules, remove a module with everything attached to it (renumbers 1..n) |
 | `undo`, `redo` | Every edit can be undone |
+| `builder_status` | Whether a builder window is open (then all tools act on it, live) |
 | `validate_design` | Same checks as `x4sd validate` |
 | `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import |
 
-For now the MCP server keeps its own open design (headless). The live link (D-7), with the agent editing the design open in the builder, is the next step.
+**Live link (D-7):** if the builder window is open, every tool works on the design shown there. You watch the agent's changes appear ("Agent: …" in the status bar) and can drag, twist or undo alongside it. Without a builder, `x4sd mcp` keeps its own design (headless). `builder_status` tells the agent which mode it is in. The link is a local TCP socket on `127.0.0.1:47823`, one JSON line per message; only the first builder window opened listens.
 
-`research/mcp_smoke.py <x4sd.exe> <profile dir>` drives the server like an agent: it builds, validates and exports a small Terran station.
+`research/mcp_smoke.py <x4sd.exe> <profile dir>` drives the server like an agent: it builds, validates and exports a small Terran station. `research/link_smoke.py` does the same against an open builder and checks that the builder shows the result.

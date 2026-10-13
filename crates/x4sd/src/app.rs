@@ -1,13 +1,15 @@
 //! The visual builder (D-6): a Tauri window showing the Three.js UI from `ui/`.
 //! Its commands are thin wrappers over `x4sd_core::design`, like the MCP tools;
-//! every edit returns the whole scene for the UI to redraw.
+//! every edit returns the whole scene for the UI to redraw. Agents reach the
+//! same design through the live link (`link.rs`, D-7); their changes are pushed
+//! to the UI as `scene-changed` events.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
 use x4sd_core::geometry::{fit, Quat, Transform};
@@ -15,12 +17,14 @@ use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, write_plans, Plan};
 use x4sd_core::validate::validate;
 
+use crate::link;
+use crate::ops::{self, Ctx, ModuleNames, Op};
+
 struct App {
     game_dir: Option<PathBuf>,
     profile_dir: Option<PathBuf>,
     catalog: Option<Arc<Catalog>>,
-    /// Lowercase macro -> (display name, class) of every station module.
-    info: HashMap<String, (String, String)>,
+    info: ModuleNames,
     design: Design,
 }
 
@@ -34,6 +38,13 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(app))
+        .setup(|app| {
+            let handle = app.handle().clone();
+            if let Err(e) = link::serve(Arc::new(move |op| agent_op(&handle, op))) {
+                eprintln!("live link for agents unavailable ({e}); is another builder open?");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             load_catalog,
             module_shape,
@@ -209,6 +220,21 @@ fn redo(state: State<'_, Shared>) -> CmdResult {
         d.redo();
         Ok(())
     })
+}
+
+/// An agent's operation from the live link, run on the open design.
+fn agent_op(handle: &AppHandle, op: Op) -> Result<Value, String> {
+    let state = handle.state::<Shared>();
+    let mut app = state.lock().unwrap();
+    let catalog = catalog(&app)?;
+    let (changes, replaced, name) = (op.changes_design(), op.replaces_design(), op.name());
+    let App { info, design, profile_dir, .. } = &mut *app;
+    let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref() });
+    if changes && result.is_ok() {
+        let scene = scene_json(&app)?;
+        let _ = handle.emit("scene-changed", json!({"scene": scene, "op": name, "replaced": replaced}));
+    }
+    result
 }
 
 fn catalog(app: &App) -> Result<Arc<Catalog>, String> {
