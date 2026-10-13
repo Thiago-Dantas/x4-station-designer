@@ -11,7 +11,11 @@ A station designer that runs outside X4. Humans and AI agents use it to design s
 | G3 | Know the module catalogue from game data | Module macros, snap connections, race/DLC, size, cost, names |
 | G4 | Validate plans before they reach the game | Connection compatibility, missing DLC, unknown macros, overlaps |
 | G5 | Agents can drive the designer | CLI and/or MCP server; see open decision OD-1 |
-| G6 | Visual designer | Later phase; the UI technology is still open |
+| G6 | Visual builder with drag and drop | **First-class, built alongside the tooling** (user requirement, 2026-10-13). Users can drag and drop and use the tooling on the **same design**. How the two share a design is OD-6. |
+
+## Constraints (user, 2026-10-13)
+- **Fast:** quick start-up and a responsive builder
+- **Compiled, self-contained distribution:** users don't download runtimes or a pile of libraries
 
 ## Non-goals (for now)
 - Editing savegames
@@ -30,4 +34,4 @@ A station designer that runs outside X4. Humans and AI agents use it to design s
         |                |                |
       CLI           MCP server      visual designer
 ```
-The idea: put all logic in one core library and keep the front-ends thin, so the CLI, MCP server and UI can't drift apart. Confirm or reject this in [decisions.md](decisions.md).
+All logic (plan model, snap placement, validation, import-file writing) lives in one core library. The visual builder, the CLI and the MCP server are thin front-ends over it, so a drag in the UI and an agent's tool call perform the same operations and can't drift apart. The language is OD-2.

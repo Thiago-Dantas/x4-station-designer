@@ -23,24 +23,24 @@ Session log: [workflow-phase1-research.md](workflow-phase1-research.md)
 - [x] **Top question answered by test C:** `offset` is authoritative. The game doesn't snap or re-derive links, and calls a plan with a floating module "OK".
 - [x] **Snap math solved** (`research/snapcheck.py`): positions and orientations follow from the snap geometry for 99%+ of linked entries in the player and library plans. The Euler convention and the 180°-Y flip plus twist model are verified.
 - [x] Decide OD-3 (injection method): option B, recorded as D-5
-- [ ] Clean up the test plans in-game: the user deletes "X4SD test B" and "X4SD test C" from the plan list
+- [X] Clean up the test plans in-game: the user deletes "X4SD test B" and "X4SD test C" from the plan list
 - [ ] Injection test A after a restart (low priority, since B works)
 
 ## Phase 2: Core library
-- [ ] Decide OD-2 (language)
+- [x] Decide OD-2: Rust + Tauri (D-6)
+- [ ] Set up the dev toolchain: rustup (MSVC target) + C++ build tools, Tauri CLI. Then scaffold the Cargo workspace.
 - [ ] Plan model plus lossless XML read/write. Round-trip test against `research/extracted/profile-samples/`. Number format: up to 3 decimals, trailing zeros dropped.
 - [ ] Import-file writer (D-5): a single-plan file in `<profile>\constructionplan\`, unique `player_<unix time>` id, sanitised file name
 - [ ] Virtual file system plus module catalogue: base, DLCs, **and enabled mods** (e.g. `recyclemodule_macro`); macro → component → snaps; names from `t/`
 - [ ] Snap placement: compute the child offset from (pred, pred snap, child snap, θ), as in `docs/x4-construction-plans.md`
 - [ ] Validator: unknown macros, unknown snaps, missing DLC `<patches>`, linked snaps that don't meet (about 2 cm tolerance)
 
-## Phase 3: Agent interface
-- [ ] Decide OD-1 (CLI / MCP / both)
-- [ ] Implement it on top of the core library
-
-## Phase 4: Visual designer
-- [ ] Decide OD-5 (technology)
-- [ ] 3D view, module placement with snapping, export
+## Phase 3: Designer app: visual builder plus agent tooling on one shared design
+The visual builder is first-class (G6), so it's built alongside the tooling, not after it.
+- [ ] Decide OD-6 (how the builder and the tooling share a design)
+- [ ] Decide OD-1 (CLI / MCP / both). The UI technology is settled by D-6 (Tauri + WebView2 + Three.js).
+- [ ] Visual builder: 3D view, drag and drop of modules with snapping, rotation around the snap axis, validation feedback, export to an import file
+- [ ] Agent tooling over the same core operations (add, attach, rotate, remove, validate, export)
 
 ## Later: live bridge (option D)
 - [ ] Study `sn_mod_support_apis` named pipes
