@@ -113,6 +113,21 @@ fn catalogs(dir: &Path, prefix: &str) -> Result<Vec<PathBuf>> {
     Ok(cats)
 }
 
+/// The X4 install: `X4_GAME_DIR` if set, else the Steam library that has it
+/// (libraries are listed in `<Steam>\steamapps\libraryfolders.vdf`).
+pub fn find_game_dir() -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("X4_GAME_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    let steam = PathBuf::from(std::env::var_os("ProgramFiles(x86)")?).join("Steam");
+    let vdf = std::fs::read_to_string(steam.join("steamapps/libraryfolders.vdf")).ok()?;
+    vdf.lines()
+        .filter(|l| l.trim_start().starts_with("\"path\""))
+        .filter_map(|l| l.trim_end().strip_suffix('"')?.rsplit_once('"').map(|(_, p)| p.replace("\\\\", "\\")))
+        .map(|lib| PathBuf::from(lib).join("steamapps/common/X4 Foundations"))
+        .find(|dir| dir.join("X4.exe").exists())
+}
+
 /// The most recently used profile folder, `Documents\Egosoft\X4\<id>`.
 pub fn find_profile_dir() -> Option<PathBuf> {
     let root = PathBuf::from(std::env::var_os("USERPROFILE")?).join("Documents/Egosoft/X4");
