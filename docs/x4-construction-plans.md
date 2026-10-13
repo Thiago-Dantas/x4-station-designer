@@ -103,7 +103,12 @@ Not resolvable from base game and DLC data: `recyclemodule_macro` (in a player p
 - **No live reload:** a plan added to the file while the game ran did not appear, even after reopening the build menu.
 - **Rewritten from memory:** Save and Export rewrite the whole file from the game's in-memory list at once. Import only adds the plan in memory; the file isn't written until the next Save or Export (importing test C left the file untouched). Any external edit made while the game runs is lost at the next write.
 - New plans are written at the top of the file. The plan id = Unix time of the first save.
-- Numbers are written with up to 3 decimals and trailing zeros dropped (`530.340` is saved as `530.34`). Odd values such as `-90.00001` show up in rotations.
+- Number formats in game-written files (checked against about 2,700 values):
+  - **positions:** at most 3 decimals, trailing zeros dropped (`530.340` is saved as `530.34`);
+  - **quaternions:** C `%.6g` (`0.707107`, `1.38031e-06`);
+  - **rotations:** up to 8 significant digits, sometimes more than an `f32` needs (`-179.99989`). They are probably printed from a double.
+- The game's library plans (hand-made) also contain positions with more than 3 decimals (`-0.0001526`).
+- Our writer (`crates/x4sd-core`) matches the game byte for byte for structure and positions. It writes angles and quaternions as the shortest text that reads back as the same `f32`. So values always round-trip exactly, and the text differs from the game's on about 1.5% of lines (rotation/quaternion only).
 
 ## `offset` is authoritative (verified in game, 2026-10-13, test C)
 We imported TerranScrapyard with one module (the casino, entry 32, no children) moved 1000 m up, while its `connection`/`predecessor` still pointed at entry 8.

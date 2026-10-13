@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plans>
+  <plan id="player_1791913306" name="Fixture &amp; &quot;friends&quot;" description="">
+    <patches>
+      <patch extension="ego_dlc_pirate" version="900" name="Tides of Avarice"/>
+      <patch extension="ego_dlc_terran" version="900" name="Cradle of Humanity"/>
+    </patches>
+    <entry index="1" macro="pier_ter_harbor_02_macro">
+      <offset>
+        <position x="-59.33" y="1730.34" z="-1766.173"/>
+      </offset>
+    </entry>
+    <entry index="2" macro="pier_ter_harbor_02_macro" connection="connectionsnap002">
+      <predecessor index="1" connection="connectionsnap001"/>
+      <offset>
+        <position x="-59.33" y="1730.34" z="-1366.173"/>
+        <rotation yaw="90" roll="-90.00001"/>
+      </offset>
+    </entry>
+    <entry index="3" macro="struct_ter_cross_01_macro" connection="connectionsnap_04">
+      <predecessor index="2" connection="connectionsnap03"/>
+      <offset>
+        <position x="2357.324" y="0" z="1192.002"/>
+        <quaternion qy="0.707107" qw="0.707107"/>
+      </offset>
+    </entry>
+    <entry index="4" macro="defence_ter_disc_01_macro" connection="connectionsnap002">
+      <predecessor index="3" connection="connectionsnap001"/>
+      <offset>
+        <position x="53.565" y="1244.669" z="1518.797"/>
+      </offset>
+      <upgrades>
+        <groups>
+          <shields macro="shield_ter_m_standard_02_mk3_macro" group="group02"/>
+          <turrets macro="turret_ter_m_laser_02_mk1_macro" group="group02" exact="2"/>
+        </groups>
+      </upgrades>
+    </entry>
+  </plan>
+  <plan id="arg_wharf" name="{20102,1241}" tags="wharf" useplanname="true" fixed="1">
+    <entry index="1" macro="buildmodule_gen_ships_m_dockarea_01_macro" fixed="1"/>
+    <entry index="2" macro="struct_arg_cross_01_macro" connection="connectionsnap001" bookmark="1">
+      <predecessor index="1" connection="connectionsnap002"/>
+      <offset>
+        <position x="0" y="0" z="400"/>
+        <rotation pitch="180"/>
+      </offset>
+      <upgrades>
+        <groups>
+          <shields macro="shield_arg_m_standard_01_mk1_macro" path="../con_shield_01" group="group01" exact="1"/>
+        </groups>
+      </upgrades>
+    </entry>
+  </plan>
+</plans>

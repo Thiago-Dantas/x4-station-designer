@@ -28,8 +28,10 @@ Session log: [workflow-phase1-research.md](workflow-phase1-research.md)
 
 ## Phase 2: Core library
 - [x] Decide OD-2: Rust + Tauri (D-6)
-- [ ] Set up the dev toolchain: rustup (MSVC target) + C++ build tools, Tauri CLI. Then scaffold the Cargo workspace.
-- [ ] Plan model plus lossless XML read/write. Round-trip test against `research/extracted/profile-samples/`. Number format: up to 3 decimals, trailing zeros dropped.
+Session log: [workflow-phase2-core.md](workflow-phase2-core.md)
+
+- [x] Set up the dev toolchain: Rust on H:, Windows SDK on D: (`docs/dev-setup.md`), Cargo workspace. The Tauri CLI moves to Phase 3.
+- [x] Plan model plus lossless XML read/write (`crates/x4sd-core/src/plan.rs`). Strict reader; values round-trip exactly on all game files; structure and positions byte-identical to the game's output.
 - [ ] Import-file writer (D-5): a single-plan file in `<profile>\constructionplan\`, unique `player_<unix time>` id, sanitised file name
 - [ ] Virtual file system plus module catalogue: base, DLCs, **and enabled mods** (e.g. `recyclemodule_macro`); macro → component → snaps; names from `t/`
 - [ ] Snap placement: compute the child offset from (pred, pred snap, child snap, θ), as in `docs/x4-construction-plans.md`
