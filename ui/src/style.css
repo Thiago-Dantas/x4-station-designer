@@ -41,6 +41,21 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chips button { padding: 2px 8px; font-size: 12px; border-radius: 10px; }
 .chips button.on { background: #3a2a14; border-color: var(--accent); color: #ffd9a8; }
+.tabs { display: flex; gap: 4px; }
+.tabs button { flex: 1; }
+.tabs button.on { border-color: var(--accent); color: #ffd9a8; }
+.tab { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
+.tab[hidden] { display: none; }
+.step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.step input { flex: 1; }
+#order-list { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.order-row { padding: 4px 8px; border-bottom: 1px solid var(--panel-2); cursor: grab; user-select: none; display: flex; gap: 6px; }
+.order-row .num { color: var(--muted); min-width: 28px; text-align: right; }
+.order-row.selected { background: #3a2a14; }
+.order-row.later { opacity: 0.4; }
+.order-row.drop { border-top: 2px solid var(--accent); }
+.stage-divider { padding: 2px 8px; font-size: 11px; color: #ffd9a8; background: #2a2010; text-transform: uppercase; letter-spacing: 0.05em; }
+.order-actions { margin-top: 6px; }
 #module-list { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
 .module { padding: 5px 8px; border-bottom: 1px solid var(--panel-2); cursor: grab; user-select: none; }
 .module:hover { background: var(--panel-2); }
@@ -55,7 +70,7 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #inspector .name { font-weight: 600; font-size: 14px; }
 #inspector .details { color: var(--muted); font-size: 12px; margin: 4px 0 8px; white-space: pre-line; }
 #inspector .row { display: flex; gap: 6px; }
-#inspector .hint, .help p { color: var(--muted); font-size: 12px; }
+.hint, .help p { color: var(--muted); font-size: 12px; }
 #btn-place-root { width: 100%; margin-top: 4px; }
 .plot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .plot-grid input { width: 64px; }

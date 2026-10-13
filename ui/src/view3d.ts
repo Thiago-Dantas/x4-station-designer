@@ -77,7 +77,8 @@ export class View3D {
   private raycaster = new THREE.Raycaster();
   private hovered: THREE.Mesh | null = null;
   private snapGeometry = new THREE.ConeGeometry(55, 160, 16).translate(0, 80, 0);
-  /** WASD keys held down; they pan like a right-mouse drag. */
+  /** Navigation keys held down: WASD pan like a right-mouse drag, Q/E move
+   * down/up, the arrow keys rotate the camera around its target. */
   private panKeys = new Set<string>();
   private clock = new THREE.Clock();
 
@@ -104,36 +105,55 @@ export class View3D {
     this.resize();
     this.bindPanKeys();
     this.renderer.setAnimationLoop(() => {
-      this.keyPan(this.clock.getDelta());
+      this.keyNavigate(this.clock.getDelta());
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
     });
   }
 
   private bindPanKeys() {
-    const codes = ["KeyW", "KeyA", "KeyS", "KeyD"];
+    const codes = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
     const typing = (ev: KeyboardEvent) =>
       ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.target instanceof HTMLTextAreaElement;
     window.addEventListener("keydown", (ev) => {
-      if (codes.includes(ev.code) && !typing(ev) && !ev.ctrlKey && !ev.altKey) this.panKeys.add(ev.code);
+      if (codes.includes(ev.code) && !typing(ev) && !ev.ctrlKey && !ev.altKey) {
+        this.panKeys.add(ev.code);
+        if (ev.code.startsWith("Arrow")) ev.preventDefault(); // no list scrolling
+      }
     });
     window.addEventListener("keyup", (ev) => this.panKeys.delete(ev.code));
     window.addEventListener("blur", () => this.panKeys.clear());
   }
 
-  /** Pans in screen space, like OrbitControls' right-drag; speed scales with the zoom. */
-  private keyPan(seconds: number) {
+  /** Keyboard navigation while keys are held: WASD pan in screen space (like
+   * OrbitControls' right drag), Q/E move straight down/up, speeds scaled to the
+   * zoom; arrow keys orbit around the target (left/right) and tilt (up/down). */
+  private keyNavigate(seconds: number) {
     if (this.panKeys.size === 0) return;
+    const dt = Math.min(seconds, 0.1);
     const held = (code: string) => (this.panKeys.has(code) ? 1 : 0);
     const right = held("KeyD") - held("KeyA");
     const up = held("KeyW") - held("KeyS");
-    if (right === 0 && up === 0) return;
-    const step = this.camera.position.distanceTo(this.controls.target) * 0.8 * Math.min(seconds, 0.1);
-    const offset = new THREE.Vector3()
-      .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0), right * step)
-      .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1), up * step);
-    this.camera.position.add(offset);
-    this.controls.target.add(offset);
+    const rise = held("KeyE") - held("KeyQ");
+    if (right || up || rise) {
+      const step = this.camera.position.distanceTo(this.controls.target) * 0.8 * dt;
+      const offset = new THREE.Vector3()
+        .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0), right * step)
+        .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1), up * step)
+        .addScaledVector(new THREE.Vector3(0, 1, 0), rise * step);
+      this.camera.position.add(offset);
+      this.controls.target.add(offset);
+    }
+    const spin = held("ArrowRight") - held("ArrowLeft");
+    const tilt = held("ArrowUp") - held("ArrowDown");
+    if (spin || tilt) {
+      const offset = this.camera.position.clone().sub(this.controls.target);
+      const s = new THREE.Spherical().setFromVector3(offset);
+      s.theta += spin * 1.5 * dt;
+      s.phi = THREE.MathUtils.clamp(s.phi - tilt * 1.5 * dt, 0.01, Math.PI - 0.01);
+      this.camera.position.copy(this.controls.target).add(offset.setFromSpherical(s));
+      this.camera.lookAt(this.controls.target);
+    }
   }
 
   /** A WebGL compressed texture from `texture` bytes, or null if this GPU lacks the format. */
@@ -171,7 +191,8 @@ export class View3D {
 
   /** Redraws the station. `shapes` must hold every macro in the scene; `models`
    * holds real models where they are loaded (boxes are drawn otherwise);
-   * `textures` maps game material names to diffuse textures (when shown). */
+   * `textures` maps game material names to diffuse textures (when shown);
+   * with `upTo`, only modules up to that build step are drawn. */
   render(
     scene: Scene,
     shapes: Map<string, Shape>,
@@ -179,6 +200,7 @@ export class View3D {
     textures: Map<string, DiffuseTexture | null> | null,
     selected: number | null,
     showSnaps: boolean,
+    upTo: number | null = null,
   ) {
     clear(this.station);
     clear(this.snaps);
@@ -201,7 +223,7 @@ export class View3D {
     // station costs a draw call per module type and material, not per module.
     // The selected module, and modules without a model, are drawn on their own.
     const instanced = new Map<string, Entry[]>();
-    for (const e of scene.entries) {
+    for (const e of scene.entries.filter((x) => upTo === null || x.index <= upTo)) {
       const key = e.macro.toLowerCase();
       if (models.get(key) && e.index !== selected) instanced.set(key, [...(instanced.get(key) ?? []), e]);
       else this.station.add(single(e, shapes.get(key), models.get(key) ?? null, textures, bad.has(e.index), e.index === selected));

@@ -6,6 +6,7 @@ import os
 import socket
 import struct
 import subprocess
+import tempfile
 import time
 import urllib.request
 import zlib
@@ -84,8 +85,9 @@ class Cdp:
         return png
 
     def hold_key(self, code, key, seconds):
-        """Presses a key (e.g. "KeyD", "d"), holds it, releases it."""
-        vk = ord(key.upper())
+        """Presses a key (e.g. "KeyD", "d" or "ArrowLeft", "ArrowLeft"), holds it, releases it."""
+        arrows = {"ArrowLeft": 37, "ArrowUp": 38, "ArrowRight": 39, "ArrowDown": 40}
+        vk = arrows.get(key) or ord(key.upper())
         self.call("Input.dispatchKeyEvent", type="keyDown", code=code, key=key, windowsVirtualKeyCode=vk)
         time.sleep(seconds)
         self.call("Input.dispatchKeyEvent", type="keyUp", code=code, key=key, windowsVirtualKeyCode=vk)
@@ -148,10 +150,23 @@ def find_color(png, rgb, box):
 PORT = 9333
 
 
+def link_port_in_use():
+    """Whether a builder already listens for agents (live link, 127.0.0.1:47823)."""
+    try:
+        socket.create_connection(("127.0.0.1", 47823), timeout=0.3).close()
+        return True
+    except OSError:
+        return False
+
+
 def start_builder(exe, *args):
     """Starts x4sd in builder mode with remote debugging; returns (process, Cdp)."""
     port = PORT
-    env = dict(os.environ, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=f"--remote-debugging-port={port}")
+    # Own WebView2 profile: never collides with (or changes the settings of) a
+    # builder the user has open.
+    profile = os.path.join(tempfile.gettempdir(), "x4sd-ui-tests-webview2")
+    env = dict(os.environ, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=f"--remote-debugging-port={port}",
+               WEBVIEW2_USER_DATA_FOLDER=profile)
     app = subprocess.Popen([exe, *args], env=env)
     for _ in range(80):
         try:

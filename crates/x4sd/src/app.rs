@@ -65,6 +65,10 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             remove_module,
             set_plot,
             fit_plot,
+            move_in_build_order,
+            build_first,
+            build_last,
+            set_stage_end,
             undo,
             redo,
         ])
@@ -303,6 +307,35 @@ fn fit_plot(state: State<'_, Shared>, grow_only: bool) -> CmdResult {
     edit(&state, |d, c| d.fit_plot(c, grow_only).map(|_| ()))
 }
 
+// Reorders renumber the modules: the scene's `focus` is the moved module's new index.
+#[tauri::command]
+fn move_in_build_order(state: State<'_, Shared>, index: u32, position: usize) -> CmdResult {
+    reorder(&state, |d| d.move_in_build_order(index, position))
+}
+
+#[tauri::command]
+fn build_first(state: State<'_, Shared>, index: u32) -> CmdResult {
+    reorder(&state, |d| d.build_first(index))
+}
+
+#[tauri::command]
+fn build_last(state: State<'_, Shared>, index: u32) -> CmdResult {
+    reorder(&state, |d| d.build_last(index))
+}
+
+fn reorder(state: &State<'_, Shared>, op: impl FnOnce(&mut Design) -> x4sd_core::Result<u32>) -> CmdResult {
+    let mut app = state.lock().unwrap();
+    let focus = op(&mut app.design).map_err(|e| e.to_string())?;
+    let mut scene = scene_json(&app)?;
+    scene["focus"] = json!(focus);
+    Ok(scene)
+}
+
+#[tauri::command]
+fn set_stage_end(state: State<'_, Shared>, index: u32, end: bool) -> CmdResult {
+    edit(&state, |d, _| d.set_stage_end(index, end))
+}
+
 #[tauri::command]
 fn undo(state: State<'_, Shared>) -> CmdResult {
     edit(&state, |d, _| {
@@ -365,7 +398,8 @@ fn scene_json(app: &App) -> CmdResult {
                 let pred = plan.entries.iter().find(|x| x.index == p.index)?;
                 let ps = c.module(&pred.macro_name).ok()?.snap(&p.connection)?.transform;
                 let cs = c.module(&e.macro_name).ok()?.snap(e.connection.as_deref()?)?.transform;
-                Some(fit(&design.world(p.index).ok()?, &ps, &world, &cs).twist.round())
+                // 359.99... rounds to 360: show it as 0.
+                Some(fit(&design.world(p.index).ok()?, &ps, &world, &cs).twist.round().rem_euclid(360.0))
             });
             json!({"to": p.index, "to_snap": p.connection, "snap": e.connection, "twist": twist})
         });
@@ -381,6 +415,7 @@ fn scene_json(app: &App) -> CmdResult {
             "position": world.position,
             "rotation": quat_json(world.rotation),
             "attached": attached,
+            "stage_end": e.bookmark.is_some(),
             "free_snaps": free,
         }));
     }

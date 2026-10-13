@@ -4,6 +4,10 @@
 //! placed with the snap math, moving or twisting a module carries everything
 //! attached to it along, and removing a module removes its descendants and
 //! renumbers the entries `1..n` like the game writes them.
+//!
+//! Entry order is the build order: a module always comes after the module it
+//! attaches to. `bookmark="1"` on an entry ends a build stage (see
+//! docs/x4-construction-plans.md, "Build order and stages").
 
 use std::sync::Arc;
 
@@ -159,6 +163,81 @@ impl Design {
         self.renumber();
         self.plan.patches = catalog.required_patches(&self.plan);
         Ok(doomed.len())
+    }
+
+    /// Moves entry `index` to `position` (1-based) in the build order. Fails when
+    /// that would put it before the module it attaches to, or after a module
+    /// attached to it. Entries are renumbered to the new order; returns the
+    /// module's new index.
+    pub fn move_in_build_order(&mut self, index: u32, position: usize) -> Result<u32> {
+        let from = self.position_of(index)?;
+        if position == 0 || position > self.plan.entries.len() {
+            return Err(Error(format!("position {position} is outside 1..{}", self.plan.entries.len())));
+        }
+        let mut order: Vec<u32> = self.plan.entries.iter().map(|e| e.index).collect();
+        order.remove(from);
+        order.insert(position - 1, index);
+        self.apply_order(&order)?;
+        Ok(position as u32)
+    }
+
+    /// Builds entry `index` as early as possible: it and the chain of modules it
+    /// hangs on move to the front, in chain order; the rest keep their order.
+    /// Returns the module's new index.
+    pub fn build_first(&mut self, index: u32) -> Result<u32> {
+        let mut chain = vec![index];
+        while let Some(p) = &self.entry(*chain.last().unwrap())?.predecessor {
+            chain.push(p.index);
+        }
+        chain.reverse();
+        let rest = self.plan.entries.iter().map(|e| e.index).filter(|i| !chain.contains(i));
+        let order: Vec<u32> = chain.iter().copied().chain(rest).collect();
+        self.apply_order(&order)?;
+        Ok(chain.len() as u32)
+    }
+
+    /// Builds entry `index` as late as possible: it and everything attached to
+    /// it move to the end, keeping their order; the rest keep theirs. Returns
+    /// the module's new index.
+    pub fn build_last(&mut self, index: u32) -> Result<u32> {
+        self.entry(index)?;
+        let moved = self.subtree(index);
+        let (tail, head): (Vec<u32>, Vec<u32>) = self.plan.entries.iter().map(|e| e.index).partition(|i| moved.contains(i));
+        let new_index = head.len() + tail.iter().position(|&i| i == index).unwrap() + 1;
+        self.apply_order(&[head, tail].concat())?;
+        Ok(new_index as u32)
+    }
+
+    /// Marks entry `index` as the last of a build stage (`bookmark="1"`), or not.
+    pub fn set_stage_end(&mut self, index: u32, end: bool) -> Result<()> {
+        self.entry(index)?;
+        self.checkpoint();
+        let e = self.plan.entries.iter_mut().find(|e| e.index == index).unwrap();
+        e.bookmark = end.then(|| "1".to_owned());
+        Ok(())
+    }
+
+    fn position_of(&self, index: u32) -> Result<usize> {
+        self.plan.entries.iter().position(|e| e.index == index).ok_or_else(|| Error(format!("no entry {index}")))
+    }
+
+    /// Reorders the entries to `order` (current indices) if every module still
+    /// comes after its predecessor, then renumbers them `1..n`.
+    fn apply_order(&mut self, order: &[u32]) -> Result<()> {
+        let rank = |i: u32| order.iter().position(|&o| o == i);
+        for e in &self.plan.entries {
+            if let Some(p) = &e.predecessor {
+                if rank(p.index) > rank(e.index) {
+                    return Err(Error(format!("module {} would be built before {}, which it attaches to", e.index, p.index)));
+                }
+            }
+        }
+        self.checkpoint();
+        let mut entries = std::mem::take(&mut self.plan.entries);
+        entries.sort_by_key(|e| rank(e.index));
+        self.plan.entries = entries;
+        self.renumber();
+        Ok(())
     }
 
     /// Snaps of entry `index` that nothing uses, where new modules can attach.
@@ -359,6 +438,53 @@ mod tests {
         assert!(close(d.world(cross).unwrap().position, [1600.0, 0.0, 0.0]));
         assert_attached(&d, &c, cross);
         assert!(d.move_root(cross, at).is_err(), "attached modules move with their root");
+    }
+
+    /// 1 beam, 2 cross on it, 3 beam on the cross, 4 beam on beam 1's other end.
+    fn small_station(c: &Catalog) -> Design {
+        let mut d = Design::new("order");
+        let root = d.add_root(c, "beam", Transform::IDENTITY).unwrap();
+        let cross = d.attach(c, "cross", "s", root, "s1", 0.0).unwrap();
+        d.attach(c, "beam", "s2", cross, "e", 0.0).unwrap();
+        d.attach(c, "beam", "s1", root, "s2", 0.0).unwrap();
+        d
+    }
+
+    fn order(d: &Design) -> Vec<(u32, String, Option<u32>)> {
+        d.plan().entries.iter().map(|e| (e.index, e.macro_name.clone(), e.predecessor.as_ref().map(|p| p.index))).collect()
+    }
+
+    #[test]
+    fn build_order_moves_respect_attachments() {
+        let c = catalog();
+        let mut d = small_station(&c);
+        let placed = |d: &Design, macro_name: &str, pred: Option<u32>| {
+            d.plan().entries.iter().find(|e| e.macro_name == macro_name && e.predecessor.as_ref().map(|p| p.index) == pred).map(|e| e.index)
+        };
+        // Beam 4 hangs on the root: it may move to position 2, before the cross.
+        assert_eq!(d.move_in_build_order(4, 2).unwrap(), 2);
+        assert_eq!(order(&d)[1], (2, "beam".to_owned(), Some(1)), "{:?}", order(&d));
+        assert_eq!(placed(&d, "cross", Some(1)), Some(3));
+        // The cross can't go before the root it attaches to.
+        assert!(d.move_in_build_order(3, 1).is_err());
+        // Build last: the cross and the beam on it go to the end, renumbered.
+        assert_eq!(d.build_last(3).unwrap(), 3, "the cross is first of the moved pair");
+        assert_eq!(order(&d).iter().map(|o| o.0).collect::<Vec<_>>(), [1, 2, 3, 4]);
+        assert_eq!(order(&d)[2].1, "cross");
+        assert_eq!(order(&d)[3].2, Some(3), "the side beam still points at the cross");
+        // Build first: the side beam and the chain it hangs on (root, cross) come first.
+        assert_eq!(d.build_first(4).unwrap(), 3, "root, cross, then the side beam");
+        assert_eq!(order(&d).iter().map(|o| o.1.as_str()).collect::<Vec<_>>(), ["beam", "cross", "beam", "beam"]);
+        assert_eq!(order(&d)[2].2, Some(2), "the side beam right after its cross");
+        assert!(order(&d).iter().all(|(i, _, p)| p.is_none_or(|p| p < *i)), "every module after its predecessor");
+        for i in 2..=4 {
+            assert_attached(&d, &c, i);
+        }
+        // Stages and undo.
+        d.set_stage_end(2, true).unwrap();
+        assert_eq!(d.plan().entries[1].bookmark.as_deref(), Some("1"));
+        assert!(d.undo());
+        assert_eq!(d.plan().entries[1].bookmark, None);
     }
 
     #[test]

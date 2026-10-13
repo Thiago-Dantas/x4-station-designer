@@ -136,7 +136,8 @@ So:
   - 42 library plans use stages, e.g. `arg_claytronics_prefab_08` with 7. Player plans have none.
   - **Unknown:** whether stages matter for a station the player builds through the build menu.
 - **Priorities** have no field in the format; a priority is a position in the order. Reordering is safe as long as every module stays after its predecessor (offsets are authoritative, so geometry doesn't change).
-- **Planned:** a build-order viewer and editor in the builder (see roadmap).
+- **Implemented:** `Design::move_in_build_order`, `build_first`, `build_last` and `set_stage_end` (core). They're in the builder's Build order tab and the MCP tools. Every reorder is checked so a module never comes before its predecessor, then the plan is renumbered.
+- **Still to check in game:** whether the builder follows the order, and whether stages matter for player builds.
 
 ## Plots (verified in the build menu Lua, 2026-10-13)
 - **Shape:** a plot is a box around the station origin, measured per side in whole km (+X, −X, +Y, −Y, +Z, −Z). Each axis is at most 20 km (`maxPlotSize`) and at least 1 km. Internally it's a size in metres plus a centre offset (`GetBuildPlotSize` / `GetBuildPlotCenterOffset`).

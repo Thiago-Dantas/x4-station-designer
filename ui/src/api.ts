@@ -21,13 +21,26 @@ export interface Entry {
   position: Vec3;
   rotation: Quat;
   attached: Attachment | null;
+  /** A build stage ends after this module (`bookmark` in the plan). */
+  stage_end: boolean;
   free_snaps: SnapInfo[];
 }
 export interface Issue { index: number | null; text: string }
 export interface PlotInfo { pos: Vec3; neg: Vec3; size: Vec3; text: string }
 /** The plot, the plot the station needs, whether it fits, whether any plot (20 km max) can hold it. */
 export interface PlotStatus { plot: PlotInfo | null; required: PlotInfo | null; fits: boolean; possible: boolean }
-export interface Scene { id: string; name: string; patches: string[]; can_undo: boolean; can_redo: boolean; entries: Entry[]; issues: Issue[]; plot: PlotStatus | null }
+export interface Scene {
+  id: string;
+  name: string;
+  patches: string[];
+  can_undo: boolean;
+  can_redo: boolean;
+  entries: Entry[];
+  issues: Issue[];
+  plot: PlotStatus | null;
+  /** After a build-order change: the moved module's new index (modules are renumbered). */
+  focus?: number;
+}
 export interface PlanRef { file: string; source?: string; id: string; name: string; modules: number }
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -64,6 +77,10 @@ export const api = {
   removeModule: (index: number) => serial<Scene>("remove_module", { index }),
   setPlot: (pos: Vec3, neg: Vec3) => serial<Scene>("set_plot", { pos, neg }),
   fitPlot: (growOnly: boolean) => serial<Scene>("fit_plot", { growOnly }),
+  moveInBuildOrder: (index: number, position: number) => serial<Scene>("move_in_build_order", { index, position }),
+  buildFirst: (index: number) => serial<Scene>("build_first", { index }),
+  buildLast: (index: number) => serial<Scene>("build_last", { index }),
+  setStageEnd: (index: number, end: boolean) => serial<Scene>("set_stage_end", { index, end }),
   undo: () => serial<Scene>("undo"),
   redo: () => serial<Scene>("redo"),
 };

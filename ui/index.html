@@ -28,11 +28,22 @@
     </header>
     <main>
       <aside id="palette">
-        <input id="search" placeholder="Search modules…" spellcheck="false" />
-        <select id="class-filter"><option value="">All classes</option></select>
-        <div id="race-filter" class="chips" title="Show modules of these races (none selected: all)"></div>
-        <div id="module-list"></div>
-        <div id="module-count"></div>
+        <div class="tabs">
+          <button id="tab-modules" class="on">Modules</button>
+          <button id="tab-order">Build order</button>
+        </div>
+        <div id="modules-tab" class="tab">
+          <input id="search" placeholder="Search modules…" spellcheck="false" />
+          <select id="class-filter"><option value="">All classes</option></select>
+          <div id="race-filter" class="chips" title="Show modules of these races (none selected: all)"></div>
+          <div id="module-list"></div>
+          <div id="module-count"></div>
+        </div>
+        <div id="order-tab" class="tab" hidden>
+          <label class="step">Show up to step <input type="range" id="build-step" min="0" value="0" /> <span id="build-step-label"></span></label>
+          <div id="order-list"></div>
+          <p class="hint">Modules are built top to bottom, each after the one it attaches to. Drag a row onto another to move it there.</p>
+        </div>
       </aside>
       <section id="viewport"></section>
       <aside id="inspector">
@@ -53,6 +64,11 @@
             <button id="btn-twist-right" title="Twist +90° (R)">⟳ 90°</button>
             <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
           </div>
+          <div class="row order-actions">
+            <button id="btn-build-first" title="Build it as early as possible (with the modules it hangs on)">Build first</button>
+            <button id="btn-build-last" title="Build it as late as possible (with everything attached to it)">Build last</button>
+          </div>
+          <label><span>A build stage ends here</span> <input type="checkbox" id="stage-end" /></label>
         </section>
         <section id="plot-panel">
           <h3>Plot</h3>
@@ -73,7 +89,7 @@
         </section>
         <section class="help">
           <h3>Controls</h3>
-          <p>Left drag: orbit · Right drag or WASD: pan · Wheel: zoom<br />Click a module to select · Del removes · R twists</p>
+          <p>Left drag or arrow keys: rotate · Right drag or WASD: pan · Q/E: down/up · Wheel: zoom<br />Click a module to select · Del removes · R twists</p>
         </section>
       </aside>
     </main>

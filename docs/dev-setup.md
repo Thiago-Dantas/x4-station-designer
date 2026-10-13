@@ -40,7 +40,9 @@ python -I research\texture_smoke.py target\release\x4sd.exe <scratch dir> [plan]
   - Generated `crates/x4sd/gen/` is git-ignored.
 - **Coordinates:** the game is left-handed (Y up) and Three.js right-handed. `ui/src/view3d.ts` mirrors Z, so a position `(x, y, z)` becomes `(x, y, -z)`, and a quaternion `(w, x, y, z)` becomes `(w, -x, -y, z)`.
 - **Console window:** `x4sd.exe` stays a console program (for the CLI and MCP). In builder mode it detaches from a console that Windows created just for it (double-click), so a terminal it was started from is kept.
-- **UI tests share the builder's WebView2 profile with real use:** remembered settings (local storage) carry over in both directions, and tests must restore what they change. All scripts use one DevTools port, because WebView2 refuses to start (and Tauri panics) while a previous instance's processes still hold the profile with different arguments.
+- **UI tests use their own WebView2 profile** (`WEBVIEW2_USER_DATA_FOLDER` = `%TEMP%\x4sd-ui-tests-webview2`), so they neither collide with a builder the user has open nor change its remembered settings. They all use one DevTools port, because WebView2 refuses to start (and Tauri panics) while a previous instance's processes still hold the profile with other arguments.
+- **`mcp_smoke.py` and `link_smoke.py` refuse to run while a builder is open:** through the live link they would edit that builder's design.
+- **Drag and drop:** `dragDropEnabled: false` in `tauri.conf.json`. Tauri's window-level file-drop handler otherwise swallows HTML5 drag and drop on Windows (palette → view, build-order rows). The UI test checks the handlers with synthetic drag events; the native path can only be checked by hand.
 - **UI testing:** WebView2 accepts `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=N`. `research/ui_smoke.py` uses that for clicks, JavaScript evaluation and screenshots, and finds snap cones by their colour.
 **Don't build from Git Bash.** Its `/usr/bin/link.exe` (GNU coreutils) shadows the MSVC linker and the build fails with `link: missing operand`.
 

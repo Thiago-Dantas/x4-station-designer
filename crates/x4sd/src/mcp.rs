@@ -28,6 +28,8 @@ remove_module. Every edit can be undone with undo.
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
 New designs start on a 2x2x2 km plot, opened ones on the smallest that fits. validate_design reports modules \
 outside the plot and the size needed; set_plot / fit_plot change it (tell the user when the plot must grow).
+Build order: modules are built in index order, each after the module it attaches to. move_in_build_order, \
+build_first and build_last reorder (and renumber, so describe again); set_stage_end splits the build into stages.
 If the X4 Station Designer builder window is open, all tools work on the design shown there and the \
 user sees every change live (builder_status tells which).";
 
@@ -158,6 +160,22 @@ pub struct FitPlotArgs {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct MoveArgsOrder {
+    /// Module index
+    index: u32,
+    /// New 1-based position in the build order
+    position: usize,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct StageArgs {
+    /// Module index
+    index: u32,
+    /// true: a build stage ends after this module
+    end: bool,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct NoArgs {}
 
 #[tool_router]
@@ -264,6 +282,26 @@ impl Server {
     #[tool(description = "Fit the plot to the station: the smallest plot that holds it, or with grow_only just enlarge the current one. Fails if the station is longer than 20 km on an axis.")]
     fn fit_plot(&self, Parameters(a): Parameters<FitPlotArgs>) -> ToolResult {
         self.run(Op::FitPlot { grow_only: a.grow_only })
+    }
+
+    #[tool(description = "Move a module to a position in the build order (modules are built in index order). Refused if it would come before the module it attaches to, or after one attached to it. Modules are renumbered.")]
+    fn move_in_build_order(&self, Parameters(a): Parameters<MoveArgsOrder>) -> ToolResult {
+        self.run(Op::MoveInBuildOrder { index: a.index, position: a.position })
+    }
+
+    #[tool(description = "Build a module as early as possible: it and the chain of modules it hangs on move to the front. Modules are renumbered.")]
+    fn build_first(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
+        self.run(Op::BuildFirst { index: a.index })
+    }
+
+    #[tool(description = "Build a module as late as possible: it and everything attached to it move to the end. Modules are renumbered.")]
+    fn build_last(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
+        self.run(Op::BuildLast { index: a.index })
+    }
+
+    #[tool(description = "End a build stage after this module (or remove that stage end). Stages let the station be built in steps.")]
+    fn set_stage_end(&self, Parameters(a): Parameters<StageArgs>) -> ToolResult {
+        self.run(Op::SetStageEnd { index: a.index, end: a.end })
     }
 
     #[tool(description = "Put the open design into the game: writes it to the player profile's constructionplan folder. The player then clicks Import in the station build menu.")]

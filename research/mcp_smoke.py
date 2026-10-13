@@ -6,10 +6,18 @@ Builds a small Terran station (hub + 4 beams + habitat), validates it and
 exports it into the scratch profile's constructionplan folder.
 """
 import json
+import os
+import socket
 import subprocess
 import sys
 
 exe, profile = sys.argv[1], sys.argv[2]
+if os.environ.get("X4SD_EXPECT_BUILDER") != "1":
+    try:
+        socket.create_connection(("127.0.0.1", 47823), timeout=0.3).close()
+        raise SystemExit("a builder is open: the MCP server would edit its design. Close it first.")
+    except OSError:
+        pass
 proc = subprocess.Popen([exe, "--profile-dir", profile, "mcp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8")
 next_id = 0
 

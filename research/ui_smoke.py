@@ -51,6 +51,52 @@ try:
     print("   selected:", cdp.js("document.getElementById('sel-name').textContent"), "|",
           cdp.js("document.getElementById('sel-details').textContent.split(String.fromCharCode(10))[0]"))
 
+    # Build order tab: rows, timeline preview, build first, stage end, undo.
+    cdp.js("document.getElementById('tab-order').click()")
+    rows = cdp.js("document.querySelectorAll('#order-list .order-row').length")
+    cdp.js("{ const s = document.getElementById('build-step'); s.value = 10; s.dispatchEvent(new Event('input')); }")
+    later = cdp.js("document.querySelectorAll('#order-list .order-row.later').length")
+    time.sleep(0.8)
+    cdp.screenshot(os.path.join(out, "ui-order-step10.png"))
+    cdp.js("{ const s = document.getElementById('build-step'); s.value = s.max; s.dispatchEvent(new Event('input')); }")
+    name50 = cdp.js("document.querySelectorAll('#order-list .order-row')[49].querySelector('.n').textContent")
+    cdp.js("document.querySelectorAll('#order-list .order-row')[49].click()")
+    cdp.js("document.getElementById('btn-build-first').click()")
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Moved to the front')")
+    where = cdp.js("[...document.querySelectorAll('#order-list .order-row')].findIndex(r => r.classList.contains('selected'))")
+    moved = cdp.js("document.getElementById('sel-name').textContent")
+    print(f"   build order: {rows} rows, step 10 dims {later}; '{name50}' (#50) build first -> now #{where + 1}, selected: '{moved}'")
+    assert moved == name50 and where + 1 < 50, (moved, where)
+    cdp.js("document.getElementById('stage-end').click()")
+    cdp.wait_for("document.querySelectorAll('#order-list .stage-divider').length === 1")
+    print("   stage divider:", cdp.js("document.querySelector('#order-list .stage-divider').textContent"))
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+    time.sleep(0.4)
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+    cdp.wait_for(f"document.querySelectorAll('#order-list .order-row')[49].querySelector('.n').textContent === '{name50}'")
+    print("   after 2x undo, row 50 is again:", cdp.js("document.querySelectorAll('#order-list .order-row')[49].querySelector('.n').textContent"))
+    assert rows == 84 and later == 74, (rows, later)
+    # Drag and drop in the build order: a module that attaches to one of the first 9 rows,
+    # dragged from further down onto row 10.
+    drag = """(() => {
+      const rows = [...document.querySelectorAll('#order-list .order-row')];
+      const from = rows.findIndex((r, i) => i > 10 && /#(\d+)/.test(r.title) && Number(r.title.match(/#(\d+)/)[1]) < 10);
+      const name = rows[from].querySelector('.n').textContent;
+      const data = new DataTransfer();
+      rows[from].dispatchEvent(new DragEvent('dragstart', { dataTransfer: data, bubbles: true }));
+      rows[9].dispatchEvent(new DragEvent('dragover', { dataTransfer: data, bubbles: true, cancelable: true }));
+      rows[9].dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+      return [from + 1, name];
+    })()"""
+    dragged_from, dragged = cdp.js(drag)
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Moved #')")
+    now10 = cdp.js("document.querySelectorAll('#order-list .order-row')[9].querySelector('.n').textContent")
+    print(f"   drag row {dragged_from} ('{dragged}') onto row 10 -> row 10 is now '{now10}'")
+    assert now10 == dragged, (now10, dragged)
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+    cdp.wait_for(f"document.querySelectorAll('#order-list .order-row')[{dragged_from - 1}].querySelector('.n').textContent === '{dragged}'")
+    cdp.js("document.getElementById('tab-modules').click()")
+
     cdp.js("document.getElementById('btn-new').click()")
     cdp.wait_for("document.getElementById('status').textContent.includes('New design')")
     cdp.js("{ const s = document.getElementById('search'); s.value = 'Terran Cross Connection Structure 01'; s.dispatchEvent(new Event('input')) }")
@@ -98,5 +144,15 @@ try:
     print("5. cone", before, "-> after D", after_d, "-> after W", after_w)
     assert after_d[0] < before[0] - 20, "D should shift the scene left"
     assert after_w[1] > after_d[1] + 20, "W should shift the scene down"
+    # Q/E move straight down/up (E: the scene shifts down on screen); arrows orbit the camera.
+    cdp.hold_key("KeyE", "e", 0.4)
+    time.sleep(0.3)
+    after_e = find_color(cdp.screenshot(None), (0x37, 0xD0, 0xC0), vp)
+    cdp.hold_key("ArrowRight", "ArrowRight", 0.5)
+    time.sleep(0.3)
+    after_arrow = find_color(cdp.screenshot(os.path.join(out, "ui-6-rotated.png")), (0x37, 0xD0, 0xC0), vp)
+    print("6. after E", after_e, "-> after ArrowRight", after_arrow)
+    assert after_e[1] > after_w[1] + 20, "E should shift the scene down"
+    assert after_arrow != after_e, "an arrow key should rotate the view"
 finally:
     app.terminate()

@@ -35,6 +35,8 @@ let modules: ModuleInfo[] = [];
 let scene: Scene | null = null;
 let selected: number | null = null;
 let armed: ModuleInfo | null = null;
+/** Build-order preview: show modules up to this step (null: all). */
+let buildStep: number | null = null;
 /** Races shown in the palette; empty means all. Modules without a race count as "generic". */
 const races = new Set<string>(
   (() => {
@@ -109,6 +111,7 @@ async function apply(action: Promise<Scene>, done?: string, frame = false, userE
     if (macros.some((x) => !models.has(x.toLowerCase()))) status("Loading models…");
     await Promise.all(macros.flatMap((x) => [shapeOf(x), modelOf(x)]));
     if (showTextures) await loadTextures();
+    if (scene.focus) selected = scene.focus;
     if (selected !== null && !scene.entries.some((e) => e.index === selected)) selected = null;
     redraw();
     if (frame) view.frame();
@@ -145,7 +148,9 @@ function moduleName(macro: string) {
 
 function redraw() {
   if (!scene) return;
-  view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null);
+  if (buildStep !== null && buildStep >= scene.entries.length) buildStep = null;
+  view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null, buildStep);
+  renderOrder();
   $<HTMLInputElement>("design-name").value = scene.name;
   const count = `${scene.entries.length} module${scene.entries.length === 1 ? "" : "s"}`;
   $("patches").textContent = scene.patches.length ? `${count} · Needs: ${scene.patches.join(", ")}` : count;
@@ -178,6 +183,7 @@ function redraw() {
       `\n${sel.free_snaps.length} free snap(s)`;
     $<HTMLButtonElement>("btn-twist-left").disabled = !a;
     $<HTMLButtonElement>("btn-twist-right").disabled = !a;
+    $<HTMLInputElement>("stage-end").checked = sel.stage_end;
   }
   $("btn-place-root").hidden = scene.entries.length > 0;
 
@@ -232,6 +238,50 @@ function renderPalette() {
     }),
   );
   $("module-count").textContent = `${shown.length} of ${modules.length} modules`;
+}
+
+/** The build order list: one row per module in build order, stage dividers, drag to reorder. */
+function renderOrder() {
+  if (!scene) return;
+  const total = scene.entries.length;
+  const slider = $<HTMLInputElement>("build-step");
+  slider.max = String(total);
+  slider.value = String(buildStep ?? total);
+  $("build-step-label").textContent = `${buildStep ?? total} / ${total}`;
+  const rows: HTMLElement[] = [];
+  let stage = 1;
+  for (const e of scene.entries) {
+    const row = document.createElement("div");
+    row.className = "order-row" + (e.index === selected ? " selected" : "") + (buildStep !== null && e.index > buildStep ? " later" : "");
+    row.draggable = true;
+    row.innerHTML = `<span class="num"></span><span class="n"></span>`;
+    row.querySelector(".num")!.textContent = `${e.index}.`;
+    row.querySelector(".n")!.textContent = e.name ?? e.macro;
+    row.title = e.attached ? `attaches to #${e.attached.to}` : "not attached (root)";
+    row.onclick = () => select(e.index);
+    row.ondragstart = (ev) => ev.dataTransfer!.setData("text/x4sd-entry", String(e.index));
+    row.ondragover = (ev) => {
+      if (ev.dataTransfer?.types.includes("text/x4sd-entry")) {
+        ev.preventDefault();
+        row.classList.add("drop");
+      }
+    };
+    row.ondragleave = () => row.classList.remove("drop");
+    row.ondrop = (ev) => {
+      ev.preventDefault();
+      row.classList.remove("drop");
+      const moved = Number(ev.dataTransfer?.getData("text/x4sd-entry"));
+      if (moved && moved !== e.index) void apply(api.moveInBuildOrder(moved, e.index), `Moved #${moved} to step ${e.index}`);
+    };
+    rows.push(row);
+    if (e.stage_end) {
+      const divider = document.createElement("div");
+      divider.className = "stage-divider";
+      divider.textContent = `End of stage ${stage++}`;
+      rows.push(divider);
+    }
+  }
+  $("order-list").replaceChildren(...rows);
 }
 
 function renderRaceFilter() {
@@ -418,6 +468,23 @@ $<HTMLSelectElement>("quality").onchange = async (ev) => {
 $("btn-twist-left").onclick = () => twistSelected(-90);
 $("btn-twist-right").onclick = () => twistSelected(90);
 $("btn-remove").onclick = removeSelected;
+$("btn-build-first").onclick = () => selected !== null && apply(api.buildFirst(selected), "Moved to the front of the build order");
+$("btn-build-last").onclick = () => selected !== null && apply(api.buildLast(selected), "Moved to the end of the build order");
+$<HTMLInputElement>("stage-end").onchange = (ev) =>
+  selected !== null && apply(api.setStageEnd(selected, (ev.target as HTMLInputElement).checked));
+$<HTMLInputElement>("build-step").oninput = (ev) => {
+  const step = Number((ev.target as HTMLInputElement).value);
+  buildStep = scene && step < scene.entries.length ? step : null;
+  redraw();
+};
+for (const [tab, panel] of [["tab-modules", "modules-tab"], ["tab-order", "order-tab"]]) {
+  $(tab).onclick = () => {
+    for (const [t, p] of [["tab-modules", "modules-tab"], ["tab-order", "order-tab"]]) {
+      $(t).classList.toggle("on", t === tab);
+      $(p).hidden = p !== panel;
+    }
+  };
+}
 document.querySelectorAll<HTMLInputElement>(".plot-grid input").forEach((input) => (input.onchange = () => apply(plotFromInputs())));
 $("btn-fit-plot").onclick = () => apply(api.fitPlot(false), "Plot fitted to the station");
 $("btn-place-root").onclick = () => armed && apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);

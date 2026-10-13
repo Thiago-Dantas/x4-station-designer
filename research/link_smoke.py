@@ -13,19 +13,22 @@ import time
 
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
-from cdp import start_builder  # noqa: E402
+from cdp import link_port_in_use, start_builder  # noqa: E402
 
 exe, out = sys.argv[1], sys.argv[2]
 profile = os.path.join(out, "profile")
 os.makedirs(profile, exist_ok=True)
 
+if link_port_in_use():
+    raise SystemExit("a builder is already open: the agent would edit that one. Close it first.")
 app, cdp = start_builder(exe, "--profile-dir", profile)
 try:
     cdp.wait_for("document.getElementById('status').textContent.includes('modules loaded')")
     print("builder up:", cdp.js("document.getElementById('patches').textContent"))
 
     agent = subprocess.run([sys.executable, "-I", os.path.join(here, "mcp_smoke.py"), exe, profile],
-                           capture_output=True, text=True, encoding="utf-8", timeout=120)
+                           capture_output=True, text=True, encoding="utf-8", timeout=120,
+                           env=dict(os.environ, X4SD_EXPECT_BUILDER="1"))
     print("agent output:")
     print("\n".join("   " + line for line in agent.stdout.splitlines()))
     if agent.returncode != 0:

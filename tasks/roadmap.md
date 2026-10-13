@@ -62,13 +62,8 @@ Proposed order (each step usable on its own):
 - [x] Textures on the models as an on/off setting (user request; on by default after measuring; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [x] **Race filter** in the palette (user request): chips for one or several races (e.g. Terran + Boron) or all; remembered; ui_smoke checks Terran + Boron = 83 modules
 - [x] **Plot size** (user request): plot per side in km, drawn as a box; modules outside are flagged; an enlarge (or undo) prompt; MCP `set_plot`/`fit_plot`; CLI `show` (plot needed) and `validate --plot`. See [workflow-plot-size.md](workflow-plot-size.md).
-- [ ] **Build order viewer and editor** (user request, after textures):
-  - [ ] list in build order with stage dividers
-  - [ ] drag to reorder (always after its predecessor), "build first" / "build last" (moves the predecessor chain along)
-  - [ ] stages (bookmarks)
-  - [ ] a 3D timeline slider showing the station grow
-  - [ ] the same operations over MCP
-  - Background: docs/x4-construction-plans.md, "Build order and stages". Needs an in-game check that player builds follow the order.
+- [x] **Build order viewer and editor** (user request; see [workflow-build-order.md](workflow-build-order.md)): list with stage dividers, drag to reorder, build first/last, stage ends, timeline slider, MCP tools. Still to check in game: that player builds follow the order.
+- [x] Keyboard navigation (user requests): WASD pan, Q/E down/up, arrow keys rotate
 - [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 

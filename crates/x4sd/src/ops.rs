@@ -41,6 +41,12 @@ pub enum Op {
     /// Plot reach per side in km: `pos` = +X, +Y, +Z, `neg` = −X, −Y, −Z.
     SetPlot { pos: [u32; 3], neg: [u32; 3] },
     FitPlot { grow_only: Option<bool> },
+    /// Build order (= module order): move a module to a 1-based position.
+    MoveInBuildOrder { index: u32, position: usize },
+    BuildFirst { index: u32 },
+    BuildLast { index: u32 },
+    /// End (or not) a build stage after this module.
+    SetStageEnd { index: u32, end: bool },
 }
 
 impl Op {
@@ -163,6 +169,22 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             ctx.design.fit_plot(c, grow_only.unwrap_or(false)).map_err(err)?;
             Ok(plot_status(ctx.design, c))
         }
+        Op::MoveInBuildOrder { index, position } => {
+            let moved_to = ctx.design.move_in_build_order(index, position).map_err(err)?;
+            moved(ctx, moved_to)
+        }
+        Op::BuildFirst { index } => {
+            let moved_to = ctx.design.build_first(index).map_err(err)?;
+            moved(ctx, moved_to)
+        }
+        Op::BuildLast { index } => {
+            let moved_to = ctx.design.build_last(index).map_err(err)?;
+            moved(ctx, moved_to)
+        }
+        Op::SetStageEnd { index, end } => {
+            ctx.design.set_stage_end(index, end).map_err(err)?;
+            describe(ctx)
+        }
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
             Ok(json!({"saved": file}))
@@ -177,6 +199,13 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             Ok(json!({"file": path, "id": plan.id, "next": "In game: station build menu > Import > select the plan"}))
         }
     }
+}
+
+/// After a reorder: the module's new index plus the renumbered design.
+fn moved(ctx: &Ctx, moved_to: u32) -> Result<Value, String> {
+    let mut out = describe(ctx)?;
+    out["moved_to"] = json!(moved_to);
+    Ok(out)
 }
 
 fn describe(ctx: &Ctx) -> Result<Value, String> {
@@ -194,6 +223,7 @@ fn describe(ctx: &Ctx) -> Result<Value, String> {
                 "name": ctx.names.get(&e.macro_name.to_ascii_lowercase()).map(|n| &n.0),
                 "position": round3(p),
                 "attached": e.predecessor.as_ref().map(|pr| json!({"to": pr.index, "to_snap": pr.connection, "snap": e.connection})),
+                "stage_end": e.bookmark.is_some(),
                 "free_snaps": free,
             })
         })
