@@ -35,6 +35,17 @@ let modules: ModuleInfo[] = [];
 let scene: Scene | null = null;
 let selected: number | null = null;
 let armed: ModuleInfo | null = null;
+/** Races shown in the palette; empty means all. Modules without a race count as "generic". */
+const races = new Set<string>(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem("x4sd.races") ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  })(),
+);
+const raceOf = (m: ModuleInfo) => m.race ?? "generic";
 
 // ---------------------------------------------------------------- helpers
 
@@ -159,7 +170,10 @@ function renderPalette() {
   const text = $<HTMLInputElement>("search").value.toLowerCase();
   const cls = $<HTMLSelectElement>("class-filter").value;
   const shown = modules.filter(
-    (m) => (!cls || m.class === cls) && (!text || m.name.toLowerCase().includes(text) || m.macro.toLowerCase().includes(text)),
+    (m) =>
+      (!cls || m.class === cls) &&
+      (races.size === 0 || races.has(raceOf(m))) &&
+      (!text || m.name.toLowerCase().includes(text) || m.macro.toLowerCase().includes(text)),
   );
   const list = $("module-list");
   list.replaceChildren(
@@ -180,6 +194,36 @@ function renderPalette() {
     }),
   );
   $("module-count").textContent = `${shown.length} of ${modules.length} modules`;
+}
+
+function renderRaceFilter() {
+  const counts = new Map<string, number>();
+  modules.forEach((m) => counts.set(raceOf(m), (counts.get(raceOf(m)) ?? 0) + 1));
+  const chip = (label: string, on: boolean, title: string, click: () => void) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.title = title;
+    b.className = on ? "on" : "";
+    b.onclick = click;
+    return b;
+  };
+  const toggle = (race: string | null) => {
+    if (race === null) races.clear();
+    else if (!races.delete(race)) races.add(race);
+    try {
+      localStorage.setItem("x4sd.races", JSON.stringify([...races]));
+    } catch {
+      // Remembering the choice is a convenience only.
+    }
+    renderRaceFilter();
+    renderPalette();
+  };
+  $("race-filter").replaceChildren(
+    chip("All", races.size === 0, "Show every race", () => toggle(null)),
+    ...[...counts.keys()].sort().map((r) =>
+      chip(r[0].toUpperCase() + r.slice(1), races.has(r), `${counts.get(r)} ${r} modules; click to add or remove`, () => toggle(r)),
+    ),
+  );
 }
 
 // ---------------------------------------------------------------- actions
@@ -400,6 +444,7 @@ void listen<{ scene: Scene; op: string; replaced: boolean }>("scene-changed", (e
     modules = catalog.modules;
     const classes = [...new Set(modules.map((m) => m.class))].sort();
     $("class-filter").append(...classes.map((c) => new Option(c, c)));
+    renderRaceFilter();
     renderPalette();
     await apply(api.scene(), `${modules.length} modules loaded · profile ${catalog.profile ?? "not found"}`, true);
   } catch (e) {

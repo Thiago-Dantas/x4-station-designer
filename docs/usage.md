@@ -4,7 +4,7 @@
 
 ## Visual builder
 Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game data in about half a second and opens the builder.
-- **Palette (left):** all buildable modules, with search and a class filter, coloured by class. Click a module to *arm* it, or drag it into the view.
+- **Palette (left):** all buildable modules, with search, a class filter and **race chips** (pick one or several races, e.g. Terran + Boron; *All* shows every race; modules without a race are *Generic*; remembered), coloured by class. Click a module to *arm* it, or drag it into the view.
 - **First module:** with an empty design, click *Place as first module* (or drop it anywhere in the view).
 - **Attaching:** free snaps show as cyan cones. Click a cone (or drop a dragged module on it) to attach the armed module. *Connect by snap* chooses which snap of the new module connects; *Twist* rotates it around the snap axis.
 - **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it by 90° with everything attached to it; *Remove* (Del) removes it with everything attached.

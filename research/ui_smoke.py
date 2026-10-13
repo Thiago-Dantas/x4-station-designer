@@ -26,6 +26,14 @@ try:
     cdp.wait_for("document.getElementById('status').textContent.includes('modules loaded')")
     print("1.", cdp.js("document.getElementById('status').textContent"))
     print("   palette:", cdp.js("document.getElementById('module-count').textContent"))
+    # Race filter: Terran + Boron, then All again (the choice is remembered, so end on All).
+    chip = "[...document.querySelectorAll('#race-filter button')].find(b => b.textContent === '%s').click()"
+    cdp.js(chip % "Terran")
+    cdp.js(chip % "Boron")
+    two = cdp.js("document.getElementById('module-count').textContent")
+    cdp.js(chip % "All")
+    print("   races Terran+Boron:", two, "| All:", cdp.js("document.getElementById('module-count').textContent"))
+    assert two.startswith("83 of"), two
     cdp.screenshot(os.path.join(out, "ui-1-empty.png"))
 
     cdp.js("document.getElementById('btn-open-game').click()")
