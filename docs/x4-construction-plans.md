@@ -138,6 +138,16 @@ So:
 - **Priorities** have no field in the format; a priority is a position in the order. Reordering is safe as long as every module stays after its predecessor (offsets are authoritative, so geometry doesn't change).
 - **Planned:** a build-order viewer and editor in the builder (see roadmap).
 
+## Plots (verified in the build menu Lua, 2026-10-13)
+- **Shape:** a plot is a box around the station origin, measured per side in whole km (+X, −X, +Y, −Y, +Z, −Z). Each axis is at most 20 km (`maxPlotSize`) and at least 1 km. Internally it's a size in metres plus a centre offset (`GetBuildPlotSize` / `GetBuildPlotCenterOffset`).
+- **Minimum:** the smallest whole-km box that contains the station (`GetConstructionMapMinimumBuildPlotSize`, rounded up per side in `Helper.getPlotData`).
+- **Not in the plan file:** the plot belongs to the station in the savegame.
+- **Price:** depends on the sector (`GetBuildPlotPrice`), so it can't be computed offline.
+- **Our model** (`crates/x4sd-core/src/plot.rs`):
+  - The required plot comes from the module part boxes in the station frame.
+  - For the player's plans it gives TerranScrapyard 8×5×9 km, the defense stations 4×4×(3–4), and the megashipyard 19×20×15. The megashipyard sits at the 20 km limit, and it was built in game, so our bounds aren't larger than the game's.
+  - `validate_plot` reports modules outside, the plot needed, and stations too big for any plot.
+
 ## Unknowns
 - Does the game load external edits to `constructionplans.xml` at startup (option A after a restart)? Low priority now that B works.
 - How does the game build a module whose position doesn't match its link (floating, like test C or the 31 library cases)?

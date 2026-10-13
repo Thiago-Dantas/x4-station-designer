@@ -24,8 +24,22 @@ export interface Entry {
   free_snaps: SnapInfo[];
 }
 export interface Issue { index: number | null; text: string }
-export interface Scene { id: string; name: string; patches: string[]; can_undo: boolean; can_redo: boolean; entries: Entry[]; issues: Issue[] }
+export interface PlotInfo { pos: Vec3; neg: Vec3; size: Vec3; text: string }
+/** The plot, the plot the station needs, whether it fits, whether any plot (20 km max) can hold it. */
+export interface PlotStatus { plot: PlotInfo | null; required: PlotInfo | null; fits: boolean; possible: boolean }
+export interface Scene { id: string; name: string; patches: string[]; can_undo: boolean; can_redo: boolean; entries: Entry[]; issues: Issue[]; plot: PlotStatus | null }
 export interface PlanRef { file: string; source?: string; id: string; name: string; modules: number }
+
+let queue: Promise<unknown> = Promise.resolve();
+
+/** Commands that read or change the design run one at a time, in call order:
+ * otherwise replies can arrive out of order and an older scene overwrites a
+ * newer one (seen with quick plot edits). */
+function serial<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  const call = queue.then(() => invoke<T>(command, args));
+  queue = call.catch(() => undefined);
+  return call;
+}
 
 export const api = {
   loadCatalog: () => invoke<{ modules: ModuleInfo[]; profile: string | null; game: string | null }>("load_catalog"),
@@ -35,19 +49,21 @@ export const api = {
   materialMaps: (name: string) => invoke<{ diffuse: string | null; normal: string | null }>("material_maps", { name }),
   /** Raw texture bytes; see `texture` in app.rs. */
   texture: (path: string) => invoke<ArrayBuffer>("texture", { path }),
-  scene: () => invoke<Scene>("scene"),
-  newDesign: (name: string) => invoke<Scene>("new_design", { name }),
+  scene: () => serial<Scene>("scene"),
+  newDesign: (name: string) => serial<Scene>("new_design", { name }),
   listGamePlans: () => invoke<PlanRef[]>("list_game_plans"),
   listPlansInFile: (file: string) => invoke<PlanRef[]>("list_plans_in_file", { file }),
-  openDesign: (file: string, id: string) => invoke<Scene>("open_design", { file, id }),
-  saveDesign: (file: string) => invoke<{ file: string }>("save_design", { file }),
-  exportDesign: (newId: boolean, overwrite: boolean) => invoke<{ file: string; id: string }>("export_design", { newId, overwrite }),
-  renameDesign: (name: string) => invoke<Scene>("rename_design", { name }),
-  addModule: (macroName: string, position: Vec3) => invoke<Scene>("add_module", { macroName, position }),
+  openDesign: (file: string, id: string) => serial<Scene>("open_design", { file, id }),
+  saveDesign: (file: string) => serial<{ file: string }>("save_design", { file }),
+  exportDesign: (newId: boolean, overwrite: boolean) => serial<{ file: string; id: string }>("export_design", { newId, overwrite }),
+  renameDesign: (name: string) => serial<Scene>("rename_design", { name }),
+  addModule: (macroName: string, position: Vec3) => serial<Scene>("add_module", { macroName, position }),
   attachModule: (macroName: string, snap: string, to: number, toSnap: string, twist: number) =>
-    invoke<Scene>("attach_module", { macroName, snap, to, toSnap, twist }),
-  setTwist: (index: number, twist: number) => invoke<Scene>("set_twist", { index, twist }),
-  removeModule: (index: number) => invoke<Scene>("remove_module", { index }),
-  undo: () => invoke<Scene>("undo"),
-  redo: () => invoke<Scene>("redo"),
+    serial<Scene>("attach_module", { macroName, snap, to, toSnap, twist }),
+  setTwist: (index: number, twist: number) => serial<Scene>("set_twist", { index, twist }),
+  removeModule: (index: number) => serial<Scene>("remove_module", { index }),
+  setPlot: (pos: Vec3, neg: Vec3) => serial<Scene>("set_plot", { pos, neg }),
+  fitPlot: (growOnly: boolean) => serial<Scene>("fit_plot", { growOnly }),
+  undo: () => serial<Scene>("undo"),
+  redo: () => serial<Scene>("redo"),
 };

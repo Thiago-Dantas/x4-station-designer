@@ -16,7 +16,6 @@ use x4sd_core::design::Design;
 use x4sd_core::geometry::{fit, Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, write_plans, Plan};
-use x4sd_core::validate::validate;
 
 use crate::link;
 use crate::ops::{self, Ctx, ModuleNames, Op};
@@ -64,6 +63,8 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             attach_module,
             set_twist,
             remove_module,
+            set_plot,
+            fit_plot,
             undo,
             redo,
         ])
@@ -231,6 +232,10 @@ fn open_design(state: State<'_, Shared>, file: String, id: String) -> CmdResult 
     let plan = read_plans(Path::new(&file))?.into_iter().find(|p| p.id == id).ok_or(format!("no plan {id} in {file}"))?;
     let mut app = state.lock().unwrap();
     app.design = Design::from_plan(plan);
+    // The plan file has no plot: start with the smallest that holds the station.
+    if let Some(c) = app.catalog.clone() {
+        let _ = app.design.fit_plot(&c, false);
+    }
     scene_json(&app)
 }
 
@@ -285,6 +290,17 @@ fn set_twist(state: State<'_, Shared>, index: u32, twist: f64) -> CmdResult {
 #[tauri::command]
 fn remove_module(state: State<'_, Shared>, index: u32) -> CmdResult {
     edit(&state, |d, c| d.remove(c, index).map(|_| ()))
+}
+
+/// Plot reach per side in whole km: `pos` = +X, +Y, +Z, `neg` = −X, −Y, −Z.
+#[tauri::command]
+fn set_plot(state: State<'_, Shared>, pos: [u32; 3], neg: [u32; 3]) -> CmdResult {
+    edit(&state, |d, _| d.set_plot(Some(x4sd_core::plot::Plot { pos, neg })))
+}
+
+#[tauri::command]
+fn fit_plot(state: State<'_, Shared>, grow_only: bool) -> CmdResult {
+    edit(&state, |d, c| d.fit_plot(c, grow_only).map(|_| ()))
 }
 
 #[tauri::command]
@@ -369,9 +385,16 @@ fn scene_json(app: &App) -> CmdResult {
         }));
     }
     let issues: Vec<Value> = match &catalog {
-        Some(c) => validate(plan, c).iter().map(|i| json!({"index": i.index(), "text": i.to_string()})).collect(),
+        Some(c) => {
+            let mut all = x4sd_core::validate::validate(plan, c);
+            if let Some(plot) = design.plot() {
+                all.extend(x4sd_core::validate::validate_plot(plan, c, &plot));
+            }
+            all.iter().map(|i| json!({"index": i.index(), "text": i.to_string()})).collect()
+        }
         None => Vec::new(),
     };
+    let plot = catalog.as_ref().map(|c| ops::plot_status(design, c)).unwrap_or(Value::Null);
     Ok(json!({
         "id": plan.id,
         "name": plan.name,
@@ -380,6 +403,7 @@ fn scene_json(app: &App) -> CmdResult {
         "can_redo": design.can_redo(),
         "entries": entries,
         "issues": issues,
+        "plot": plot,
     }))
 }
 

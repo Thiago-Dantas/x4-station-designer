@@ -25,6 +25,9 @@ the snap axis, usually in 90 degree steps) -> validate_design -> export_design, 
 Import in the game's station build menu.
 Coordinates are metres in the station frame, Y up. Module indices are 1..n and are renumbered after \
 remove_module. Every edit can be undone with undo.
+Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
+New designs start on a 2x2x2 km plot, opened ones on the smallest that fits. validate_design reports modules \
+outside the plot and the size needed; set_plot / fit_plot change it (tell the user when the plot must grow).
 If the X4 Station Designer builder window is open, all tools work on the design shown there and the \
 user sees every change live (builder_status tells which).";
 
@@ -141,6 +144,20 @@ pub struct SaveArgs {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct PlotArgs {
+    /// Reach on the positive side of X, Y, Z in whole km
+    pos: [u32; 3],
+    /// Reach on the negative side of X, Y, Z in whole km
+    neg: [u32; 3],
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct FitPlotArgs {
+    /// Only enlarge the current plot (default: set it to the smallest that holds the station)
+    grow_only: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct NoArgs {}
 
 #[tool_router]
@@ -237,6 +254,16 @@ impl Server {
     #[tool(description = "Save the open design to a plan file (single-plan format, like the game's exports).")]
     fn save_design(&self, Parameters(a): Parameters<SaveArgs>) -> ToolResult {
         self.run(Op::SaveDesign { file: a.file })
+    }
+
+    #[tool(description = "Set the plot: how far it reaches from the station origin on each side, in whole km (each axis 1 to 20 km in total).")]
+    fn set_plot(&self, Parameters(a): Parameters<PlotArgs>) -> ToolResult {
+        self.run(Op::SetPlot { pos: a.pos, neg: a.neg })
+    }
+
+    #[tool(description = "Fit the plot to the station: the smallest plot that holds it, or with grow_only just enlarge the current one. Fails if the station is longer than 20 km on an axis.")]
+    fn fit_plot(&self, Parameters(a): Parameters<FitPlotArgs>) -> ToolResult {
+        self.run(Op::FitPlot { grow_only: a.grow_only })
     }
 
     #[tool(description = "Put the open design into the game: writes it to the player profile's constructionplan folder. The player then clicks Import in the station build menu.")]

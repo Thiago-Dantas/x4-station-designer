@@ -10,6 +10,7 @@ pub mod geometry;
 pub mod import;
 pub mod mesh;
 pub mod plan;
+pub mod plot;
 pub mod text;
 pub mod texture;
 pub mod validate;

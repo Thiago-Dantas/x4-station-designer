@@ -12,7 +12,8 @@ use x4sd_core::design::Design;
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, write_plans};
-use x4sd_core::validate::validate;
+use x4sd_core::plot::{required_plot, Plot};
+use x4sd_core::validate::{validate, validate_plot};
 
 /// Lowercase macro -> (display name, class) of every station module.
 pub type ModuleNames = HashMap<String, (String, String)>;
@@ -37,6 +38,9 @@ pub enum Op {
     ValidateDesign,
     SaveDesign { file: String },
     ExportDesign { new_id: Option<bool>, overwrite: Option<bool> },
+    /// Plot reach per side in km: `pos` = +X, +Y, +Z, `neg` = −X, −Y, −Z.
+    SetPlot { pos: [u32; 3], neg: [u32; 3] },
+    FitPlot { grow_only: Option<bool> },
 }
 
 impl Op {
@@ -114,6 +118,8 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
                 return Err(format!("{} plans match; pass plan= one of {names:?}", plans.len()));
             }
             *ctx.design = Design::from_plan(plans.remove(0));
+            // The plan file has no plot: start with the smallest that holds the station.
+            let _ = ctx.design.fit_plot(c, false);
             describe(ctx)
         }
         Op::DescribeDesign => describe(ctx),
@@ -148,9 +154,14 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         }
         Op::Undo => Ok(json!({"undone": ctx.design.undo()})),
         Op::Redo => Ok(json!({"redone": ctx.design.redo()})),
-        Op::ValidateDesign => {
-            let issues: Vec<String> = validate(ctx.design.plan(), c).iter().map(|i| i.to_string()).collect();
-            Ok(json!({"issues": issues}))
+        Op::ValidateDesign => Ok(json!({"issues": issues(ctx.design, c)})),
+        Op::SetPlot { pos, neg } => {
+            ctx.design.set_plot(Some(Plot { pos, neg })).map_err(err)?;
+            Ok(plot_status(ctx.design, c))
+        }
+        Op::FitPlot { grow_only } => {
+            ctx.design.fit_plot(c, grow_only.unwrap_or(false)).map_err(err)?;
+            Ok(plot_status(ctx.design, c))
         }
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
@@ -188,7 +199,34 @@ fn describe(ctx: &Ctx) -> Result<Value, String> {
         })
         .collect();
     let patches: Vec<&str> = plan.patches.iter().map(|p| p.extension.as_str()).collect();
-    Ok(json!({"id": plan.id, "name": plan.name, "patches": patches, "modules": modules}))
+    let mut out = json!({"id": plan.id, "name": plan.name, "patches": patches, "modules": modules});
+    out["plot"] = plot_status(design, ctx.catalog);
+    Ok(out)
+}
+
+/// Validation issues of the design, including the plot checks when it has a plot.
+pub fn issues(design: &Design, catalog: &Catalog) -> Vec<String> {
+    let mut issues = validate(design.plan(), catalog);
+    if let Some(plot) = design.plot() {
+        issues.extend(validate_plot(design.plan(), catalog, &plot));
+    }
+    issues.iter().map(|i| i.to_string()).collect()
+}
+
+/// The plot, the plot the station needs, and whether it fits.
+pub fn plot_status(design: &Design, catalog: &Catalog) -> Value {
+    let required = required_plot(design.plan(), catalog);
+    let plot = design.plot();
+    json!({
+        "plot": plot.map(plot_json),
+        "required": required.map(plot_json),
+        "fits": match (plot, required) { (Some(p), Some(r)) => p.contains(&r), _ => true },
+        "possible": required.is_none_or(|r| r.is_allowed()),
+    })
+}
+
+pub fn plot_json(p: Plot) -> Value {
+    json!({"pos": p.pos, "neg": p.neg, "size": p.size(), "text": p.to_string()})
 }
 
 fn transform(position: Option<[f64; 3]>, yaw: Option<f64>, pitch: Option<f64>, roll: Option<f64>) -> Transform {

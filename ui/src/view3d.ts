@@ -71,6 +71,8 @@ export class View3D {
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
   private station = new THREE.Group();
+  /** The plot box (not part of `station`, so Fit view frames the modules). */
+  private plotBox = new THREE.Group();
   private snaps = new THREE.Group();
   private raycaster = new THREE.Raycaster();
   private hovered: THREE.Mesh | null = null;
@@ -97,7 +99,7 @@ export class View3D {
     const grid = new THREE.GridHelper(40000, 50, 0x2b3850, 0x1a2232);
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.6;
-    this.scene.add(grid, this.station, this.snaps);
+    this.scene.add(grid, this.station, this.snaps, this.plotBox);
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
     this.bindPanKeys();
@@ -180,7 +182,20 @@ export class View3D {
   ) {
     clear(this.station);
     clear(this.snaps);
+    clear(this.plotBox);
     this.hovered = null;
+    const plot = scene.plot?.plot;
+    if (plot) {
+      // Per side from the station origin, in km; centre mirrored into Three.js space like everything else.
+      const size = plot.size.map((s) => s * 1000) as Vec3;
+      const centre = [0, 1, 2].map((i) => ((plot.pos[i] - plot.neg[i]) / 2) * 1000) as Vec3;
+      const box = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)),
+        new THREE.LineBasicMaterial({ color: scene.plot!.fits ? 0x4fbf7a : 0xe5534b }),
+      );
+      box.position.copy(toVec(centre));
+      this.plotBox.add(box);
+    }
     const bad = new Set(scene.issues.map((i) => i.index).filter((i) => i !== null));
     // Real models are drawn instanced: one mesh per module type, so a 300-module
     // station costs a draw call per module type and material, not per module.

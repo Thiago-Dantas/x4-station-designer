@@ -59,6 +59,8 @@ for i, arm in enumerate(arms):
 end = call("free_snaps", index=2)[0]["name"]
 hab = call("attach_module", **{"macro": "hab_ter_l_01_macro", "to": 2, "to_snap": end})
 print("habitat:", hab)
+print("plot before:", call("describe_design")["plot"]["required"]["text"], "needed; fits:", call("describe_design")["plot"]["fits"])
+print("fit_plot:", call("fit_plot", grow_only=True)["plot"]["text"])
 print("issues:", call("validate_design")["issues"])
 d = call("describe_design")
 print("design:", d["name"], "patches", d["patches"], "modules", [(m["index"], m["name"], m["position"]) for m in d["modules"]])

@@ -166,6 +166,40 @@ fn designed_station_validates() {
     assert_eq!(validate(&parse_plans(&xml).unwrap()[0], c), Vec::<Issue>::new(), "still valid after f32/mm rounding");
 }
 
+/// Plots: the required plot holds the station; a smaller plot flags the modules outside.
+#[test]
+fn plots() {
+    use x4sd_core::plot::{required_plot, Plot};
+    use x4sd_core::validate::validate_plot;
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
+    for plan in plans.iter().filter(|p| !p.name.starts_with("X4SD")) {
+        let required = required_plot(plan, c).unwrap();
+        eprintln!("[{}] needs {required}", plan.name);
+        assert!(required.is_allowed(), "the game built these, so they fit a plot");
+        assert!(validate_plot(plan, c, &required).is_empty());
+    }
+    let mega = plans.iter().find(|p| p.name == "megashipyard terran").unwrap();
+    let issues = validate_plot(mega, c, &Plot::around(1));
+    assert!(matches!(issues[0], Issue::PlotTooSmall { .. }), "{issues:?}");
+    assert!(issues.iter().any(|i| matches!(i, Issue::OutsidePlot { .. })));
+
+    // A design grows its plot only when asked.
+    let mut d = Design::new("plot test");
+    assert_eq!(d.plot(), Some(Plot::around(1)));
+    let hub = d.add_root(c, "struct_ter_cross_01_macro", Transform::IDENTITY).unwrap();
+    let beam = c.module("struct_ter_base_02_macro").unwrap();
+    let mut end = (hub, d.free_snaps(c, hub).unwrap()[0].name.clone());
+    for _ in 0..4 {
+        let next = d.attach(c, "struct_ter_base_02_macro", &beam.snaps[0].name, end.0, &end.1, 0.0).unwrap();
+        end = (next, d.free_snaps(c, next).unwrap()[0].name.clone());
+    }
+    let plot = d.plot().unwrap();
+    assert!(!validate_plot(d.plan(), c, &plot).is_empty(), "a 3 km arm does not fit 2x2x2");
+    let grown = d.fit_plot(c, true).unwrap();
+    assert!(grown.contains(&plot) && validate_plot(d.plan(), c, &grown).is_empty(), "{grown}");
+    eprintln!("grown to {grown}");
+}
+
 /// Player plans: the only real problem is the deliberately moved casino of test C.
 #[test]
 fn validates_player_plans() {

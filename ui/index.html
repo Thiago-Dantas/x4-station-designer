@@ -54,6 +54,19 @@
             <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
           </div>
         </section>
+        <section id="plot-panel">
+          <h3>Plot</h3>
+          <div id="plot-summary" class="details"></div>
+          <div class="plot-grid">
+            <label>+X <input type="number" min="0" max="20" step="1" data-side="pos" data-axis="0" /></label>
+            <label>−X <input type="number" min="0" max="20" step="1" data-side="neg" data-axis="0" /></label>
+            <label>+Y <input type="number" min="0" max="20" step="1" data-side="pos" data-axis="1" /></label>
+            <label>−Y <input type="number" min="0" max="20" step="1" data-side="neg" data-axis="1" /></label>
+            <label>+Z <input type="number" min="0" max="20" step="1" data-side="pos" data-axis="2" /></label>
+            <label>−Z <input type="number" min="0" max="20" step="1" data-side="neg" data-axis="2" /></label>
+          </div>
+          <button id="btn-fit-plot" title="Smallest plot that holds the station">Fit plot to station</button>
+        </section>
         <section>
           <h3>Checks</h3>
           <ul id="issues"></ul>

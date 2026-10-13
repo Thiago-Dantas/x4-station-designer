@@ -8,7 +8,12 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 - **First module:** with an empty design, click *Place as first module* (or drop it anywhere in the view).
 - **Attaching:** free snaps show as cyan cones. Click a cone (or drop a dragged module on it) to attach the armed module. *Connect by snap* chooses which snap of the new module connects; *Twist* rotates it around the snap axis.
 - **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it by 90° with everything attached to it; *Remove* (Del) removes it with everything attached.
-- **Checks (right):** the validator's findings, live. Click one to select the module.
+- **Plot (right):** the plot the station must fit, in whole km per side from the station origin (+X, −X, +Y, −Y, +Z, −Z; each axis 1–20 km, as in the game), drawn as a box (green when everything fits, red when not).
+  - New designs start at 2×2×2 km; opened plans start on the smallest plot that holds them.
+  - *Fit plot to station* sets that minimum.
+  - When an edit pushes the station outside the plot, the builder offers to enlarge it, or, if no plot could hold it (over 20 km on an axis), to undo.
+  - The plot is not stored in plan files (the game keeps plots per station).
+- **Checks (right):** the validator's findings, live, including modules outside the plot. Click one to select the module.
 - **Toolbar:**
   - *Open game plan…* lists your saved plans and import files.
   - *Open file…* / *Save as…* work with plan files.
@@ -23,8 +28,8 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 |---------|--------------|
 | `x4sd list-modules [--class C] [--race R] [text]` | Buildable station modules (base, DLCs, enabled mods): macro, class, race, source, name. `text` matches the name or macro. |
 | `x4sd snaps <macro>` | A module's snap connections with position and facing direction (module frame, metres) |
-| `x4sd show <file>` | Plans in a plan file: id, name, module count, unattached modules, DLC patches |
-| `x4sd validate <file> [--plan P]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, missing DLC patches. Exit code 1 if any. |
+| `x4sd show <file>` | Plans in a plan file: id, name, module count, unattached modules, DLC patches, **plot needed** |
+| `x4sd validate <file> [--plan P] [--plot +X,-X,+Y,-Y,+Z,-Z]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, missing DLC patches. With `--plot` (km per side) it also flags modules outside that plot. Exit code 1 if any. |
 | `x4sd export <file> --plan P [--new-id] [--overwrite]` | Writes the plan into `<profile>\constructionplan\` for in-game **Import** (build menu, Import button; the folder is rescanned when the menu opens). `--new-id` makes the import add a new plan instead of replacing one with the same id. |
 
 A plan file is either the profile's `constructionplans.xml` (all saved plans) or a single-plan file like the ones the game exports. Exit code 2 means an error (file not found, game not found, ambiguous plan, and so on).
@@ -45,6 +50,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `set_twist`, `move_module`, `remove_module` | Rotate around the snap axis, move unattached modules, remove a module with everything attached to it (renumbers 1..n) |
 | `undo`, `redo` | Every edit can be undone |
 | `builder_status` | Whether a builder window is open (then all tools act on it, live) |
+| `set_plot`, `fit_plot` | Set the plot (km per side), or fit it to the station (optionally only growing it). `describe_design` shows the plot, the size needed and whether it fits; `validate_design` includes plot issues. |
 | `validate_design` | Same checks as `x4sd validate` |
 | `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import |
 

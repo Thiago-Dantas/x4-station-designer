@@ -8,6 +8,7 @@ use std::fmt;
 use crate::catalog::Catalog;
 use crate::geometry::{fit, Transform};
 use crate::plan::{Entry, Plan};
+use crate::plot::{entry_inside, required_plot, Plot, MAX_AXIS_KM};
 
 /// Allowed distance between linked snap points. The game rounds positions to
 /// millimetres, and its own hand-made plans are off by up to 3.5 cm
@@ -26,6 +27,12 @@ pub enum Issue {
     SnapGap { index: u32, metres: f64 },
     SnapMisaligned { index: u32, degrees: f64 },
     MissingPatch { extension: String },
+    /// The module reaches outside the plot.
+    OutsidePlot { index: u32 },
+    /// The station needs a bigger plot than it has.
+    PlotTooSmall { plot: Plot, required: Plot },
+    /// The station is longer along an axis than any plot can be.
+    TooBigForAnyPlot { axis: char, km: u32 },
 }
 
 impl Issue {
@@ -38,8 +45,9 @@ impl Issue {
             | Issue::UnknownSnap { index, .. }
             | Issue::MissingPredecessor { index, .. }
             | Issue::SnapGap { index, .. }
-            | Issue::SnapMisaligned { index, .. } => Some(*index),
-            Issue::MissingPatch { .. } => None,
+            | Issue::SnapMisaligned { index, .. }
+            | Issue::OutsidePlot { index } => Some(*index),
+            Issue::MissingPatch { .. } | Issue::PlotTooSmall { .. } | Issue::TooBigForAnyPlot { .. } => None,
         }
     }
 }
@@ -55,6 +63,9 @@ impl fmt::Display for Issue {
             Issue::SnapGap { index, metres } => write!(f, "entry {index}: {metres:.3} m away from its linked snap"),
             Issue::SnapMisaligned { index, degrees } => write!(f, "entry {index}: snap axis off by {degrees:.2}°"),
             Issue::MissingPatch { extension } => write!(f, "plan uses {extension} but does not list it in <patches>"),
+            Issue::OutsidePlot { index } => write!(f, "entry {index}: outside the plot"),
+            Issue::PlotTooSmall { plot, required } => write!(f, "the station needs a {required} plot; the plot is {plot}"),
+            Issue::TooBigForAnyPlot { axis, km } => write!(f, "the station is {km} km along {axis}; plots are at most {MAX_AXIS_KM} km"),
         }
     }
 }
@@ -115,6 +126,25 @@ pub fn validate(plan: &Plan, catalog: &Catalog) -> Vec<Issue> {
         if !plan.patches.iter().any(|p| p.extension == needed.extension) {
             issues.push(Issue::MissingPatch { extension: needed.extension });
         }
+    }
+    issues
+}
+
+/// Plot checks: modules outside `plot`, the plot needed, and whether any plot
+/// can hold the station (at most 20 km per axis).
+pub fn validate_plot(plan: &Plan, catalog: &Catalog, plot: &Plot) -> Vec<Issue> {
+    let Some(required) = required_plot(plan, catalog) else { return Vec::new() };
+    let mut issues = Vec::new();
+    for (axis, km) in ['X', 'Y', 'Z'].into_iter().zip(required.size()) {
+        if km > MAX_AXIS_KM {
+            issues.push(Issue::TooBigForAnyPlot { axis, km });
+        }
+    }
+    if !plot.contains(&required) {
+        issues.push(Issue::PlotTooSmall { plot: *plot, required });
+        issues.extend(
+            plan.entries.iter().filter(|e| !entry_inside(plan, catalog, e.index, plot)).map(|e| Issue::OutsidePlot { index: e.index }),
+        );
     }
     issues
 }

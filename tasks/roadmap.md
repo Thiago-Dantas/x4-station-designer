@@ -61,11 +61,7 @@ Proposed order (each step usable on its own):
 - [x] Real module meshes from `.xmf` instead of boxes (user request, done first; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [x] Textures on the models as an on/off setting (user request; on by default after measuring; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [x] **Race filter** in the palette (user request): chips for one or several races (e.g. Terran + Boron) or all; remembered; ui_smoke checks Terran + Boron = 83 modules
-- [ ] **Plot size** (user request):
-  - [ ] the user sets a plot size, drawn as a box
-  - [ ] the design must fit; warn when it's too big and propose the size needed
-  - [ ] also over MCP and in `validate`
-  - Research first: X4's plot limits and steps (`ExtendBuildPlot` in the build menu)
+- [x] **Plot size** (user request): plot per side in km, drawn as a box; modules outside are flagged; an enlarge (or undo) prompt; MCP `set_plot`/`fit_plot`; CLI `show` (plot needed) and `validate --plot`. See [workflow-plot-size.md](workflow-plot-size.md).
 - [ ] **Build order viewer and editor** (user request, after textures):
   - [ ] list in build order with stage dividers
   - [ ] drag to reorder (always after its predecessor), "build first" / "build last" (moves the predecessor chain along)

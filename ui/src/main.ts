@@ -101,8 +101,9 @@ async function loadTextures() {
 }
 
 /** Runs a command that returns the new scene, then redraws. Errors go to the status bar. */
-async function apply(action: Promise<Scene>, done?: string, frame = false) {
+async function apply(action: Promise<Scene>, done?: string, frame = false, userEdit = false) {
   try {
+    const fitted = scene?.plot?.fits ?? true;
     scene = await action;
     const macros = [...new Set(scene.entries.map((e) => e.macro))];
     if (macros.some((x) => !models.has(x.toLowerCase()))) status("Loading models…");
@@ -112,8 +113,23 @@ async function apply(action: Promise<Scene>, done?: string, frame = false) {
     redraw();
     if (frame) view.frame();
     if (done) status(done, "good");
+    if (userEdit && fitted && scene.plot && !scene.plot.fits) await offerBiggerPlot(scene.plot);
   } catch (e) {
     status(String(e), "error");
+  }
+}
+
+/** The last edit pushed the station outside its plot: offer to enlarge it (or undo). */
+async function offerBiggerPlot(p: NonNullable<Scene["plot"]>) {
+  const need = p.required?.text ?? "?";
+  if (!p.possible) {
+    if (await ask(`The station no longer fits any plot: it needs ${need}, and plots are at most 20 km per axis.\n\nUndo the last change?`, { title: "Plot", kind: "warning" })) {
+      await apply(api.undo(), "Undone: the station has to fit a 20 km plot");
+    }
+    return;
+  }
+  if (await ask(`The station no longer fits the plot (${p.plot?.text}).\nIt needs ${need}.\n\nEnlarge the plot?`, { title: "Plot", kind: "warning" })) {
+    await apply(api.fitPlot(true), "Plot enlarged");
   }
 }
 
@@ -164,6 +180,28 @@ function redraw() {
     $<HTMLButtonElement>("btn-twist-right").disabled = !a;
   }
   $("btn-place-root").hidden = scene.entries.length > 0;
+
+  const p = scene.plot;
+  const summary = $("plot-summary");
+  summary.textContent = p?.plot
+    ? `Plot ${p.plot.size.join("×")} km · station needs ${p.required ? p.required.size.join("×") + " km" : "nothing yet"}` + (p.possible ? "" : " (more than any plot)")
+    : "No plot";
+  summary.className = "details" + (p && !p.fits ? " bad" : "");
+  document.querySelectorAll<HTMLInputElement>(".plot-grid input").forEach((input) => {
+    const side = input.dataset.side as "pos" | "neg";
+    if (document.activeElement !== input) input.value = String(p?.plot?.[side][Number(input.dataset.axis)] ?? "");
+  });
+}
+
+/** Sends the six plot fields; the core rejects axes outside 1..20 km. */
+function plotFromInputs(): Promise<Scene> {
+  const pos = [0, 0, 0] as [number, number, number];
+  const neg = [0, 0, 0] as [number, number, number];
+  document.querySelectorAll<HTMLInputElement>(".plot-grid input").forEach((input) => {
+    const target = input.dataset.side === "pos" ? pos : neg;
+    target[Number(input.dataset.axis)] = Math.max(0, Math.round(Number(input.value) || 0));
+  });
+  return api.setPlot(pos, neg);
 }
 
 function renderPalette() {
@@ -253,13 +291,13 @@ async function attachArmed(to: number, toSnap: string, macro = armed?.macro) {
   const shape = await shapeOf(macro);
   const chosen = armed?.macro === macro ? $<HTMLSelectElement>("armed-snap").value : shape.snaps[0]?.name;
   const twist = Number($<HTMLSelectElement>("armed-twist").value);
-  await apply(api.attachModule(macro, chosen, to, toSnap, twist), `Attached ${moduleName(macro)} to #${to}`);
+  await apply(api.attachModule(macro, chosen, to, toSnap, twist), `Attached ${moduleName(macro)} to #${to}`, false, true);
 }
 
 async function twistSelected(delta: number) {
   const sel = entry(selected);
   if (!sel?.attached) return;
-  await apply(api.setTwist(sel.index, (sel.attached.twist ?? 0) + delta));
+  await apply(api.setTwist(sel.index, (sel.attached.twist ?? 0) + delta), undefined, false, true);
 }
 
 async function removeSelected() {
@@ -380,7 +418,9 @@ $<HTMLSelectElement>("quality").onchange = async (ev) => {
 $("btn-twist-left").onclick = () => twistSelected(-90);
 $("btn-twist-right").onclick = () => twistSelected(90);
 $("btn-remove").onclick = removeSelected;
-$("btn-place-root").onclick = () => armed && apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true);
+document.querySelectorAll<HTMLInputElement>(".plot-grid input").forEach((input) => (input.onchange = () => apply(plotFromInputs())));
+$("btn-fit-plot").onclick = () => apply(api.fitPlot(false), "Plot fitted to the station");
+$("btn-place-root").onclick = () => armed && apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
 $<HTMLInputElement>("design-name").onchange = (ev) => apply(api.renameDesign((ev.target as HTMLInputElement).value));
 
 // Click (not drag) in the view: attach to a snap, or select a module.
@@ -392,7 +432,7 @@ viewport.addEventListener("pointerup", async (ev) => {
   const pick = view.pick(ev.clientX, ev.clientY);
   if (pick?.kind === "snap" && armed) await attachArmed(pick.index, pick.snap);
   else if (pick?.kind === "module") select(pick.index);
-  else if (armed && scene?.entries.length === 0) await apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true);
+  else if (armed && scene?.entries.length === 0) await apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
   else select(null);
 });
 viewport.addEventListener("pointermove", (ev) => {
@@ -412,7 +452,7 @@ viewport.addEventListener("drop", async (ev) => {
   const macro = ev.dataTransfer?.getData("text/x4sd-macro");
   if (!macro) return;
   const snap = view.hoverSnap(ev.clientX, ev.clientY);
-  if (scene?.entries.length === 0) await apply(api.addModule(macro, [0, 0, 0]), `Placed ${moduleName(macro)}`, true);
+  if (scene?.entries.length === 0) await apply(api.addModule(macro, [0, 0, 0]), `Placed ${moduleName(macro)}`, true, true);
   else if (snap) await attachArmed(snap.index, snap.snap, macro);
   else status("Drop the module onto a free snap (cone).", "error");
 });

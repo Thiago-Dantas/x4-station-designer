@@ -14,7 +14,8 @@ use x4sd_core::catalog::Catalog;
 use x4sd_core::game::{find_game_dir, find_profile_dir};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, Plan};
-use x4sd_core::validate::validate;
+use x4sd_core::plot::{required_plot, Plot};
+use x4sd_core::validate::{validate, validate_plot};
 use x4sd_core::{Error, Result};
 
 #[derive(Parser)]
@@ -47,7 +48,7 @@ enum Command {
     },
     /// List the snap connections of a module
     Snaps { macro_name: String },
-    /// Summarise the plans in a file
+    /// Summarise the plans in a file, with the plot each needs
     Show { file: PathBuf },
     /// Check plans for problems the game does not catch (exit code 1 if any)
     Validate {
@@ -55,6 +56,9 @@ enum Command {
         /// Only the plan with this name or id
         #[arg(long)]
         plan: Option<String>,
+        /// Also check against a plot: km per side as +X,-X,+Y,-Y,+Z,-Z (e.g. 2,2,2,2,2,2)
+        #[arg(long, value_parser = parse_plot)]
+        plot: Option<Plot>,
     },
     /// Write a plan into the profile's constructionplan folder for in-game Import
     Export {
@@ -126,17 +130,22 @@ fn run(cli: Cli) -> Result<ExitCode> {
             }
         }
         Command::Show { file } => {
+            let catalog = catalog()?;
             for plan in read_plans(&file)? {
                 let patches: Vec<_> = plan.patches.iter().map(|p| p.extension.as_str()).collect();
                 let roots = plan.entries.iter().filter(|e| e.predecessor.is_none()).count();
-                println!("{} \"{}\": {} modules, {} unattached, patches [{}]", plan.id, plan.name, plan.entries.len(), roots, patches.join(", "));
+                let plot = required_plot(&plan, &catalog).map_or("-".to_owned(), |p| p.to_string());
+                println!("{} \"{}\": {} modules, {} unattached, patches [{}], needs plot {plot}", plan.id, plan.name, plan.entries.len(), roots, patches.join(", "));
             }
         }
-        Command::Validate { file, plan } => {
+        Command::Validate { file, plan, plot } => {
             let catalog = catalog()?;
             let mut total = 0;
             for p in select(read_plans(&file)?, plan.as_deref())? {
-                let issues = validate(&p, &catalog);
+                let mut issues = validate(&p, &catalog);
+                if let Some(plot) = &plot {
+                    issues.extend(validate_plot(&p, &catalog, plot));
+                }
                 println!("{} \"{}\": {}", p.id, p.name, if issues.is_empty() { "ok".to_owned() } else { format!("{} issue(s)", issues.len()) });
                 for issue in &issues {
                     println!("  {issue}");
@@ -161,6 +170,14 @@ fn run(cli: Cli) -> Result<ExitCode> {
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// `+X,-X,+Y,-Y,+Z,-Z` in whole km.
+fn parse_plot(text: &str) -> std::result::Result<Plot, String> {
+    let km: Vec<u32> = text.split(',').map(|v| v.trim().parse().map_err(|_| format!("not a whole number: {v}"))).collect::<std::result::Result<_, _>>()?;
+    let [px, nx, py, ny, pz, nz] = km[..] else { return Err("expected six values: +X,-X,+Y,-Y,+Z,-Z".to_owned()) };
+    let plot = Plot { pos: [px, py, pz], neg: [nx, ny, nz] };
+    if plot.is_allowed() { Ok(plot) } else { Err("each axis must be 1 to 20 km in total".to_owned()) }
 }
 
 fn read_plans(file: &Path) -> Result<Vec<Plan>> {

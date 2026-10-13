@@ -11,12 +11,16 @@ use crate::catalog::{Catalog, Module, Snap};
 use crate::geometry::{attach as attach_transform, Transform};
 use crate::import::new_plan_id;
 use crate::plan::{Entry, Plan, Predecessor};
+use crate::plot::{required_plot, Plot};
 use crate::{Error, Result};
 
 pub struct Design {
     plan: Plan,
     undo: Vec<Plan>,
     redo: Vec<Plan>,
+    /// The plot the station must fit in. Not part of the plan file (the game keeps
+    /// plots per station), and not undone with edits.
+    plot: Option<Plot>,
 }
 
 /// A snap point of a placed module that nothing uses, in the station frame.
@@ -27,8 +31,9 @@ pub struct FreeSnap {
 }
 
 impl Design {
+    /// An empty design on a 2×2×2 km plot.
     pub fn new(name: &str) -> Design {
-        Design::from_plan(Plan {
+        let mut design = Design::from_plan(Plan {
             id: new_plan_id(),
             name: name.to_owned(),
             description: Some(String::new()),
@@ -37,11 +42,41 @@ impl Design {
             fixed: None,
             patches: Vec::new(),
             entries: Vec::new(),
-        })
+        });
+        design.plot = Some(Plot::around(1));
+        design
     }
 
+    /// A design for an existing plan, without a plot (see `fit_plot`).
     pub fn from_plan(plan: Plan) -> Design {
-        Design { plan, undo: Vec::new(), redo: Vec::new() }
+        Design { plan, undo: Vec::new(), redo: Vec::new(), plot: None }
+    }
+
+    pub fn plot(&self) -> Option<Plot> {
+        self.plot
+    }
+
+    pub fn set_plot(&mut self, plot: Option<Plot>) -> Result<()> {
+        if plot.is_some_and(|p| !p.is_allowed()) {
+            return Err(Error("a plot is 1 to 20 km along each axis".to_owned()));
+        }
+        self.plot = plot;
+        Ok(())
+    }
+
+    /// Sets the plot to the smallest that holds the station, or with `grow_only`
+    /// enlarges the current plot just enough. Fails when no plot can hold it.
+    pub fn fit_plot(&mut self, catalog: &Catalog, grow_only: bool) -> Result<Plot> {
+        let required = required_plot(&self.plan, catalog).unwrap_or(Plot::around(1));
+        let plot = match (grow_only, self.plot) {
+            (true, Some(current)) => current.union(&required),
+            _ => required,
+        };
+        if !plot.is_allowed() {
+            return Err(Error(format!("the station needs {required}; plots are at most 20 km per axis")));
+        }
+        self.plot = Some(plot);
+        Ok(plot)
     }
 
     pub fn plan(&self) -> &Plan {

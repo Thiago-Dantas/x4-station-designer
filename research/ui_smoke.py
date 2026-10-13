@@ -58,6 +58,11 @@ try:
     cdp.wait_for("!document.getElementById('armed-panel').hidden")
     cdp.js("document.getElementById('btn-place-root').click()")
     cdp.wait_for("document.getElementById('status').textContent.startsWith('Placed')")
+    print("   plot:", cdp.js("document.getElementById('plot-summary').textContent"))
+    # A roomy plot (5 km each side) so no enlarge prompt (a native dialog) can block the test.
+    cdp.js("document.querySelectorAll('.plot-grid input').forEach(i => { i.value = 5; i.dispatchEvent(new Event('change')); })")
+    cdp.wait_for("document.getElementById('plot-summary').textContent.startsWith('Plot 10×10×10')")
+    print("   plot after setting 5 km per side:", cdp.js("document.getElementById('plot-summary').textContent"))
     time.sleep(1.0)
     # Arm a beam and click one of the cross's snap cones.
     cdp.js("{ const s = document.getElementById('search'); s.value = 'Terran Base Connection Structure 02'; s.dispatchEvent(new Event('input')) }")
