@@ -108,6 +108,20 @@ impl Catalog {
         Ok(catalog)
     }
 
+    /// A catalogue of just these modules, without game files: for tests and
+    /// offline use. Index-based queries (`has_macro`, patches, listings) are empty.
+    pub fn from_modules(modules: Vec<Module>) -> Catalog {
+        let cache = modules.into_iter().map(|m| (m.macro_name.to_ascii_lowercase(), Arc::new(m))).collect();
+        Catalog {
+            vfs: Vfs::default(),
+            extensions: Vec::new(),
+            macros: HashMap::new(),
+            components: HashMap::new(),
+            texts: Texts::default(),
+            cache: Mutex::new(cache),
+        }
+    }
+
     /// Enabled extensions, in load order.
     pub fn extensions(&self) -> &[Extension] {
         &self.extensions

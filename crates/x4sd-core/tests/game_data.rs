@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use x4sd_core::catalog::Catalog;
+use x4sd_core::design::Design;
 use x4sd_core::game::find_profile_dir;
 use x4sd_core::geometry::{attach, fit, Transform};
 use x4sd_core::import::write_import_file;
@@ -72,6 +73,28 @@ fn lists_station_modules_with_names() {
     let unresolved: Vec<_> = modules.iter().filter(|m| m.name.contains('{')).map(|m| (&m.macro_name, &m.name)).collect();
     eprintln!("names with unresolved references: {unresolved:?}");
     assert!(modules.iter().all(|m| !m.name.is_empty()));
+}
+
+/// A station built with the editing operations from real modules passes validation.
+#[test]
+fn designed_station_validates() {
+    let Some(c) = catalog() else { return };
+    let mut d = Design::new("x4sd built");
+    let hub = d.add_root(c, "struct_ter_cross_01_macro", Transform::IDENTITY).unwrap();
+    let arms: Vec<String> = d.free_snaps(c, hub).unwrap().into_iter().map(|s| s.name).collect();
+    assert!(arms.len() >= 4, "{arms:?}");
+    let beam = c.module("struct_ter_base_02_macro").unwrap();
+    for (i, arm) in arms.iter().enumerate() {
+        d.attach(c, "struct_ter_base_02_macro", &beam.snaps[0].name, hub, arm, 90.0 * i as f64).unwrap();
+    }
+    let hab_snap = c.module("hab_ter_l_01_macro").unwrap().snaps[0].name.clone();
+    let end = d.free_snaps(c, 2).unwrap()[0].name.clone();
+    d.attach(c, "hab_ter_l_01_macro", &hab_snap, 2, &end, 0.0).unwrap();
+
+    assert_eq!(validate(d.plan(), c), Vec::<Issue>::new());
+    assert_eq!(d.plan().patches.iter().map(|p| p.extension.as_str()).collect::<Vec<_>>(), ["ego_dlc_terran"]);
+    let xml = x4sd_core::plan::write_plans(std::slice::from_ref(d.plan()));
+    assert_eq!(validate(&parse_plans(&xml).unwrap()[0], c), Vec::<Issue>::new(), "still valid after f32/mm rounding");
 }
 
 /// Player plans: the only real problem is the deliberately moved casino of test C.

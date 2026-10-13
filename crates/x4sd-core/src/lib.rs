@@ -4,6 +4,7 @@
 //! crate implements, and `docs/x4-game-data.md` for the game files it reads.
 
 pub mod catalog;
+pub mod design;
 pub mod game;
 pub mod geometry;
 pub mod import;

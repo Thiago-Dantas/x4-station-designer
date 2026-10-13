@@ -43,7 +43,7 @@ The visual builder is first-class (G6), so it's built alongside the tooling, not
 - [x] Decide OD-6: live link, with the builder as the hub (D-7)
 - [x] Decide OD-1: both MCP and CLI from one exe (D-8). The UI technology is settled by D-6 (Tauri + WebView2 + Three.js).
 Proposed order (each step usable on its own):
-- [ ] **Design editing in the core:** operations on an open plan (add a root module, attach a module to a snap with a twist, rotate, move a root, remove with descendants, rename), plus undo/redo. The builder, CLI and MCP all go through these.
+- [x] **Design editing in the core** (`design.rs`, log: [workflow-phase3-app.md](workflow-phase3-app.md)): operations on an open plan (add a root module, attach a module to a snap with a twist, rotate, move a root, remove with descendants, rename), plus undo/redo. The builder, CLI and MCP all go through these.
 - [ ] **CLI** (`crates/x4sd`, one binary): `list-modules`, `validate <file>`, `export <file>` (to `constructionplan\`), `show <file>`
 - [ ] **MCP server** (`x4sd mcp`, stdio, official Rust SDK `rmcp`): tools mirroring the design operations, plus list/validate/export
 - [ ] **Module shapes for the 3D view:** research bounding boxes or sizes in component XML (`<parts>` / `<size>`). Real meshes (`.xmf`) come later, if ever.
