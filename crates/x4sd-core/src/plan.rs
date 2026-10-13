@@ -6,7 +6,7 @@
 //! most 3 decimals, zero rotation/quaternion components omitted. Numbers are
 //! `f32` like in the game, so a read/write round trip keeps every value exactly.
 
-use std::fmt;
+use crate::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
@@ -75,30 +75,19 @@ pub struct Upgrade {
     pub exact: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct PlanError(pub String);
-
-impl fmt::Display for PlanError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for PlanError {}
-
 // ---------------------------------------------------------------- reading
 
 type Node<'a, 'i> = roxmltree::Node<'a, 'i>;
 
 /// Parses a `<plans>` document: `constructionplans.xml` or a single-plan import file.
-pub fn parse_plans(xml: &str) -> Result<Vec<Plan>, PlanError> {
-    let doc = roxmltree::Document::parse(xml).map_err(|e| PlanError(e.to_string()))?;
+pub fn parse_plans(xml: &str) -> Result<Vec<Plan>> {
+    let doc = roxmltree::Document::parse(xml)?;
     let root = doc.root_element();
     check(root, "plans", &[])?;
     elements(root).map(parse_plan).collect()
 }
 
-fn parse_plan(node: Node) -> Result<Plan, PlanError> {
+fn parse_plan(node: Node) -> Result<Plan> {
     check(node, "plan", &["id", "name", "description", "tags", "useplanname", "fixed"])?;
     let mut plan = Plan {
         id: req(node, "id")?.to_owned(),
@@ -130,7 +119,7 @@ fn parse_plan(node: Node) -> Result<Plan, PlanError> {
     Ok(plan)
 }
 
-fn parse_entry(node: Node) -> Result<Entry, PlanError> {
+fn parse_entry(node: Node) -> Result<Entry> {
     check(node, "entry", &["index", "macro", "connection", "bookmark", "fixed"])?;
     let mut entry = Entry {
         index: int(node, "index")?,
@@ -174,7 +163,7 @@ fn parse_entry(node: Node) -> Result<Entry, PlanError> {
     Ok(entry)
 }
 
-fn parse_offset(node: Node) -> Result<Offset, PlanError> {
+fn parse_offset(node: Node) -> Result<Offset> {
     check(node, "offset", &[])?;
     let mut position = None;
     let mut orientation = Orientation::None;
@@ -215,13 +204,13 @@ fn elements<'a, 'i>(node: Node<'a, 'i>) -> impl Iterator<Item = Node<'a, 'i>> {
     node.children().filter(|n| n.is_element())
 }
 
-fn err(node: Node, msg: &str) -> PlanError {
+fn err(node: Node, msg: &str) -> Error {
     let pos = node.document().text_pos_at(node.range().start);
-    PlanError(format!("line {}: {msg}", pos.row))
+    Error(format!("line {}: {msg}", pos.row))
 }
 
 /// Checks the element name and rejects attributes outside `allowed`.
-fn check(node: Node, tag: &str, allowed: &[&str]) -> Result<(), PlanError> {
+fn check(node: Node, tag: &str, allowed: &[&str]) -> Result<()> {
     if node.tag_name().name() != tag {
         return Err(err(node, &format!("expected <{tag}>, found <{}>", node.tag_name().name())));
     }
@@ -233,7 +222,7 @@ fn check(node: Node, tag: &str, allowed: &[&str]) -> Result<(), PlanError> {
     Ok(())
 }
 
-fn req<'a>(node: Node<'a, '_>, name: &str) -> Result<&'a str, PlanError> {
+fn req<'a>(node: Node<'a, '_>, name: &str) -> Result<&'a str> {
     node.attribute(name)
         .ok_or_else(|| err(node, &format!("missing attribute '{name}' on <{}>", node.tag_name().name())))
 }
@@ -242,14 +231,14 @@ fn opt(node: Node, name: &str) -> Option<String> {
     node.attribute(name).map(str::to_owned)
 }
 
-fn int(node: Node, name: &str) -> Result<u32, PlanError> {
+fn int(node: Node, name: &str) -> Result<u32> {
     let v = req(node, name)?;
     v.parse().map_err(|_| err(node, &format!("'{name}' is not an integer: {v}")))
 }
 
 /// A missing number is 0: the game omits zero rotation components, and the
 /// library plans also omit zero position components.
-fn num(node: Node, name: &str) -> Result<f32, PlanError> {
+fn num(node: Node, name: &str) -> Result<f32> {
     match node.attribute(name) {
         None => Ok(0.0),
         Some(v) => v.parse().map_err(|_| err(node, &format!("'{name}' is not a number: {v}"))),

@@ -95,7 +95,14 @@ Q_child = Q_pred · q_p · Ry(180°) · Rz(θ) · q_c⁻¹                # snap
 | Player plans (5 real + 2 test copies) | 693 | 689 | all 689 | the deliberate test C casino (1000 m), and one TerranScrapyard module 1.2 cm off (in 3 copies; rounding) |
 | Game library plans (116) | 3389 | 3358 | all 3358 | 31, all inside about 10 hand-made faction plans (`arg_shipyard`, `arg_wharf`, `tel_shipyard`, …). The same modules and snaps match hundreds of times elsewhere, so it's the plans, not the geometry. |
 
-So **the designer can compute exact offsets from snap geometry**, and the validator can flag linked entries whose snaps don't meet (tolerance about 2 cm to absorb the game's 3-decimal rounding).
+So **the designer can compute exact offsets from snap geometry**, and the validator can flag linked entries whose snaps don't meet.
+
+### Implementation (`crates/x4sd-core`)
+- `geometry::attach(pred, pred_snap, child_snap, twist)` places a child.
+- `geometry::fit(...)` measures a stored placement: the gap between snap points, the misalignment of the snap axes, and the twist.
+- **Verified:** with each entry's own twist, `attach` reproduces all 534 linked placements of the 5 real player plans within 2 cm.
+- `validate::validate(plan, catalog)` reports unknown modules, equipment and snaps; missing predecessors; snap gaps over **5 cm** and axis misalignments over **0.5°**; and `<patches>` the plan lacks.
+- On the samples, the validator flags exactly one issue in the player plans (the test C casino, 1000 m). In the library it flags 17 entries that are 2.4–400 m off. 14 more library entries are 1–3.5 cm off (`arg_wharf`), which is why the tolerance is 5 cm and not 2.
 
 Not resolvable from base game and DLC data: `recyclemodule_macro` (in a player plan). It comes from a mod, so the module catalogue must also read enabled extensions. Each snap has a local position and orientation; the second one above faces the opposite way (rotated 180° around Y). Coordinates are consistent with metres. DLC modules resolve through the DLC's own `index/` files.
 

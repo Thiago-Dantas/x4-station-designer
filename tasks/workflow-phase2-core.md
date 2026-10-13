@@ -11,7 +11,12 @@ Goal: a Rust core library that reads and writes X4 plans losslessly, and later t
 - [x] Scaffold the Cargo workspace (`crates/x4sd-core`). No Tauri app yet; that's Phase 3.
 - [x] Plan model + strict XML reader + game-style writer (`src/plan.rs`)
 - [x] Round-trip tests: the fixture byte for byte; the game files with exact values, and line for line except rotation/quaternion number text
-- [ ] Next (roadmap Phase 2): import-file writer, virtual file system + module catalogue, snap placement, validator
+- [x] Shared error type (`x4sd_core::Error`)
+- [x] `vfs` (archive reader), `game` (extensions with id/folder/enabled/save, profile discovery)
+- [x] `catalog`: index merge (full `<index>` and `<diff><add sel='/index'>`), module → component → snaps, `required_patches`
+- [x] `geometry` (Quat, Transform, `attach`, `fit`), `validate`, `import`
+- [x] `tests/game_data.rs` against the real install: 5 tests pass. Clippy is clean.
+- [ ] Next: module display names + the station-module list (maybe in Phase 3), then Phase 3 (OD-6 first)
 
 ## Sub-agents
 None.
@@ -23,3 +28,9 @@ None.
   - Game-written files: structure and positions are byte-identical. 70+13 rotation/quaternion lines differ in text only.
   - The game's quaternion format = `%.6g`. Its rotations sometimes carry more digits than f32, so they're probably printed from doubles. We decided not to chase byte-exact angles.
   - Fixed: library positions like `-0.0001526` were rounded by the 3-decimal format. The writer now falls back to the shortest exact form.
+- 2026-10-13: catalogue findings:
+  - Extension id ≠ folder. The profile `content.xml` overrides `enabled`.
+  - `required_patches` must skip `save="false"` extensions. The game left RecycleShipsAndStations out of "megashipyard terran"'s patches although the plan uses `recyclemodule_macro`.
+  - Mod indexes are full `<index>` or `<diff><add>`. `subst_NN.cat` replaces base paths.
+  - Load time: 2.3 s debug, 0.55 s release (80 extensions).
+- 2026-10-13: validator tolerance raised from 2 to 5 cm. Egosoft's `arg_wharf` has 14 entries 1–3.5 cm off; real misplacements are at least 2.4 m. `fit` uses atan2 for the axis angle (acos lost precision near 0°).

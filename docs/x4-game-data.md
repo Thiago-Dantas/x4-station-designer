@@ -29,11 +29,21 @@ python -I tools/x4cat.py extract <file.cat> <outdir> [glob ...]   # checks MD5, 
 ```
 Extract into `research/extracted/<source>/` (git-ignored: game and mod files are not ours to commit). The tool handles one catalog at a time; to find a file, `grep "^<path> " <install>/*.cat`.
 
+### Extensions: discovery, enabling, load order (verified 2026-10-13 unless marked)
+- Extensions live in `<game>\extensions\` **and** `<profile>\extensions\` (e.g. `recycleshipsandstations`, which provides `recyclemodule_macro`).
+- Each one's `content.xml` has an `id` that **often differs from the folder name** (`analyze_build` → `ws_1687245083`). The **id** is what the profile enables and what plan `<patches>` name. The **folder** is what virtual paths use (`extensions\<folder>\…`, in index values too).
+- **Enabled state:** `<profile>\content.xml` has `<extension id="…" enabled="true|false"/>` (79 entries here) and overrides the extension's own `enabled` attribute (`1`/`true`/`0`/`false`; missing means enabled).
+- **`save` attribute:** DLCs have `save="1"`. A mod with `save="false"` (RecycleShipsAndStations) was **not** listed in the `<patches>` of a plan that uses its module. So patches list only extensions savegames depend on; a missing `save` attribute is treated as true (hypothesis).
+- **Catalogs per extension:** `ext_NN.cat` (files under `extensions/<folder>/`) and `subst_NN.cat` (replace base-game paths, e.g. `libraries/region_lodvalues.xml`, UI files).
+- **Mod index files** are either complete `<index>` files or `<diff><add sel='/index'>…</add></diff>` patches. Both just add entries.
+- **Load order (hypothesis):** we use base game, then DLCs, then the other enabled extensions alphabetically by id, with later ones winning. Dependencies are not used for ordering yet; this only matters when two mods define the same path.
+- **Not handled yet:** diff `replace`/`remove` on index entries, XML diff patches to macro/component files, and loose (unpacked) files in extension folders. None of the installed mods needs them for station modules.
+
 ### DLC index files (verified)
 - Each DLC ships complete `index/macros.xml` and `index/components.xml` (not XML diffs), with entries whose `value` starts with `extensions\ego_dlc_<name>\…`. The files inside the DLC's `ext_NN.cat` are listed without that prefix, so prepend `extensions/ego_dlc_<name>/` when building one virtual file system.
 - The DLC index files start with a UTF-8 BOM.
 - Some index values double the separator (`assets\\structures\\landmarks\\…`). Collapse repeated `\`/`/` before lookup.
-- `research/snapcheck.py` contains a working virtual file system over base `01–09.cat` plus all `ego_dlc_*` catalogs (later catalogs win), and the macro → component → snap resolution. It doesn't cover mods yet.
+- The Rust implementation (`crates/x4sd-core`: `vfs`, `game`, `catalog`) covers the base game, DLCs and enabled mods. It loads 80 extensions in about 0.55 s (release build). `research/snapcheck.py` is the original Python version (base + DLCs only).
 
 ## What we need from game data
 | Need | Source |
