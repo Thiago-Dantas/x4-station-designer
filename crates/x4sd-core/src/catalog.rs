@@ -20,6 +20,15 @@ pub struct Snap {
     pub transform: Transform,
 }
 
+/// An oriented box approximating part of a module, in the module's local frame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeBox {
+    /// Box centre and orientation.
+    pub transform: Transform,
+    /// Half the box size along its own x, y, z.
+    pub half_extents: [f64; 3],
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub macro_name: String,
@@ -29,6 +38,8 @@ pub struct Module {
     /// Id of the extension whose index defines the macro; `None` for the base game.
     pub source: Option<String>,
     pub snaps: Vec<Snap>,
+    /// Rough shape for display: the module's main parts as boxes.
+    pub shape: Vec<ShapeBox>,
 }
 
 impl Module {
@@ -221,7 +232,7 @@ impl Catalog {
             .descendants()
             .find(|n| n.has_tag_name("component") && n.attribute("name").is_some_and(|v| v.eq_ignore_ascii_case(component)))
             .ok_or_else(|| Error(format!("{}: no <component name=\"{component}\">", centry.path)))?;
-        let snaps = comp
+        let snaps: Vec<Snap> = comp
             .descendants()
             .filter(|n| n.has_tag_name("connection"))
             .filter(|n| n.attribute("tags").is_some_and(|t| t.split_whitespace().any(|t| t == "snap")))
@@ -232,12 +243,17 @@ impl Catalog {
             })
             .collect();
 
+        let mut shape = shape_boxes(comp);
+        if shape.is_empty() {
+            shape.extend(snap_bounds(&snaps));
+        }
         Ok(Module {
             macro_name: macro_el.attribute("name").unwrap_or(key).to_owned(),
             class: macro_el.attribute("class").unwrap_or_default().to_owned(),
             component: component.to_owned(),
             source: entry.source.map(|i| self.extensions[i].id.clone()),
             snaps,
+            shape,
         })
     }
 }
@@ -266,6 +282,49 @@ fn merge_index(map: &mut HashMap<String, IndexEntry>, xml: &str, source: Option<
 
 fn child<'a, 'i>(node: Option<roxmltree::Node<'a, 'i>>, tag: &str) -> Option<roxmltree::Node<'a, 'i>> {
     node.and_then(|n| n.children().find(|c| c.has_tag_name(tag)))
+}
+
+/// Boxes for a component's solid parts: `<connection tags="part ...">` with a
+/// `<part><size><max/><center/>` (half extents and centre, in the connection's
+/// frame). Detail, collision-only and invisible parts (e.g. a pier's docking
+/// volume) are skipped.
+fn shape_boxes(component: roxmltree::Node) -> Vec<ShapeBox> {
+    let num = |n: Option<roxmltree::Node>, a: &str| n.and_then(|n| n.attribute(a)).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+    let mut boxes = Vec::new();
+    for conn in component.descendants().filter(|n| n.has_tag_name("connection")) {
+        let tags: Vec<&str> = conn.attribute("tags").unwrap_or_default().split_whitespace().collect();
+        let skip = tags.iter().any(|t| t.starts_with("detail") || *t == "collisiononly" || *t == "geometryinvisible");
+        if !tags.contains(&"part") || skip {
+            continue;
+        }
+        let size = child(child(child(Some(conn), "parts"), "part"), "size");
+        let (Some(max), Some(center)) = (child(size, "max"), child(size, "center")) else { continue };
+        let frame = conn.children().find(|c| c.has_tag_name("offset")).map_or(Transform::IDENTITY, parse_offset);
+        let centre = Transform { position: [num(Some(center), "x"), num(Some(center), "y"), num(Some(center), "z")], rotation: Quat::IDENTITY };
+        boxes.push(ShapeBox {
+            transform: frame.then(&centre),
+            half_extents: [num(Some(max), "x"), num(Some(max), "y"), num(Some(max), "z")],
+        });
+    }
+    boxes
+}
+
+/// Fallback shape for modules without parts of their own (assembled from child
+/// pieces, e.g. `landmarks_par_storage_01_macro`): one box spanning the snap
+/// points, at least 50 m from the centre in each direction.
+fn snap_bounds(snaps: &[Snap]) -> Option<ShapeBox> {
+    let first = snaps.first()?.transform.position;
+    let (mut lo, mut hi) = (first, first);
+    for s in snaps {
+        for i in 0..3 {
+            lo[i] = lo[i].min(s.transform.position[i]);
+            hi[i] = hi[i].max(s.transform.position[i]);
+        }
+    }
+    Some(ShapeBox {
+        transform: Transform { position: [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0), rotation: Quat::IDENTITY },
+        half_extents: [0, 1, 2].map(|i| ((hi[i] - lo[i]) / 2.0).max(50.0)),
+    })
 }
 
 /// A component `<offset>`: position plus quaternion (or yaw/pitch/roll), missing values 0.

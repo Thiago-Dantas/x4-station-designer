@@ -51,8 +51,13 @@ fn resolves_base_dlc_and_mod_modules() {
     assert_eq!(base.snap("connectionsnap001").unwrap().transform.position, [0.0, 0.0, 400.0]);
     assert_eq!(base.snap("ConnectionSnap002").unwrap().transform.position, [0.0, 0.0, -400.0]);
 
+    assert_eq!(base.shape.len(), 1, "{:?}", base.shape);
+    assert_eq!(base.shape[0].half_extents[2], 400.0, "the beam's main part spans its two snaps");
+
     let dlc = c.module("hab_ter_l_01_macro").unwrap();
     assert_eq!(dlc.source.as_deref(), Some("ego_dlc_terran"));
+    let pier = c.module("pier_ter_harbor_02_macro").unwrap();
+    assert!(pier.shape.iter().all(|b| b.half_extents[0] < 3000.0), "docking volume must be skipped: {:?}", pier.shape);
 
     match c.module("recyclemodule_macro") {
         Ok(m) => assert_eq!(m.source.as_deref(), Some("RecycleShipsAndStations")),
@@ -73,6 +78,21 @@ fn lists_station_modules_with_names() {
     let unresolved: Vec<_> = modules.iter().filter(|m| m.name.contains('{')).map(|m| (&m.macro_name, &m.name)).collect();
     eprintln!("names with unresolved references: {unresolved:?}");
     assert!(modules.iter().all(|m| !m.name.is_empty()));
+
+    // Every listed module resolves to a component with snaps and a shape to draw.
+    let mut no_snaps = Vec::new();
+    let mut no_shape = Vec::new();
+    for m in &modules {
+        let module = c.module(&m.macro_name).unwrap_or_else(|e| panic!("{}: {e}", m.macro_name));
+        if module.snaps.is_empty() {
+            no_snaps.push(m.macro_name.clone());
+        }
+        if module.shape.is_empty() {
+            no_shape.push(m.macro_name.clone());
+        }
+    }
+    eprintln!("without snaps: {no_snaps:?}\nwithout shape: {no_shape:?}");
+    assert!(no_shape.is_empty());
 }
 
 /// A station built with the editing operations from real modules passes validation.

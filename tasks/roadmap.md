@@ -46,7 +46,7 @@ Proposed order (each step usable on its own):
 - [x] **Design editing in the core** (`design.rs`, log: [workflow-phase3-app.md](workflow-phase3-app.md)): operations on an open plan (add a root module, attach a module to a snap with a twist, rotate, move a root, remove with descendants, rename), plus undo/redo. The builder, CLI and MCP all go through these.
 - [x] **CLI** (`crates/x4sd`, one binary; see `docs/usage.md`): `list-modules`, `validate <file>`, `export <file>` (to `constructionplan\`), `show <file>`
 - [x] **MCP server** (`x4sd mcp`, stdio, official Rust SDK `rmcp`): tools mirroring the design operations, plus list/validate/export
-- [ ] **Module shapes for the 3D view:** research bounding boxes or sizes in component XML (`<parts>` / `<size>`). Real meshes (`.xmf`) come later, if ever.
+- [x] **Module shapes for the 3D view** (`Module::shape`, part boxes): research bounding boxes or sizes in component XML (`<parts>` / `<size>`). Real meshes (`.xmf`) come later, if ever.
 - [ ] **Builder (Tauri + Three.js):** palette (search the 287 modules), 3D view with snap markers, drag a module onto a snap to attach, rotate in steps around the snap axis, validation panel, export button
 - [ ] **Live link (D-7):** the builder listens on a local socket. `x4sd mcp` forwards operations to it when it runs, and edits files headless when it doesn't.
 

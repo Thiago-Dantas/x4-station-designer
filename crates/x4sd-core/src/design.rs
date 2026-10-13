@@ -246,6 +246,7 @@ mod tests {
             component: name.to_owned(),
             source: None,
             snaps,
+            shape: Vec::new(),
         };
         Catalog::from_modules(vec![
             module("beam", vec![snap("s1", [0.0, 0.0, 400.0], 0.0), snap("s2", [0.0, 0.0, -400.0], 180.0)]),

@@ -56,6 +56,17 @@ Extract into `research/extracted/<source>/` (git-ignored: game and mod files are
 ### Buildable station modules (verified)
 Structure macros (`assets/structures/**`) whose `class` is one of `connectionmodule`, `storage`, `production`, `dockarea`, `defencemodule`, `habitation`, `buildmodule`, `pier`, `welfaremodule`, `processingmodule`, `ventureplatform` or `radar`, **and** that have `<properties><build><sets>`. That gives 287 modules on the dev machine (base + DLCs + mods). The other classes under `assets/structures` are landmarks, props and asteroids. The display name is `identification@name`; the race is `identification@makerrace`. Whether the *player* can build a module depends on owned blueprints, which is savegame state and out of scope.
 
+### Module shapes for display (verified)
+Component XML describes every part in a `<connection tags="part ...">` with `<parts><part name><size><max x y z/><center x y z/></size>`. `max` is the half-extent and `center` the box centre, both in the connection's frame (the connection `<offset>` places it in the module frame). For example `struct_arg_base_02` `part_main` has max z = 400, spanning its snaps at ±400.
+- **Used:** the solid parts (`part_main`, `part_interior`, …).
+- **Skipped:**
+  - `detail_*` parts (decoration);
+  - `collisiononly` boxes;
+  - `geometryinvisible` parts (e.g. a pier's 3.1 km "bounding_box" docking volume).
+- **Fallback:** `landmarks_par_storage_01_macro` has no parts of its own (it is assembled from child landmark pieces), so it gets a box spanning its snap points.
+- Real meshes are in `<component>_data/*-lodN.xmf` (X4's binary mesh format). They could replace the boxes later.
+- Implemented as `Module::shape` (`catalog.rs`). All 287 station modules have snaps and a shape.
+
 ## What we need from game data
 | Need | Source |
 |------|--------|
