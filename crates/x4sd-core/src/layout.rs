@@ -15,7 +15,7 @@ use std::sync::Arc;
 use crate::catalog::{Catalog, CollisionMesh, MeshNode, Module, ShapeBox, Snap};
 use crate::design::Design;
 use crate::geometry::{attach, Quat, Transform};
-use crate::plan::Plan;
+use crate::plan::{Plan, Upgrade};
 use crate::planner::{best, candidates, Candidate};
 use crate::plot::{bounds_plot, module_bounds, Plot};
 use crate::{Error, Result};
@@ -31,7 +31,7 @@ const PLOT_MARGIN_M: f64 = 1.0;
 
 /// Dock areas and piers want open space: nothing within this distance (metres)
 /// on the line from the station origin out through their centre.
-const DOCK_CLEARANCE_M: f64 = 20_000.0;
+const DOCK_CLEARANCE_M: f64 = 3_000.0;
 
 /// Snap points closer than this (metres) join two modules (plans store positions
 /// in millimetres; the game's own hand-made plans are off by up to 3.5 cm).
@@ -123,6 +123,20 @@ impl Body {
     /// Axis-aligned bounds of the boxes: (min, max) corner.
     pub fn bounds(&self) -> ([f64; 3], [f64; 3]) {
         self.bounds
+    }
+
+    /// Whether `point` lies inside one of its boxes.
+    pub fn contains(&self, point: [f64; 3]) -> bool {
+        self.boxes.iter().any(|b| {
+            let d = sub(point, b.centre);
+            (0..3).all(|k| dot(d, b.axes[k]).abs() <= b.half_extents[k])
+        })
+    }
+
+    /// Whether one of its boxes reaches more than the tolerance into one of `area`'s boxes.
+    fn enters(&self, area: &[Bounds]) -> bool {
+        let tol = OVERLAP_TOLERANCE_M;
+        area.iter().any(|a| intersect(&self.bounds, a, tol) && self.box_bounds.iter().any(|b| intersect(b, a, tol)))
     }
 
     /// Whether the two modules meet at a snap (linked, or touching where snaps coincide).
@@ -280,6 +294,10 @@ pub struct Placement {
     pub connectors: Vec<(u32, String)>,
     /// Modules that found no place: (macro, count).
     pub unplaced: Vec<(String, u32)>,
+    /// Dock areas and piers already on the station that were placed again, outside.
+    pub docks_moved: u32,
+    /// Dock areas and piers (new or moved) left without a clear corridor: no such spot.
+    pub docks_blocked: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -295,19 +313,25 @@ pub struct Options {
 ///
 /// Greedy: an empty design starts with a connection hub (the race's connection
 /// structure with the most snaps) at the origin. Modules go biggest first, dock
-/// areas and piers last (so they end up outside). Each goes onto the free snap
-/// nearest the origin where it fits, with whichever of its own snaps and twists
-/// keeps it most compact; or, when that is `HUB_PENALTY_M` nearer, onto a new hub
-/// (or a straight connection structure and a hub) on a free snap.
+/// areas and piers last. Each goes onto the free snap nearest the origin where it
+/// fits, with whichever of its own snaps and twists keeps it most compact; or,
+/// when that is `HUB_PENALTY_M` nearer, onto a new hub (or a straight connection
+/// structure and a hub) on a free snap.
+///
+/// Docks stay reachable: every run first lifts off the dock areas and piers that
+/// have nothing attached and places them again last, where their corridor (see
+/// `corridor`) is clear; no module may enter a placed dock's corridor. A lifted
+/// dock keeps its equipment, and goes back where it was if it fits nowhere.
 pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u32)], options: &Options) -> Result<Placement> {
     let history = design.history_len();
-    let mut order: Vec<(Arc<Module>, f64)> = Vec::new();
+    let mut order: Vec<ToPlace> = Vec::new();
     let mut out = Placement::default();
+    let size = |m: &Module| module_bounds(m, &Transform::IDENTITY).map_or(0.0, |(lo, hi)| (0..3).map(|i| hi[i] - lo[i]).product());
     for (macro_name, count) in modules {
         match catalog.module(macro_name) {
             Ok(m) if !m.snaps.is_empty() => {
-                let size = module_bounds(&m, &Transform::IDENTITY).map_or(0.0, |(lo, hi)| (0..3).map(|i| hi[i] - lo[i]).product());
-                order.extend(std::iter::repeat_n((m, size), *count as usize));
+                let s = size(&m);
+                order.extend(std::iter::repeat_n((m, s, None), *count as usize));
             }
             _ => out.unplaced.push((macro_name.clone(), *count)),
         }
@@ -315,7 +339,14 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     if order.is_empty() {
         return Ok(out);
     }
-    order.sort_by(|(a, sa), (b, sb)| docking(a).cmp(&docking(b)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
+    while let Some(index) = lift_candidate(catalog, design) {
+        let e = design.plan().entries.iter().find(|e| e.index == index).unwrap();
+        let (m, at, upgrades) = (catalog.module(&e.macro_name)?, design.world(index)?, e.upgrades.clone());
+        let s = size(&m);
+        order.push((m, s, Some((at, upgrades))));
+        design.remove(catalog, index)?;
+    }
+    order.sort_by(|(a, sa, _), (b, sb, _)| docking(a).cmp(&docking(b)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
 
     let all = candidates(catalog)?;
     let race = options.race.clone().or_else(|| common_race(&all, order.iter().map(|o| o.0.macro_name.as_str())));
@@ -328,18 +359,61 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     }
 
     let mut unplaced: BTreeMap<String, u32> = BTreeMap::new();
-    for (module, _) in &order {
-        match placer.place(design, &connectors, module)? {
-            Some((index, added)) => {
+    for (module, _, lifted) in &order {
+        match (placer.place(design, &connectors, module)?, lifted) {
+            (Some((index, added)), None) => {
                 out.placed.push((index, module.macro_name.clone()));
                 out.connectors.extend(added);
             }
-            None => *unplaced.entry(module.macro_name.clone()).or_default() += 1,
+            (Some((index, added)), Some((_, upgrades))) => {
+                design.restore_upgrades(index, upgrades.clone());
+                out.docks_moved += 1;
+                out.connectors.extend(added);
+            }
+            (None, None) => *unplaced.entry(module.macro_name.clone()).or_default() += 1,
+            (None, Some((at, upgrades))) => {
+                // Nowhere else: back where it was (no longer attached; the snap may be taken).
+                let index = design.add_root(catalog, &module.macro_name, *at)?;
+                design.restore_upgrades(index, upgrades.clone());
+                placer.add(design, index)?;
+                placer.blocked += 1;
+            }
         }
     }
     out.unplaced.extend(unplaced);
+    out.docks_blocked = placer.blocked;
     design.squash_history(history);
     Ok(out)
+}
+
+/// A module to place: (module, size, for a lifted dock: where it was and its equipment).
+type ToPlace = (Arc<Module>, f64, Option<(Transform, Vec<Upgrade>)>);
+
+/// A dock area or pier with nothing attached to it, which a placement run lifts
+/// off to place again outside.
+fn lift_candidate(catalog: &Catalog, design: &Design) -> Option<u32> {
+    let entries = &design.plan().entries;
+    entries
+        .iter()
+        .filter(|e| catalog.module(&e.macro_name).is_ok_and(|m| docking(&m)))
+        .find(|e| !entries.iter().any(|x| x.predecessor.as_ref().is_some_and(|p| p.index == e.index)))
+        .map(|e| e.index)
+}
+
+/// A dock's clearance corridor: its box (`bounds`) swept `DOCK_CLEARANCE_M` straight
+/// out from the station's centre, as overlapping boxes. `None` at the centre.
+fn corridor(bounds: &Bounds, centre: [f64; 3]) -> Option<Vec<Bounds>> {
+    let mid = [0, 1, 2].map(|i| (bounds.0[i] + bounds.1[i]) / 2.0);
+    let out = sub(mid, centre);
+    let length = dot(out, out).sqrt();
+    if length < 1.0 {
+        return None;
+    }
+    let dir = out.map(|v| v / length);
+    let smallest = (0..3).map(|i| bounds.1[i] - bounds.0[i]).fold(f64::MAX, f64::min);
+    let step = (smallest / 2.0).max(25.0);
+    let steps = (DOCK_CLEARANCE_M / step).ceil() as usize;
+    Some((1..=steps).map(|k| { let s = k as f64 * step; ([0, 1, 2].map(|i| bounds.0[i] + dir[i] * s), [0, 1, 2].map(|i| bounds.1[i] + dir[i] * s)) }).collect())
 }
 
 /// Dock areas and piers: ships have to reach them.
@@ -424,22 +498,63 @@ struct Placer<'a> {
     /// Part-box bounds of the whole station (what the plot must hold).
     bounds: Option<Bounds>,
     free: Vec<FreeSnap>,
+    /// The entry each body belongs to.
+    owners: Vec<u32>,
     /// (entry, snap, macro, through a new hub, outward) that didn't fit. Placing
     /// only adds obstacles, so what failed once fails again.
     failed: HashSet<(u32, String, String, bool, bool)>,
-    /// Modules must have open space outward (see `exposed`).
+    /// Dock areas and piers now need a clear corridor (see `corridor`).
     outward: bool,
+    /// Corridors of docks on the station that have one: no module may enter them.
+    corridors: Vec<Vec<Bounds>>,
+    /// Docks placed (or put back) without a clear corridor.
+    blocked: u32,
 }
 
 impl<'a> Placer<'a> {
     fn new(catalog: &'a Catalog, design: &Design, plot: Option<Plot>) -> Result<Placer<'a>> {
-        let mut placer = Placer { catalog, plot, bodies: Vec::new(), bounds: None, free: Vec::new(), failed: HashSet::new(), outward: false };
+        let mut placer = Placer {
+            catalog,
+            plot,
+            bodies: Vec::new(),
+            bounds: None,
+            free: Vec::new(),
+            owners: Vec::new(),
+            failed: HashSet::new(),
+            outward: false,
+            corridors: Vec::new(),
+            blocked: 0,
+        };
         for e in &design.plan().entries {
             if catalog.module(&e.macro_name).is_ok() {
                 placer.add(design, e.index)?;
             }
         }
+        // Docks that stay (something is attached to them) keep their corridor clear.
+        for e in &design.plan().entries {
+            if catalog.module(&e.macro_name).is_ok_and(|m| docking(&m)) {
+                placer.protect(design, e.index)?;
+            }
+        }
         Ok(placer)
+    }
+
+    /// The centre of the station's bounds.
+    fn centre(&self) -> [f64; 3] {
+        self.bounds.map_or([0.0; 3], |(lo, hi)| [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0))
+    }
+
+    /// Keeps the corridor of dock `index` clear from now on, if it is clear now.
+    fn protect(&mut self, design: &Design, index: u32) -> Result<()> {
+        let e = design.plan().entries.iter().find(|e| e.index == index).ok_or_else(|| Error(format!("no entry {index}")))?;
+        let module = self.catalog.module(&e.macro_name)?;
+        let Some(bounds) = module_bounds(&module, &design.world(index)?) else { return Ok(()) };
+        let Some(lane) = corridor(&bounds, self.centre()) else { return Ok(()) };
+        let clear = self.bodies.iter().zip(&self.owners).all(|(b, &owner)| owner == index || !b.enters(&lane));
+        if clear {
+            self.corridors.push(lane);
+        }
+        Ok(())
     }
 
     /// Takes a placed entry into account: its body, bounds and free snaps.
@@ -448,6 +563,7 @@ impl<'a> Placer<'a> {
         let module = self.catalog.module(&e.macro_name)?;
         let world = design.world(index)?;
         self.bodies.push(Body::new(&self.catalog.collision_boxes(&e.macro_name)?, &module.snaps, &world));
+        self.owners.push(index);
         if let Some(b) = module_bounds(&module, &world) {
             self.bounds = Some(self.bounds.map_or(b, |s| union(s, b)));
         }
@@ -476,35 +592,17 @@ impl<'a> Placer<'a> {
         }
         let body = Body::new(boxes, &module.snaps, at);
         let clear = self.bodies.iter().chain(extra.iter().map(|f| &f.body)).all(|b| overlap(b, &body).is_none());
+        // Nothing enters a dock's corridor; a dock (while `outward`) needs a clear one.
+        let lanes_free = !self.corridors.iter().any(|lane| body.enters(lane));
         let open = !self.outward || !docking(module) || self.exposed(&bounds, extra);
-        (clear && open).then_some(Fit { body, bounds })
+        (clear && lanes_free && open).then_some(Fit { body, bounds })
     }
 
-    /// Whether nothing placed (or in `extra`) lies on the line from the origin out
-    /// through the centre of `bounds`, beyond that centre.
+    /// Whether the corridor of a dock at `bounds` is clear of everything placed
+    /// (and of `extra`).
     fn exposed(&self, bounds: &Bounds, extra: &[&Fit]) -> bool {
-        let centre = [0, 1, 2].map(|i| (bounds.0[i] + bounds.1[i]) / 2.0);
-        let length = dot(centre, centre).sqrt();
-        if length < 1.0 {
-            return false;
-        }
-        let dir = centre.map(|v| v / length);
-        let hit = |(lo, hi): &Bounds| {
-            let (mut enter, mut exit) = (0.0f64, DOCK_CLEARANCE_M);
-            for i in 0..3 {
-                if dir[i].abs() < 1e-12 {
-                    if centre[i] < lo[i] || centre[i] > hi[i] {
-                        return false;
-                    }
-                } else {
-                    let (a, b) = ((lo[i] - centre[i]) / dir[i], (hi[i] - centre[i]) / dir[i]);
-                    enter = enter.max(a.min(b));
-                    exit = exit.min(a.max(b));
-                }
-            }
-            enter <= exit
-        };
-        !self.bodies.iter().map(|b| &b.bounds).chain(extra.iter().map(|f| &f.body.bounds)).any(hit)
+        let Some(lane) = corridor(bounds, self.centre()) else { return false };
+        !self.bodies.iter().chain(extra.iter().map(|f| &f.body)).any(|b| b.enters(&lane))
     }
 
     /// The most compact way (module centre nearest the origin) to attach the
@@ -526,11 +624,16 @@ impl<'a> Placer<'a> {
     /// Places one module; returns its index and the connection structures added for it.
     /// Dock areas and piers go where they face open space if they can.
     fn place(&mut self, design: &mut Design, conn: &Connectors, module: &Module) -> Result<Option<Placed>> {
-        for outward in if docking(module) { &[true, false][..] } else { &[false] } {
-            self.outward = *outward;
+        for &outward in if docking(module) { &[true, false][..] } else { &[false] } {
+            self.outward = outward;
             let placed = self.place_with(design, conn, module)?;
             self.outward = false;
-            if placed.is_some() {
+            if let Some((index, _)) = &placed {
+                if outward {
+                    self.protect(design, *index)?;
+                } else if docking(module) {
+                    self.blocked += 1;
+                }
                 return Ok(placed);
             }
         }

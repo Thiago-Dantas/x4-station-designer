@@ -51,6 +51,10 @@ export interface Placement {
   placed: { index: number; macro: string }[];
   connectors: { index: number; macro: string }[];
   unplaced: { macro: string; count: number }[];
+  /** Docks and piers already there that were placed again, outside. */
+  docks_moved: number;
+  /** Docks and piers left without a clear corridor (no such spot). */
+  docks_blocked: number;
 }
 export interface CostLine { ware: string; name: string; amount: number; value: number | null }
 export interface BuildCost { method: string; methods: { id: string; name: string }[]; lines: CostLine[]; value: number; unknown: string[] }

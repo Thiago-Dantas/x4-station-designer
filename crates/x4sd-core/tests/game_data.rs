@@ -332,19 +332,27 @@ fn place_and_check(c: &Catalog, d: &mut Design, modules: &[(String, u32)], optio
     let connector_cost = w.cost(r.connectors.iter().map(|(_, m)| (m.as_str(), 1.0)), "default").value;
     let plot = required_plot(d.plan(), c).unwrap();
     eprintln!(
-        "[{}] placed {} in {elapsed:?} with connectors {connectors:?} ({:.1}% of the {:.1} M Cr station); unplaced {:?}; plot {plot}",
+        "[{}] placed {} in {elapsed:?} with connectors {connectors:?} ({:.1}% of the {:.1} M Cr station); docks moved {}, blocked {}; unplaced {:?}; plot {plot}",
         d.plan().name,
         r.placed.len(),
         100.0 * connector_cost / total_cost,
         total_cost / 1e6,
+        r.docks_moved,
+        r.docks_blocked,
         r.unplaced
     );
-    let new = before.entries.len() as u32;
-    assert_eq!(d.plan().entries[..before.entries.len()], before.entries[..], "existing modules stay as they were");
+    // Every module that was there stays where it was, except docks and piers (lifted
+    // off and placed again, so entries may be renumbered); nothing is lost.
+    let dock = |m: &str| ["pier", "dockarea"].contains(&c.module(m).unwrap().class.as_str());
+    let same = |a: &x4sd_core::plan::Entry, b: &x4sd_core::plan::Entry| a.macro_name == b.macro_name && a.offset == b.offset;
+    for b in before.entries.iter().filter(|b| !dock(&b.macro_name)) {
+        assert!(d.plan().entries.iter().any(|e| same(e, b)), "#{} {} moved", b.index, b.macro_name);
+    }
     assert_eq!(d.plan().entries.len(), before.entries.len() + r.placed.len() + r.connectors.len());
-    let found: Vec<_> = overlaps(d.plan(), c).into_iter().filter(|o| o.1 > new).collect();
+    let new: Vec<u32> = d.plan().entries.iter().filter(|e| !before.entries.iter().any(|b| same(e, b))).map(|e| e.index).collect();
+    let found: Vec<_> = overlaps(d.plan(), c).into_iter().filter(|o| new.contains(&o.0) || new.contains(&o.1)).collect();
     assert!(found.is_empty(), "{found:?}");
-    let issues: Vec<Issue> = validate(d.plan(), c).into_iter().filter(|i| i.index().is_none_or(|i| i > new)).collect();
+    let issues: Vec<Issue> = validate(d.plan(), c).into_iter().filter(|i| i.index().is_none_or(|i| new.contains(&i))).collect();
     assert_eq!(issues, Vec::<Issue>::new());
     match (options.grow_plot, d.plot()) {
         (false, Some(p)) => assert!(validate_plot(d.plan(), c, &p).is_empty(), "inside {p}"),
@@ -354,6 +362,37 @@ fn place_and_check(c: &Catalog, d: &mut Design, modules: &[(String, u32)], optio
     assert_eq!(d.plan(), &before, "one undo step");
     assert!(d.redo());
     r
+}
+
+/// The last two entries are a dock area and a pier, and the line from the station
+/// centre out through each, for 3 km, passes through no other module.
+fn assert_docks_outside(c: &Catalog, d: &Design) {
+    use x4sd_core::layout::Body;
+    let class = |e: &x4sd_core::plan::Entry| c.module(&e.macro_name).unwrap().class.clone();
+    assert!(d.plan().entries.iter().rev().take(2).all(|e| ["pier", "dockarea"].contains(&class(e).as_str())));
+    let bodies: Vec<(u32, Body)> = d
+        .plan()
+        .entries
+        .iter()
+        .map(|e| (e.index, Body::new(&c.collision_boxes(&e.macro_name).unwrap(), &c.module(&e.macro_name).unwrap().snaps, &d.world(e.index).unwrap())))
+        .collect();
+    let parts: Vec<_> = d.plan().entries.iter().filter_map(|e| x4sd_core::plot::entry_bounds(d.plan(), c, e.index)).collect();
+    let (lo, hi) = parts.iter().fold(parts[0], |(l, h), (a, b)| (std::array::from_fn(|i| l[i].min(a[i])), std::array::from_fn(|i| h[i].max(b[i]))));
+    let station: [f64; 3] = std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0);
+    for (index, body) in bodies.iter().rev().take(2) {
+        let (l, h) = body.bounds();
+        let mid: [f64; 3] = std::array::from_fn(|i| (l[i] + h[i]) / 2.0);
+        let out: [f64; 3] = std::array::from_fn(|i| mid[i] - station[i]);
+        let len = out.iter().map(|v| v * v).sum::<f64>().sqrt();
+        // Samples every 50 m along the line out to 3 km past the dock's centre.
+        let blocked: Vec<u32> = bodies
+            .iter()
+            .filter(|(i, b)| i != index && (1..=60).any(|k| b.contains(std::array::from_fn(|j| mid[j] + out[j] / len * k as f64 * 50.0))))
+            .map(|(i, _)| *i)
+            .collect();
+        eprintln!("dock #{index}: {len:.0} m from the station centre, in the way: {blocked:?}");
+        assert!(blocked.is_empty());
+    }
 }
 
 /// Auto-placement: "a staffed station with 100 solar panels" planned and placed
@@ -382,30 +421,17 @@ fn auto_place_planned_stations() {
     let r = place_and_check(c, &mut d, &modules, &grow);
     assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
     assert_eq!(r.placed.len() as u32, modules.iter().map(|m| m.1).sum::<u32>());
-    // Docks are placed last, so they come last in the build order, and face open
-    // space: nothing on the line from the origin out through their centre.
-    let class = |e: &x4sd_core::plan::Entry| c.module(&e.macro_name).unwrap().class.clone();
-    assert!(d.plan().entries.iter().rev().take(2).all(|e| ["pier", "dockarea"].contains(&class(e).as_str())));
-    let bounds: Vec<(u32, [f64; 3], [f64; 3])> = d
-        .plan()
-        .entries
-        .iter()
-        .map(|e| {
-            let m = c.module(&e.macro_name).unwrap();
-            let (lo, hi) = x4sd_core::layout::Body::new(&c.collision_boxes(&e.macro_name).unwrap(), &m.snaps, &d.world(e.index).unwrap()).bounds();
-            (e.index, lo, hi)
-        })
-        .collect();
-    for (index, lo, hi) in bounds.iter().rev().take(2) {
-        let centre: [f64; 3] = std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0);
-        let len = centre.iter().map(|v| v * v).sum::<f64>().sqrt();
-        let blocked = bounds.iter().filter(|b| b.0 != *index).any(|(_, l, h)| {
-            // Samples every 50 m along the line out to 20 km.
-            (1..400).any(|k| (0..3).all(|i| (l[i]..=h[i]).contains(&(centre[i] * (1.0 + k as f64 * 50.0 / len)))))
-        });
-        eprintln!("dock #{index}: {len:.0} m from the origin, open outward: {}", !blocked);
-        assert!(!blocked);
-    }
+    // Docks are placed last, so they come last in the build order, with nothing in
+    // their way out from the station centre.
+    assert_docks_outside(c, &d);
+    // A second run (10 more solar modules) lifts the docks off and places them
+    // outside the grown station again.
+    let docks = |d: &Design| d.plan().entries.iter().filter(|e| ["pier", "dockarea"].contains(&c.module(&e.macro_name).unwrap().class.as_str())).count();
+    let before = docks(&d);
+    let more = place_and_check(c, &mut d, &[("prod_gen_energycells_macro".to_owned(), 10)], &grow);
+    eprintln!("second run: {} placed, {} docks moved, {} without a clear corridor", more.placed.len(), more.docks_moved, more.docks_blocked);
+    assert_eq!((more.placed.len(), more.docks_moved, more.docks_blocked, docks(&d)), (10, 2, 0, before));
+    assert_docks_outside(c, &d);
     let path = std::env::temp_dir().join("x4sd-auto-place.xml");
     std::fs::write(&path, x4sd_core::plan::write_plans(std::slice::from_ref(d.plan()))).unwrap();
     eprintln!("saved to {}", path.display());

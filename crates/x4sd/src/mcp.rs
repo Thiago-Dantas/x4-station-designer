@@ -411,7 +411,7 @@ impl Server {
         self.run(Op::PlanProduction(a))
     }
 
-    #[tool(description = "Auto-placement: attach modules to the open design at exact snap positions, clear of each other and inside the plot, adding connection structures (hubs, straight pieces) where needed; one undo step. Give modules (macro and count), or from_plan (plan_production settings) to plan and place in one call (the result then has the plan too). Big modules go first, dock areas and piers last. Returns the new modules and connection structures (index, macro), what didn't fit, and the plot: with grow_plot (default true) the station may outgrow its plot, up to 20 km per axis; then tell the user and fit_plot with grow_only.")]
+    #[tool(description = "Auto-placement: attach modules to the open design at exact snap positions, clear of each other and inside the plot, adding connection structures (hubs, straight pieces) where needed; one undo step. Give modules (macro and count), or from_plan (plan_production settings) to plan and place in one call (the result then has the plan too). Big modules go first, dock areas and piers last: every run also lifts off the dock areas and piers with nothing attached and places them again where a 3 km corridor out from the station is clear, and no module may block a dock's corridor. Returns the new modules and connection structures (index, macro), what didn't fit, docks_moved and docks_blocked (no clear corridor anywhere), and the plot: with grow_plot (default true) the station may outgrow its plot, up to 20 km per axis; then tell the user and fit_plot with grow_only.")]
     fn auto_place(&self, Parameters(a): Parameters<ops::AutoPlaceArgs>) -> ToolResult {
         self.run(Op::AutoPlace(a))
     }

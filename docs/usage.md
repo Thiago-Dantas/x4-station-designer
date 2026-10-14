@@ -39,6 +39,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - **Place all (N)** attaches every module still to place at once (auto-placement).
     - Modules go onto free snaps at exact positions, clear of each other, with connection structures of the plan's race added where needed. The largest go first; dock areas and piers go last, where they face open space.
     - The station may outgrow the plot (up to 20 km per axis); the builder then offers to enlarge it.
+    - Every Place all also moves the dock areas and piers that have nothing attached to the outside, where a 3 km corridor out from the station is clear. Docks carrying other modules stay. No module is ever placed in a dock's corridor. The status line says how many docks moved, and warns if one has no clear approach.
     - What found no room is listed under the button. Ctrl+Z undoes the whole placement.
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
     - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
@@ -77,6 +78,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Export to game* writes the plan into `constructionplan\`; then click Import in the game's build menu.
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
   - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
+- **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load.
 - **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt); right drag **or WASD** pans (W/S up and down, A/D left and right on screen); **Q/E** move straight down/up. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
 - **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.
 - **Textures** (toolbar, on by default): the game's diffuse textures on the models. Without them, models are tinted by module class. The status bar reports how many loaded and their GPU memory, typically about 10 MB in 0.2 s. Turn them off on weak graphics hardware. The choice is remembered.

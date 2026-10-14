@@ -758,6 +758,8 @@ async function placeAll() {
       note =
         `Placed ${p.placed.length} modules` +
         (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
+        (p.docks_moved ? `; moved ${p.docks_moved} docks outside` : "") +
+        (p.docks_blocked ? `. ${p.docks_blocked} docks have no clear approach` : "") +
         (left ? `. No room for ${left}` : "");
       return s;
     }),
@@ -766,7 +768,7 @@ async function placeAll() {
     true,
   );
   $("planner-placed").textContent = note;
-  if (note) status(note, note.includes("No room") ? "error" : "good");
+  if (note) status(note, note.includes("No room") || note.includes("no clear approach") ? "error" : "good");
 }
 
 async function loadPlanner() {

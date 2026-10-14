@@ -82,6 +82,8 @@ export class View3D {
    * down/up, the arrow keys rotate the camera around its target. */
   private panKeys = new Set<string>();
   private clock = new THREE.Clock();
+  /** Frame counter shown in the view's corner: frames and busy milliseconds since `fpsSince`. */
+  private fps = { el: document.createElement("div"), frames: 0, busy: 0, since: performance.now() };
   /** Translate gizmo for a selected free-standing module. */
   private gizmo: TransformControls;
   private gizmoTarget = new THREE.Object3D();
@@ -119,11 +121,30 @@ export class View3D {
     });
     this.scene.add(this.gizmoTarget, this.gizmo.getHelper());
     this.bindPanKeys();
+    this.fps.el.className = "fps";
+    container.append(this.fps.el);
     this.renderer.setAnimationLoop(() => {
+      const start = performance.now();
       this.keyNavigate(this.clock.getDelta());
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
+      this.countFrame(start);
     });
+  }
+
+  /** Updates the frame counter twice a second: frames per second, and the time a
+   * frame takes to update and draw (the frame rate stops at the screen's refresh rate). */
+  private countFrame(start: number) {
+    const f = this.fps;
+    const now = performance.now();
+    f.frames++;
+    f.busy += now - start;
+    if (now - f.since >= 500) {
+      f.el.textContent = `${Math.round((f.frames * 1000) / (now - f.since))} fps · ${(f.busy / f.frames).toFixed(1)} ms`;
+      f.frames = 0;
+      f.busy = 0;
+      f.since = now;
+    }
   }
 
   private bindPanKeys() {

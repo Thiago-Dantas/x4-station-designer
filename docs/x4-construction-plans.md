@@ -204,7 +204,14 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   - The struts are its straight 2-snap structures, one per length (Argon 400, 800, 1600 m).
 - **Order:** the largest modules first; dock areas and piers last.
 - **Placement:** each module goes onto the free snap nearest the origin where it fits, with the most compact of its own snaps and the four twists. Alternatively it goes onto a new hub (optionally on a strut) on a free snap, when that is 2 km nearer.
-  - Dock areas and piers first try spots with nothing on the line from the origin out through them.
+  - **Docks stay reachable** (user request, 2026-10-14):
+    - A dock area or pier needs a **clear corridor**: its own box swept 3 km straight out from the station's centre, clear of other modules' collision boxes.
+    - No module (or connection structure) may enter the corridor of a dock already on the station.
+    - **Every run reworks docks.** It first lifts off the dock areas and piers with nothing attached and places them again last, at the nearest spot with a clear corridor. They keep their equipment.
+    - Docks that carry other modules stay where they are, and their corridors are protected.
+    - A lifted dock that fits nowhere goes back to its old position, free-standing.
+    - The run reports `docks_moved` and `docks_blocked` (placed without a clear corridor because there was no such spot).
+    - **Hypothesis:** a 3 km corridor straight out is enough room for ships to reach them. Not checked in game.
 - **Plot:** with *grow*, it stays within the largest plot (20 km per axis) and reports the plot needed. Placements keep 1 m inside the plot, so rounding to stored positions can't push a module out.
 - **Undo:** the whole placement is one undo step.
 - **Results** (game-data test `auto_place_planned_stations`):
@@ -213,7 +220,8 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   |---|---|---|---|---|
   | "100 solar, staffed" | 137 | 81 (2.9% of the cost) | 8×8×8 km | 2.1 s |
   | Terran hull parts | 18 | 1 | 6×4×5 km | 0.4 s |
-  | TerranScrapyard's fix | 219, onto the existing station | 21 | 10×10×11 km | 0.9 s |
+  | TerranScrapyard's fix | 219, onto the existing station (its one free dock moved outside) | 21 | 10×10×11 km | 1.1 s |
+  | "100 solar" again, plus 10 solar | 10; both docks lifted and placed again, clear | 9 | 8×8×8 km | 0.9 s |
 
 - **Not checked in game yet:**
   - that the game builds these stations (modules attached to modules, connectors);

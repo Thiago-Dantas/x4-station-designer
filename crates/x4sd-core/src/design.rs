@@ -465,6 +465,12 @@ impl Design {
         self.plan.entries.iter().find(|e| e.index == index).ok_or_else(|| Error(format!("no entry {index}")))
     }
 
+    /// Gives entry `index` this equipment as it is (no checks, no undo step of its
+    /// own): for auto-placement, which puts a lifted dock back with its equipment.
+    pub(crate) fn restore_upgrades(&mut self, index: u32, upgrades: Vec<Upgrade>) {
+        self.entry_mut(index).upgrades = upgrades;
+    }
+
     /// Entry `index`, which the caller has checked exists.
     fn entry_mut(&mut self, index: u32) -> &mut Entry {
         self.plan.entries.iter_mut().find(|e| e.index == index).unwrap()
