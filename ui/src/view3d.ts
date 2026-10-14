@@ -486,12 +486,12 @@ export class View3D {
     return { index: hit.userData.index, snap: hit.userData.snap };
   }
 
-  /** Points the camera at the whole station. */
-  frame() {
+  /** Points the camera at the whole station, `extra` metres farther out than a tight fit. */
+  frame(extra = 0) {
     const box = new THREE.Box3().setFromObject(this.station);
     if (box.isEmpty()) box.set(new THREE.Vector3(-2000, -2000, -2000), new THREE.Vector3(2000, 2000, 2000));
     const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const distance = sphere.radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1;
+    const distance = sphere.radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1 + extra;
     const direction = new THREE.Vector3(1, 0.7, 1).normalize();
     this.controls.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);

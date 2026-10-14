@@ -1711,9 +1711,11 @@ function firstAt(ev: MouseEvent): Vec3 {
   return p ? (p.map((v) => Math.round(v / 10) * 10 + 0) as Vec3) : [0, 0, 0];
 }
 
-/** Places the first module, then selects it and stops placing, so its position fields and gizmo show. */
+/** Places the first module, then selects it and stops placing, so its position fields and gizmo show.
+ * The view backs off 5 km from a tight fit (user request), leaving room for what gets attached next. */
 async function placeFirst(macro: string, at: Vec3) {
-  await apply(api.addModule(macro, at), `Placed ${moduleName(macro)}`, true, true);
+  await apply(api.addModule(macro, at), `Placed ${moduleName(macro)}`, false, true);
+  view.frame(5000);
   const first = scene?.entries.length === 1 ? scene.entries[0].index : null;
   if (first === null) return;
   await arm(null);
