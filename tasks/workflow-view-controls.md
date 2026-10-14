@@ -57,3 +57,6 @@ User, 2026-10-14:
   - on an asymmetric scene (average snap-cone position), X raises the view (y 539 to 776), Z lowers it back, and E/Q turn the camera and back;
   - game-data test `plots` passes with the 2 km default;
   - ui_smoke's vertical-key check now uses X.
+- 2026-10-14, user: the gizmo didn't show while a module was armed for placing. "clicking on the rotate gizmo should disarm the placement and enable rotation on the selected module, only if a module is selected".
+  - The gizmo button now stays visible whenever a module is selected (not while moving, or with the build-order preview). Clicked while placing, it disarms and shows the rotate gizmo.
+  - Its label follows whether the gizmo is showing: it said "Hide gizmo" while nothing showed.

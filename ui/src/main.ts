@@ -203,8 +203,9 @@ function redraw() {
     root?.attached ? "rotate" : gizmoMode,
     rotationStep,
   );
-  $("gizmo-row").hidden = !editable;
-  $("btn-gizmo-mode").textContent = gizmoMode !== "rotate" ? "Rotate gizmo" : root?.attached ? "Hide gizmo" : "Move gizmo";
+  // The button stays while placing: it drops the placement (see its onclick).
+  $("gizmo-row").hidden = !(root && moving === null && buildStep === null);
+  $("btn-gizmo-mode").textContent = !gizmoAt || (gizmoMode !== "rotate" && !root?.attached) ? "Rotate gizmo" : root?.attached ? "Hide gizmo" : "Move gizmo";
   $("btn-straighten").hidden = !(root?.attached && (root.attached.tilt ?? 0) > 0.05);
   $("btn-twist-left").textContent = `⟲ ${rotationStep}°`;
   $("btn-twist-right").textContent = `⟳ ${rotationStep}°`;
@@ -1029,6 +1030,13 @@ $("btn-straighten").onclick = () => {
   if (sel?.attached) void apply(api.straighten(sel.index), `Straightened ${sel.name ?? sel.macro}`, false, true);
 };
 $("btn-gizmo-mode").onclick = () => {
+  if (selected === null) return;
+  if (armed) {
+    // Placing a module: stop that and rotate the selected one instead.
+    gizmoMode = "rotate";
+    void arm(null);
+    return;
+  }
   gizmoMode = gizmoMode === "rotate" ? "translate" : "rotate";
   redraw();
 };
