@@ -1,6 +1,6 @@
 # Workflow: x4ep_planner functionality in the designer (user request)
 
-Status: **in progress**: A and B done, C next (started 2026-10-13)
+Status: **in progress**: A and B done; C designed, not started (started 2026-10-13)
 
 User: "next i want to add x4ep_planner mod functionality".
 
@@ -50,7 +50,7 @@ User: "next i want to add x4ep_planner mod functionality".
   - Gives the module list, the net flows and the cost.
   - A "to place" list in the builder that counts down as you place modules.
   - MCP tool.
-- [ ] **C. Auto-placement** (like Build This Design): our own layout step that puts the planned modules onto free snaps at exact positions. It adds connectors where needed, avoids overlaps and stays inside the plot. It is the biggest piece.
+- [ ] **C. Auto-placement** (like Build This Design; plan below): our own layout step that puts the planned modules onto free snaps at exact positions. It adds connectors where needed, avoids overlaps and stays inside the plot. It is the biggest piece.
 
 ## Decisions
 - 2026-10-13: the user wants all three, in the order A, then B, then C.
@@ -113,6 +113,36 @@ User: "next i want to add x4ep_planner mod functionality".
   - a per-row "buy instead" for chain wares;
   - the wares left to supply, and the cost.
 - [x] Tests (game data), ui_smoke, mcp_smoke, docs
+
+## C. Auto-placement: plan (designed 2026-10-13, not started)
+Goal: one call places a module list (the planner's) onto the open design at exact snap positions, without overlaps and inside the plot. Then "a staffed station with 100 solar panels" works end to end for agents.
+
+Known facts:
+- Snaps carry only `tags="snap"`. Any snap joins any snap, and the game imported such plans (test C).
+- `geometry::attach` gives the child transform from (pred, pred snap, child snap, twist).
+- `Module::shape` holds oriented part boxes. `plot::entry_bounds` gives axis-aligned bounds. `Design::free_snaps` lists open snaps.
+- Build order is entry order, so placing appends in placement order and each parent comes before its child.
+
+Steps:
+- [ ] **Calibrate overlap:** in the player's plans (made in game), measure how much part boxes of attached neighbours intersect at the joint, and whether unattached pairs ever do. This picks the tolerance, e.g. shrinking boxes by a few metres. Record it in `docs/x4-construction-plans.md`.
+- [ ] Core `layout.rs`: `overlaps(...)`, an oriented-box test (separating axis theorem), with an axis-aligned pre-check per module.
+- [ ] Core `auto_place(catalog, design, modules: &[(macro, count)], plot, connector: Option<macro>)`, greedy:
+  1. Empty design: start with a connector hub (the race's cross connection structure) at the origin.
+  2. Placing order: big modules first; docks and piers last, so they end up on the outside.
+  3. For each module, try free snaps sorted by distance from the origin (compact), with each of the module's own snaps and twists 0/90/180/270. Take the first candidate with no overlap inside the plot.
+  4. If nothing fits, attach a connector (the race's base connection structure) on the closest free snap that fits, then retry; cap the number of connectors.
+  5. Report the modules placed (new indices), the connectors added, and the modules that didn't fit.
+  - One undo step for the whole placement (one checkpoint).
+- [ ] **Plot:** use the design's plot. With "grow", allow up to the largest plot (20 km per axis), then report the plot needed (the builder already offers to enlarge).
+- [ ] Ops/MCP:
+  - `auto_place` (module list, or `from_plan` with `PlanArgs`, which plans and places in one call);
+  - update the MCP instructions: the recipe becomes plan_production, auto_place, validate_design, analyze_station.
+- [ ] Builder: a Planner-tab **Place all** button that places what is still to place (count − placed), with a status line for what didn't fit.
+- [ ] Validate: add an overlap issue to `validate` (G4 lists overlaps), so hand-made designs get it too.
+- [ ] Tests:
+  - a game-data test ("100 solar, staffed": everything placed, no overlaps, validate clean, inside 20 km);
+  - mcp_smoke and ui_smoke;
+  - an in-game check by the user: Import and look.
 
 ## Notes
 - 2026-10-13: A done.
