@@ -197,6 +197,9 @@ function redraw() {
   $<HTMLButtonElement>("btn-undo").disabled = !scene.can_undo;
   $<HTMLButtonElement>("btn-redo").disabled = !scene.can_redo;
 
+  const issueCount = $("issue-count");
+  issueCount.textContent = scene.issues.length ? `(${scene.issues.length})` : "";
+  issueCount.className = scene.issues.length ? "bad" : "";
   const issues = $("issues");
   issues.replaceChildren();
   if (scene.issues.length === 0) {
@@ -463,6 +466,13 @@ async function refreshAnalysis() {
   );
 }
 
+// ---------------------------------------------------------------- right pane
+
+// A section's title folds it away or opens it; most start folded (see index.html).
+for (const title of document.querySelectorAll<HTMLElement>("#inspector section > h3, #sel-equipment > h4")) {
+  title.onclick = () => title.parentElement!.classList.toggle("collapsed");
+}
+
 // ---------------------------------------------------------------- equipment
 
 let equipmentList: EquipmentItem[] = [];
@@ -550,8 +560,10 @@ const equipped = (r: { filled: number; cleared: number; skipped: number }) =>
 async function loadEquipment() {
   equipmentList = (await api.runOp<EquipmentItem[]>({ op: "list_equipment" })).result;
   for (const [kind, size] of [["turrets", "medium"], ["shields", "medium"], ["turrets", "large"], ["shields", "large"]]) {
-    const items = equipmentList.filter((e) => e.kind === kind && e.size === size).sort((a, b) => (a.race ?? "").localeCompare(b.race ?? "") || a.name.localeCompare(b.name));
-    $(`pick-${kind}-${size}`).replaceChildren(new Option("—", ""), ...items.map((e) => new Option(e.name, e.macro)));
+    const items = equipmentList.filter((e) => e.kind === kind && e.size === size); // sorted by race, name, macro
+    // Two items with the same name (rare) show their macro too.
+    const label = (e: EquipmentItem) => (items.filter((x) => x.name === e.name).length > 1 ? `${e.name} (${e.macro})` : e.name);
+    $(`pick-${kind}-${size}`).replaceChildren(new Option("—", ""), ...items.map((e) => new Option(label(e), e.macro)));
   }
 }
 

@@ -96,7 +96,7 @@
             <button id="btn-build-last" title="Build it as late as possible (with everything attached to it)">Build last</button>
           </div>
           <label><span>A build stage ends here</span> <input type="checkbox" id="stage-end" /></label>
-          <div id="sel-equipment" hidden>
+          <div id="sel-equipment" class="collapsed" hidden>
             <h4>Equipment</h4>
             <div id="sel-equipment-groups"></div>
             <div class="row">
@@ -105,7 +105,7 @@
             </div>
           </div>
         </section>
-        <section id="equipment-panel">
+        <section id="equipment-panel" class="collapsed">
           <h3>Equipment</h3>
           <div id="equip-summary" class="details"></div>
           <label>Loadout level
@@ -121,13 +121,13 @@
           <button id="btn-equip-picks" title="Put these on every group where they fit (one undo step)">Equip station</button>
           <label><span>Defence modules only</span> <input type="checkbox" id="equip-defence-only" /></label>
         </section>
-        <section id="cost-panel">
+        <section id="cost-panel" class="collapsed">
           <h3 id="cost-title">Build cost</h3>
           <label>Build method <select id="build-method" title="The game's Preferred Build Method"></select></label>
           <table id="cost-lines"></table>
           <div id="cost-total" class="details"></div>
         </section>
-        <section id="economy-panel">
+        <section id="economy-panel" class="collapsed">
           <h3>Production</h3>
           <label>Sunlight % <input type="number" id="sunlight" min="0" max="1000" step="5" title="The sector's sunlight: solar output (energy cells) follows it" /></label>
           <div id="economy-summary" class="details"></div>
@@ -135,7 +135,7 @@
           <div id="economy-storage" class="details"></div>
           <ul id="economy-notes"></ul>
         </section>
-        <section id="plot-panel">
+        <section id="plot-panel" class="collapsed">
           <h3>Plot</h3>
           <div id="plot-summary" class="details"></div>
           <div class="plot-grid">
@@ -148,11 +148,11 @@
           </div>
           <button id="btn-fit-plot" title="Smallest plot that holds the station">Fit plot to station</button>
         </section>
-        <section>
-          <h3>Checks</h3>
+        <section id="checks-panel" class="collapsed">
+          <h3>Checks <span id="issue-count"></span></h3>
           <ul id="issues"></ul>
         </section>
-        <section class="help">
+        <section class="help collapsed">
           <h3>Controls</h3>
           <p>Left drag or arrow keys: rotate · Right drag or WASD: pan · Q/E: down/up · Wheel: zoom<br />Click a module to select · Del removes · R twists</p>
         </section>

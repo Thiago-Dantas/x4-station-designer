@@ -27,6 +27,16 @@ try:
     cdp.wait_for("document.getElementById('status').textContent.includes('modules loaded')")
     print("1.", cdp.js("document.getElementById('status').textContent"))
     print("   palette:", cdp.js("document.getElementById('module-count').textContent"))
+    # The window starts maximized; the right pane's sections start collapsed and open on a click.
+    size = cdp.js("[window.outerWidth, window.outerHeight, screen.availWidth, screen.availHeight]")
+    collapsed = cdp.js("[...document.querySelectorAll('#inspector section.collapsed > h3')].map(h => h.textContent.trim().toLowerCase())")
+    print("   window", size, "| collapsed sections:", collapsed)
+    # Maximized: as wide as the screen and taller than the default 920 px (the title bar isn't counted).
+    assert size[0] >= size[2] - 20 and size[1] > 920, size
+    assert len(collapsed) == 6 and all(any(c.startswith(n) for c in collapsed) for n in ["equipment", "build cost", "production", "plot", "checks", "controls"]), collapsed
+    assert cdp.js("document.getElementById('issues').offsetParent") is None, "the checks list is hidden"
+    cdp.js("document.querySelector('#checks-panel > h3').click()")
+    assert not cdp.js("document.getElementById('checks-panel').classList.contains('collapsed')") and cdp.js("document.getElementById('issues').offsetParent !== null")
     # Race filter: Terran + Boron, then All again (the choice is remembered, so end on All).
     chip = "[...document.querySelectorAll('#race-filter button')].find(b => b.textContent === '%s').click()"
     cdp.js(chip % "Terran")
@@ -301,7 +311,12 @@ try:
     assert cdp.js(summary).startswith("%s of %s" % (total, total)), cdp.js(summary)
     old_status = cdp.js("document.getElementById('status').textContent")
     cdp.js("{ const s = document.getElementById('pick-turrets-medium'); s.value = s.options[1].value; } document.getElementById('btn-equip-picks').click()")
-    cdp.wait_for("document.getElementById('status').textContent.startsWith('Equipped') && document.getElementById('status').textContent !== %r" % old_status, timeout=30)
+    try:
+        cdp.wait_for("document.getElementById('status').textContent.startsWith('Equipped') && document.getElementById('status').textContent !== %r" % old_status, timeout=30)
+    except TimeoutError:
+        print("   picks: status stayed", repr(cdp.js("document.getElementById('status').textContent")), "| picked",
+              cdp.js("['turrets-medium', 'shields-medium', 'turrets-large', 'shields-large'].map(id => document.getElementById('pick-' + id).value)"))
+        raise
     print("   picks (%s):" % cdp.js("document.getElementById('pick-turrets-medium').selectedOptions[0].textContent"), cdp.js("document.getElementById('status').textContent"))
     assert cdp.js("[...document.querySelectorAll('#issues li')].map(l => l.textContent).join('; ')") == "No problems found"
     time.sleep(0.5)

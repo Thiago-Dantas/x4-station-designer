@@ -161,7 +161,9 @@ So:
   - Typical group: 1 M shield + 2 M turrets. Defence modules have L groups, up to 4 shields and 10 turrets.
 - **Fit.** Equipment fits a slot when the slot has every tag of the equipment component's `component` connection, `component` itself excepted. For example `turret medium standard hittable combat` fits the slot above.
   - Matches all 1,020 equipped groups in the player and library plans.
-- **Available equipment.** Wares tagged `equipment` plus `turret` or `shield`, with a recipe, not `noplayerblueprint`: 216 with DLCs and mods. Xenon equipment carries a `xenon` tag that no player slot has.
+- **Available equipment.** Wares tagged `equipment` plus `turret` or `shield`, with a recipe, not `noplayerblueprint`, that fit a slot of some module players build: 103 with DLCs and mods, out of 216 buildable.
+  - The rest are ship-only or other sizes. Some share a name with a station variant, e.g. `turret_arg_m_beam_01_mk1` (ships) and `turret_arg_m_beam_02_mk1` (stations), both "ARG M Beam Turret Mk1".
+  - Xenon equipment carries a `xenon` tag that no player slot has.
 - **`exact`** is the number of slots of that kind filled.
   - Every sample fills all of them. Turrets always write it; shields only with 2 or more slots.
   - **Hypothesis:** absent means 1, and partial counts are allowed (the build menu keeps a count per group).

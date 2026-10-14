@@ -67,6 +67,12 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #module-count { color: var(--muted); font-size: 11px; }
 
 #inspector h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+/* Right pane: a section's title folds it away or opens it. */
+#inspector section > h3, #sel-equipment > h4 { cursor: pointer; user-select: none; }
+#inspector section > h3::before, #sel-equipment > h4::before { content: "\25BE  "; }
+#inspector section.collapsed > h3::before, #sel-equipment.collapsed > h4::before { content: "\25B8  "; }
+#inspector section.collapsed > :not(h3), #sel-equipment.collapsed > :not(h4) { display: none; }
+#issue-count.bad { color: var(--bad); }
 #inspector label { display: flex; justify-content: space-between; align-items: center; margin: 5px 0; gap: 8px; }
 #inspector .name { font-weight: 600; font-size: 14px; }
 #inspector .details { color: var(--muted); font-size: 12px; margin: 4px 0 8px; white-space: pre-line; }

@@ -352,9 +352,10 @@ impl Catalog {
         self.wares.get_or_init(|| Wares::load(&self.vfs, &folders, &self.texts)).as_ref().map_err(Clone::clone)
     }
 
-    /// Turrets and shields players can build (a recipe, not `noplayerblueprint`;
-    /// NPC-only ones like Xenon equipment carry tags no player module has), by
-    /// kind, size, race, then name.
+    /// Turrets and shields players can build for their stations: a recipe, not
+    /// `noplayerblueprint`, and fitting a slot of some module players build (ship
+    /// variants such as `turret_arg_m_beam_01_mk1` fit none; Xenon equipment
+    /// carries a `xenon` tag no player module has). By kind, size, race, name, macro.
     pub fn equipment(&self) -> Result<&[Equipment]> {
         self.equipment.get_or_init(|| self.read_equipment()).as_deref().map_err(Clone::clone)
     }
@@ -400,7 +401,12 @@ impl Catalog {
             });
         }
         let size_rank = |e: &Equipment| ["small", "medium", "large", "extralarge"].iter().position(|s| Some(*s) == e.size()).unwrap_or(4);
-        out.sort_by(|a, b| (&a.kind, size_rank(a), &a.race, &a.name).cmp(&(&b.kind, size_rank(b), &b.race, &b.name)));
+        let mut slots = Vec::new();
+        for m in self.station_modules()?.iter().filter(|m| m.sets.iter().any(|s| s == "factory")) {
+            slots.extend(self.module(&m.macro_name)?.equipment_slots.iter().cloned());
+        }
+        out.retain(|e| slots.iter().any(|s| e.fits(s)));
+        out.sort_by(|a, b| (&a.kind, size_rank(a), &a.race, &a.name, &a.macro_name).cmp(&(&b.kind, size_rank(b), &b.race, &b.name, &b.macro_name)));
         Ok(out)
     }
 
