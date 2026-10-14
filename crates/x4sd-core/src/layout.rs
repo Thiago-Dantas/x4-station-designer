@@ -4,14 +4,17 @@
 //! Overlaps use each module's collision boxes (`Catalog::collision_boxes`): two
 //! modules overlap when a pair of their boxes intersects deeper than
 //! `OVERLAP_TOLERANCE_M`, unless they are joined at a snap (modules interlock
-//! there by design). Calibration in docs/x4-construction-plans.md, "Overlaps".
+//! there by design). The boxes enclose the collision meshes loosely (curves,
+//! diagonals), so `overlaps` (what `validate` reports) confirms each pair on the
+//! meshes themselves (`meshes_intersect`); auto-placement keeps the stricter box
+//! test. Calibration in docs/x4-construction-plans.md, "Overlaps".
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
-use crate::catalog::{Catalog, Module, ShapeBox, Snap};
+use crate::catalog::{Catalog, CollisionMesh, MeshNode, Module, ShapeBox, Snap};
 use crate::design::Design;
-use crate::geometry::{attach, Transform};
+use crate::geometry::{attach, Quat, Transform};
 use crate::plan::Plan;
 use crate::planner::{best, candidates, Candidate};
 use crate::plot::{bounds_plot, module_bounds, Plot};
@@ -157,26 +160,115 @@ pub fn intersection_depth(a: &Body, b: &Body, min_depth: f64) -> Option<f64> {
     deepest
 }
 
-/// Pairs of entries whose modules overlap: (earlier index, later index, depth in
-/// metres), in plan order. Unknown modules are left out.
+/// Pairs of entries whose modules overlap: their boxes intersect (`overlap`) and
+/// so do their collision meshes (`meshes_intersect`; the box result stands for
+/// modules without meshes). (earlier index, later index, box depth in metres), in
+/// plan order. Unknown modules are left out.
 pub fn overlaps(plan: &Plan, catalog: &Catalog) -> Vec<(u32, u32, f64)> {
-    let bodies: Vec<(u32, Body)> = plan
+    let bodies: Vec<(u32, &str, Transform, Body)> = plan
         .entries
         .iter()
         .filter_map(|e| {
             let (module, boxes) = (catalog.module(&e.macro_name).ok()?, catalog.collision_boxes(&e.macro_name).ok()?);
-            Some((e.index, Body::new(&boxes, &module.snaps, &Transform::from_offset(e.offset.as_ref()))))
+            let at = Transform::from_offset(e.offset.as_ref());
+            Some((e.index, e.macro_name.as_str(), at, Body::new(&boxes, &module.snaps, &at)))
         })
         .collect();
     let mut out = Vec::new();
-    for (i, (a, body_a)) in bodies.iter().enumerate() {
-        for (b, body_b) in &bodies[i + 1..] {
-            if let Some(depth) = overlap(body_a, body_b) {
+    for (i, (a, macro_a, at_a, body_a)) in bodies.iter().enumerate() {
+        for (b, macro_b, at_b, body_b) in &bodies[i + 1..] {
+            let Some(depth) = overlap(body_a, body_b) else { continue };
+            let confirmed = match (catalog.collision_mesh(macro_a), catalog.collision_mesh(macro_b)) {
+                (Ok(Some(mesh_a)), Ok(Some(mesh_b))) => meshes_intersect(&mesh_a, at_a, &mesh_b, at_b),
+                _ => true,
+            };
+            if confirmed {
                 out.push((*a, *b, depth));
             }
         }
     }
     out
+}
+
+/// Whether two placed modules' collision meshes intersect: an edge of a triangle
+/// of one passes through the inside of a triangle of the other. Faces or edges
+/// that only touch don't count. Walks both bounding-volume trees together.
+pub fn meshes_intersect(a: &CollisionMesh, at_a: &Transform, b: &CollisionMesh, at_b: &Transform) -> bool {
+    // Work in a's frame: b's tree boxes become oriented boxes there.
+    let rel = at_a.inverse().then(at_b);
+    let node_box = |n: &MeshNode, frame: &Transform| {
+        let centre = [0, 1, 2].map(|k| (f64::from(n.lo[k]) + f64::from(n.hi[k])) / 2.0);
+        let half_extents = [0, 1, 2].map(|k| (f64::from(n.hi[k]) - f64::from(n.lo[k])) / 2.0);
+        WorldBox::new(frame, &ShapeBox { transform: Transform { position: centre, rotation: Quat::IDENTITY }, half_extents })
+    };
+    let size = |n: &MeshNode| (0..3).map(|k| n.hi[k] - n.lo[k]).sum::<f32>();
+    let mut stack = vec![(0u32, 0u32)];
+    while let Some((i, j)) = stack.pop() {
+        let (na, nb) = (&a.nodes[i as usize], &b.nodes[j as usize]);
+        if penetration(&node_box(na, &Transform::IDENTITY), &node_box(nb, &rel)) <= 0.0 {
+            continue;
+        }
+        match (na.children, nb.children) {
+            (None, None) => {
+                if leaves_intersect(a, na, b, nb, &rel) {
+                    return true;
+                }
+            }
+            (Some((l, r)), None) => stack.extend([(l, j), (r, j)]),
+            (None, Some((l, r))) => stack.extend([(i, l), (i, r)]),
+            (Some((l, r)), Some(_)) if size(na) >= size(nb) => stack.extend([(l, j), (r, j)]),
+            (_, Some((l, r))) => stack.extend([(i, l), (i, r)]),
+        }
+    }
+    false
+}
+
+/// Whether any triangle of leaf `na` of `a` crosses one of leaf `nb` of `b`
+/// (`rel` takes b's frame into a's).
+fn leaves_intersect(a: &CollisionMesh, na: &MeshNode, b: &CollisionMesh, nb: &MeshNode, rel: &Transform) -> bool {
+    let corners = |m: &CollisionMesh, n: &MeshNode, frame: Option<&Transform>| -> Vec<[[f64; 3]; 3]> {
+        m.triangles[n.first as usize..(n.first + n.count) as usize]
+            .iter()
+            .map(|t| {
+                t.map(|i| {
+                    let p = m.points[i as usize].map(f64::from);
+                    frame.map_or(p, |f| f.then(&Transform { position: p, rotation: Quat::IDENTITY }).position)
+                })
+            })
+            .collect()
+    };
+    let ta = corners(a, na, None);
+    let tb = corners(b, nb, Some(rel));
+    ta.iter().any(|x| tb.iter().any(|y| triangles_cross(x, y)))
+}
+
+/// Whether two triangles cross: an edge of one passes through the inside of the other.
+fn triangles_cross(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> bool {
+    (0..3).any(|k| segment_through(a[k], a[(k + 1) % 3], b)) || (0..3).any(|k| segment_through(b[k], b[(k + 1) % 3], a))
+}
+
+/// Whether the segment `p`-`q` passes through the inside of triangle `t`
+/// (Möller-Trumbore); touching an edge or lying in its plane doesn't count.
+fn segment_through(p: [f64; 3], q: [f64; 3], t: &[[f64; 3]; 3]) -> bool {
+    const EPS: f64 = 1e-9;
+    let (e1, e2, d) = (sub(t[1], t[0]), sub(t[2], t[0]), sub(q, p));
+    let h = cross(d, e2);
+    let det = dot(e1, h);
+    if det.abs() <= 1e-12 * (dot(e1, e1) * dot(d, d) * dot(e2, e2)).sqrt() {
+        return false; // parallel to the triangle's plane
+    }
+    let s = sub(p, t[0]);
+    let u = dot(s, h) / det;
+    if u <= EPS || u >= 1.0 - EPS {
+        return false;
+    }
+    let r = cross(s, e1);
+    let v = dot(d, r) / det;
+    if v <= EPS || u + v >= 1.0 - EPS {
+        return false;
+    }
+    let along = dot(e2, r) / det;
+    along > EPS && along < 1.0 - EPS
 }
 
 /// What `auto_place` did.
@@ -608,6 +700,17 @@ mod tests {
 
     fn shape(position: [f64; 3], half_extents: [f64; 3]) -> ShapeBox {
         ShapeBox { transform: Transform { position, rotation: Quat::IDENTITY }, half_extents }
+    }
+
+    #[test]
+    fn triangles_cross_only_through_their_insides() {
+        let t = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]];
+        // A triangle standing through t's middle crosses it; one beside it, or only
+        // touching its edge, or lying in its plane, doesn't.
+        assert!(triangles_cross(&t, &[[2.0, 2.0, -5.0], [2.0, 2.0, 5.0], [4.0, 2.0, 5.0]]));
+        assert!(!triangles_cross(&t, &[[20.0, 2.0, -5.0], [20.0, 2.0, 5.0], [22.0, 2.0, 5.0]]));
+        assert!(!triangles_cross(&t, &[[2.0, 2.0, 0.0], [2.0, 2.0, 5.0], [4.0, 2.0, 5.0]]), "a corner on t: touching");
+        assert!(!triangles_cross(&t, &[[1.0, 1.0, 0.0], [3.0, 1.0, 0.0], [1.0, 3.0, 0.0]]), "coplanar");
     }
 
     #[test]

@@ -32,6 +32,31 @@ pub struct ShapeBox {
     pub half_extents: [f64; 3],
 }
 
+/// A module's collision meshes in its own frame, with a bounding-volume tree
+/// for exact intersection tests (`layout::meshes_intersect`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CollisionMesh {
+    pub points: Vec<[f32; 3]>,
+    /// Ordered so that each tree leaf holds a contiguous run.
+    pub triangles: Vec<[u32; 3]>,
+    /// The tree, root first.
+    pub nodes: Vec<MeshNode>,
+}
+
+/// A node of a `CollisionMesh` tree: bounds in the module frame, and either two
+/// children or (a leaf) `count` triangles from `first`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeshNode {
+    pub lo: [f32; 3],
+    pub hi: [f32; 3],
+    pub children: Option<(u32, u32)>,
+    pub first: u32,
+    pub count: u32,
+}
+
+/// One part's collision mesh in the module frame: (points, triangles).
+type MeshPart = (Vec<[f64; 3]>, Vec<[u32; 3]>);
+
 /// A turret or shield slot of a module: a component connection with a `group`.
 /// Plans equip slots by group (`<upgrades><groups>`), never one by one.
 #[derive(Debug, Clone, PartialEq)]
@@ -197,6 +222,8 @@ pub struct Catalog {
     cache: Mutex<HashMap<String, Arc<Module>>>,
     /// Lowercase macro -> collision boxes; built on first use.
     collision_cache: Mutex<HashMap<String, Arc<Vec<ShapeBox>>>>,
+    /// Lowercase macro -> collision mesh (`None`: it has none); built on first use.
+    mesh_cache: Mutex<HashMap<String, Option<Arc<CollisionMesh>>>>,
     /// `collection.material` (lowercase) -> maps; read on first use.
     materials: OnceLock<HashMap<String, MaterialMaps>>,
     /// Wares and recipes (build costs); read on first use.
@@ -219,6 +246,7 @@ impl Catalog {
             texts: Texts::default(),
             cache: Mutex::new(HashMap::new()),
             collision_cache: Mutex::new(HashMap::new()),
+            mesh_cache: Mutex::new(HashMap::new()),
             materials: OnceLock::new(),
             wares: OnceLock::new(),
             equipment: OnceLock::new(),
@@ -259,6 +287,7 @@ impl Catalog {
             texts: Texts::default(),
             cache: Mutex::new(cache),
             collision_cache: Mutex::new(HashMap::new()),
+            mesh_cache: Mutex::new(HashMap::new()),
             materials: OnceLock::new(),
             wares: OnceLock::new(),
             equipment: OnceLock::new(),
@@ -622,16 +651,11 @@ impl Catalog {
             return Ok(b.clone());
         }
         let module = self.module(macro_name)?;
+        // `-collision1` is a coarser copy of `-collision`, good enough for boxes.
         let from_meshes = || -> Result<Vec<ShapeBox>> {
             let mut boxes = Vec::new();
-            for (mesh, at) in &module.collision {
-                // `-collision1` is a coarser copy of `-collision` where it exists.
-                let coarse = format!("{mesh}-collision1.xmf");
-                let file = if self.vfs.contains(&coarse) { coarse } else { format!("{mesh}-collision.xmf") };
-                let m = mesh::parse(&self.vfs.read(&file)?).map_err(|e| Error(format!("{file}: {e}")))?;
-                let points: Vec<[f64; 3]> =
-                    m.positions.iter().map(|p| at.then(&Transform { position: p.map(f64::from), rotation: Quat::IDENTITY }).position).collect();
-                split_boxes(&points, m.indices.as_chunks::<3>().0.to_vec(), 0, &mut boxes);
+            for (points, triangles) in self.collision_triangles(&module, true)? {
+                split_boxes(&points, triangles, 0, &mut boxes);
             }
             Ok(boxes)
         };
@@ -639,6 +663,47 @@ impl Catalog {
         let boxes = Arc::new(from_meshes().ok().filter(|b| !b.is_empty()).unwrap_or_else(|| module.shape.clone()));
         self.collision_cache.lock().unwrap().insert(key, boxes.clone());
         Ok(boxes)
+    }
+
+    /// The module's full collision meshes (`-collision.xmf`) as one mesh with a
+    /// tree, for exact tests; `None` when it has none (or they can't be read).
+    pub fn collision_mesh(&self, macro_name: &str) -> Result<Option<Arc<CollisionMesh>>> {
+        let key = macro_name.to_ascii_lowercase();
+        if let Some(m) = self.mesh_cache.lock().unwrap().get(&key) {
+            return Ok(m.clone());
+        }
+        let module = self.module(macro_name)?;
+        let mesh = self.collision_triangles(&module, false).ok().and_then(|parts| {
+            let mut points: Vec<[f32; 3]> = Vec::new();
+            let mut triangles: Vec<[u32; 3]> = Vec::new();
+            for (p, t) in parts {
+                let base = points.len() as u32;
+                points.extend(p.iter().map(|v| v.map(|x| x as f32)));
+                triangles.extend(t.iter().map(|t| t.map(|i| i + base)));
+            }
+            if triangles.is_empty() {
+                return None;
+            }
+            let mut nodes = Vec::new();
+            build_tree(&points, &mut triangles, 0, &mut nodes);
+            Some(Arc::new(CollisionMesh { points, triangles, nodes }))
+        });
+        self.mesh_cache.lock().unwrap().insert(key, mesh.clone());
+        Ok(mesh)
+    }
+
+    /// Each colliding part's collision mesh in the module frame: (points, triangles).
+    /// `coarse` takes `-collision1.xmf` where it exists.
+    fn collision_triangles(&self, module: &Module, coarse: bool) -> Result<Vec<MeshPart>> {
+        let mut out = Vec::new();
+        for (mesh, at) in &module.collision {
+            let coarse_file = format!("{mesh}-collision1.xmf");
+            let file = if coarse && self.vfs.contains(&coarse_file) { coarse_file } else { format!("{mesh}-collision.xmf") };
+            let m = mesh::parse(&self.vfs.read(&file)?).map_err(|e| Error(format!("{file}: {e}")))?;
+            let points = m.positions.iter().map(|p| at.then(&Transform { position: p.map(f64::from), rotation: Quat::IDENTITY }).position).collect();
+            out.push((points, m.indices.as_chunks::<3>().0.to_vec()));
+        }
+        Ok(out)
     }
 }
 
@@ -729,6 +794,32 @@ fn shape_boxes(component: roxmltree::Node) -> Vec<ShapeBox> {
         });
     }
     boxes
+}
+
+/// Builds a bounding-volume tree over `triangles` (reordering them): each node
+/// halves its triangles at the median centre along its longest axis, down to
+/// leaves of at most 8. Returns the node's index.
+fn build_tree(points: &[[f32; 3]], triangles: &mut [[u32; 3]], first: u32, nodes: &mut Vec<MeshNode>) -> u32 {
+    let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+    for p in triangles.iter().flatten().map(|&i| points[i as usize]) {
+        for k in 0..3 {
+            lo[k] = lo[k].min(p[k]);
+            hi[k] = hi[k].max(p[k]);
+        }
+    }
+    let index = nodes.len() as u32;
+    nodes.push(MeshNode { lo, hi, children: None, first, count: triangles.len() as u32 });
+    if triangles.len() > 8 {
+        let axis = (0..3).max_by(|&a, &b| (hi[a] - lo[a]).total_cmp(&(hi[b] - lo[b]))).unwrap();
+        let centre = |t: &[u32; 3]| t.iter().map(|&i| points[i as usize][axis]).sum::<f32>();
+        let half = triangles.len() / 2;
+        triangles.select_nth_unstable_by(half, |a, b| centre(a).total_cmp(&centre(b)));
+        let (left, right) = triangles.split_at_mut(half);
+        let l = build_tree(points, left, first, nodes);
+        let r = build_tree(points, right, first + half as u32, nodes);
+        nodes[index as usize].children = Some((l, r));
+    }
+    index
 }
 
 /// Splits a mesh's triangles in half along the longest axis of their bounds

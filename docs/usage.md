@@ -69,8 +69,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - When an edit pushes the station outside the plot, the builder offers to enlarge it, or, if no plot could hold it (over 20 km on an axis), to undo.
   - The plot is not stored in plan files (the game keeps plots per station).
 - **Checks (right):** the validator's findings, live, including modules outside the plot and **overlapping modules**. Click one to select the module.
-  - An overlap means two modules' collision shapes intersect by more than 1 m. Modules joined at a snap may interlock, and are never counted.
-  - The depth shown is approximate. Stations built in game can show some: "Allow module overlap", or looser checks in the game. See docs/x4-construction-plans.md, "Overlaps".
+  - An overlap means two modules' collision meshes intersect. Modules joined at a snap may interlock, and are never counted. See docs/x4-construction-plans.md, "Overlaps".
 - **Toolbar:**
   - *Open game plan…* lists your saved plans and import files.
   - *Open file…* / *Save as…* work with plan files.

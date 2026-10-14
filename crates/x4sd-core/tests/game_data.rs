@@ -625,7 +625,7 @@ fn plots() {
 /// plans (built in game) and the game's library plans.
 #[test]
 fn overlap_calibration() {
-    use x4sd_core::layout::{intersection_depth, overlaps, Body, OVERLAP_TOLERANCE_M};
+    use x4sd_core::layout::{intersection_depth, meshes_intersect, overlaps, Body, OVERLAP_TOLERANCE_M};
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
     let start = Instant::now();
     let modules = c.station_modules().unwrap();
@@ -688,14 +688,31 @@ fn overlap_calibration() {
             eprintln!("  {depth:6.1} m  {what}");
         }
     }
-    // Terran modules meet within 0.4 m at their snaps; 14 pairs in the player's
-    // plans overlap (some boxes are loose, some meshes really intersect).
+    // The boxes flag 14 pairs in the player's plans (more than 1 m), but on the
+    // collision meshes none intersect: the game built these stations, overlap
+    // detection on (user, 2026-10-14). `overlaps` confirms box pairs on the meshes.
+    let start = Instant::now();
     let found: usize = player.iter().map(|p| overlaps(p, c).len()).sum();
-    assert_eq!(found, 14);
+    eprintln!("player plans: {found} overlaps on the meshes, in {:?} (meshes loaded)", start.elapsed());
+    let start = Instant::now();
+    player.iter().for_each(|p| drop(overlaps(p, c)));
+    eprintln!("  again, meshes cached: {:?}", start.elapsed());
+    assert_eq!(found, 0);
+    let in_library: Vec<String> =
+        library.iter().flat_map(|p| overlaps(p, c).into_iter().map(move |(a, b, d)| format!("[{}] {a}/{b} {d:.0} m", p.name))).collect();
+    eprintln!("library plans: {} overlaps on the meshes (of 84 box pairs), e.g. {:?}", in_library.len(), &in_library[..in_library.len().min(6)]);
+
+    // The mesh test does find real overlaps: a module shifted 30 m into a copy of itself.
+    let mesh = c.collision_mesh("prod_ter_medicalsupplies_macro").unwrap().unwrap();
+    let at = |x: f64| Transform { position: [x, 0.0, 0.0], ..Transform::IDENTITY };
+    eprintln!("medical supplies collision mesh: {} triangles, {} tree nodes", mesh.triangles.len(), mesh.nodes.len());
+    assert!(meshes_intersect(&mesh, &at(0.0), &mesh, &at(30.0)));
+    assert!(!meshes_intersect(&mesh, &at(0.0), &mesh, &at(5000.0)));
 }
 
-/// Player plans: apart from overlaps (see `overlap_calibration`), the only real
-/// problem is the deliberately moved casino of test C.
+/// Player plans: the only real problem is the deliberately moved casino of test C
+/// (entry 32, 1 km up), which also overlaps the modules it was moved into. The
+/// plans as built have no overlaps (see `overlap_calibration`).
 #[test]
 fn validates_player_plans() {
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
@@ -706,10 +723,9 @@ fn validates_player_plans() {
             found.push((plan.name.clone(), issue));
         }
     }
-    let (overlaps, other): (Vec<_>, Vec<_>) = found.into_iter().partition(|(_, i)| matches!(i, Issue::Overlap { .. }));
-    assert!(!overlaps.is_empty());
-    assert_eq!(other.len(), 1, "{other:?}");
-    assert!(matches!(&other[0], (name, Issue::SnapGap { index: 32, metres }) if name == "X4SD test C" && (*metres - 1000.0).abs() < 0.01));
+    assert!(matches!(&found[0], (name, Issue::SnapGap { index: 32, metres }) if name == "X4SD test C" && (*metres - 1000.0).abs() < 0.01));
+    let rest = &found[1..];
+    assert!(!rest.is_empty() && rest.iter().all(|(name, i)| name == "X4SD test C" && matches!(i, Issue::Overlap { index, other } if *index == 32 || *other == 32)), "{found:?}");
 }
 
 /// Library plans: of the 31 off-link entries in hand-made faction plans, the 17

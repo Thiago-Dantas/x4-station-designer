@@ -35,9 +35,9 @@ pub enum Issue {
     SnapGap { index: u32, metres: f64 },
     SnapMisaligned { index: u32, degrees: f64 },
     MissingPatch { extension: String },
-    /// The module's collision shape intersects that of an earlier module it isn't
-    /// joined to (approximate: boxes around the collision meshes).
-    Overlap { index: u32, other: u32, metres: f64 },
+    /// The module's collision mesh intersects that of an earlier module it isn't
+    /// joined to at a snap.
+    Overlap { index: u32, other: u32 },
     /// The module reaches outside the plot.
     OutsidePlot { index: u32 },
     /// The station needs a bigger plot than it has.
@@ -81,7 +81,7 @@ impl fmt::Display for Issue {
             Issue::SnapGap { index, metres } => write!(f, "entry {index}: {metres:.3} m away from its linked snap"),
             Issue::SnapMisaligned { index, degrees } => write!(f, "entry {index}: snap axis off by {degrees:.2}°"),
             Issue::MissingPatch { extension } => write!(f, "plan uses {extension} but does not list it in <patches>"),
-            Issue::Overlap { index, other, metres } => write!(f, "entry {index}: overlaps entry {other} (by about {metres:.0} m)"),
+            Issue::Overlap { index, other } => write!(f, "entry {index}: overlaps entry {other}"),
             Issue::OutsidePlot { index } => write!(f, "entry {index}: outside the plot"),
             Issue::PlotTooSmall { plot, required } => write!(f, "the station needs a {required} plot; the plot is {plot}"),
             Issue::TooBigForAnyPlot { axis, km } => write!(f, "the station is {km} km along {axis}; plots are at most {MAX_AXIS_KM} km"),
@@ -159,7 +159,7 @@ pub fn validate(plan: &Plan, catalog: &Catalog) -> Vec<Issue> {
         }
     }
 
-    issues.extend(overlaps(plan, catalog).into_iter().map(|(other, index, metres)| Issue::Overlap { index, other, metres }));
+    issues.extend(overlaps(plan, catalog).into_iter().map(|(other, index, _)| Issue::Overlap { index, other }));
 
     for needed in catalog.required_patches(plan) {
         if !plan.patches.iter().any(|p| p.extension == needed.extension) {

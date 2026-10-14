@@ -178,14 +178,22 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   - So `Catalog::collision_boxes` builds boxes from each colliding part's `-collision.xmf` mesh: every part tagged `part` but not `nocollision`, collision-only boxes included, using the coarser `-collision1.xmf` where it exists.
   - The mesh's triangles are halved along their longest axis up to 7 times (at most 128 boxes per part), or until a box is 100 m or less. 1 to 767 boxes per module; all 287 modules in 2.4 s, once.
   - With these, 14 unlinked pairs in the player plans intersect by more than 1 m (up to 98 m).
-  - Halving 10 times (25 m boxes) takes 239 s instead of 3 s and leaves 10. Some depths shrink (98 m → 45 m: box looseness); others stay at 35, 19, 11 m. Those meshes really intersect, so these stations were built with overlap allowed, or the game's check is more lenient. **Hypothesis**, not checked in game.
+  - Halving 10 times (25 m boxes) takes 239 s instead of 3 s and leaves 10. Some depths shrink (98 m → 45 m); others stay at 35, 19, 11 m.
+  - **Corrected 2026-10-14:** those were box looseness too, not real intersections. The user confirmed TerranScrapyard was built and exported in game. On the collision-mesh triangles (below), none of the 14 pairs intersect. Axis-aligned boxes stay loose around curved and diagonal geometry such as the Terran habitat rings, however finely they are split.
 - **Joints interlock by design (verified on data).** Where Terran modules meet at a snap in the player's plans, their boxes intersect by at most 0.4 m (471 pairs).
   - In the game's 116 library plans (all races), 228 of 2,658 joined pairs intersect by more than 20 m, up to 130 m. Connector collars and defence discs reach into what they attach to; Argon medical supplies reach 41 m past their own snap.
   - So **two modules whose snap points coincide (within 10 cm) never overlap**, linked or merely touching.
-- **Rule** (`layout::overlap`, `layout::overlaps`): two modules that aren't joined at a snap overlap when a pair of their collision boxes intersects by more than **1 m**. The depth is measured with the separating axis theorem over the 15 box axes.
-  - Player plans: 14 overlaps. Library plans: 84.
+- **Rule** (`layout::overlap`, `layout::overlaps`, 2026-10-14). Two modules that aren't joined at a snap overlap when two things hold:
+  - a pair of their collision boxes intersects by more than **1 m** (separating axis theorem over the 15 box axes);
+  - their collision meshes (`-collision.xmf`, full detail) really intersect: an edge of a triangle of one passes through the inside of a triangle of the other. Faces or edges that only touch don't count.
+  - The mesh test (`meshes_intersect`) walks a bounding-volume tree of each mesh (leaves of up to 8 triangles; `Catalog::collision_mesh`, built on first need), then tests triangles.
+  - **Verified:** a medical-supplies module shifted 30 m into a copy of itself intersects; at 5 km it doesn't (unit and game-data tests).
+  - Player plans: **0** overlaps (the 14 box pairs are all clear on the meshes). The only exception is test C's casino, moved 1 km up, which now sits inside two modules and is reported.
+  - Library plans: 28 of the 84 box pairs intersect on the meshes. These are hand-made NPC stations, spawned by script rather than built in the build menu.
+  - Time for the 5 player plans: 264 ms the first time (loading meshes), 17 ms after that.
+  - **Auto-placement keeps the box test alone.** It is stricter, so what it places has no overlaps either way.
   - Checking takes 16 ms for the 5 player plans, and 5 ms for a 239-module station.
-- `validate` reports them as "entry N: overlaps entry M (by about D m)" on the later-built module. The depth is approximate: the boxes enclose the mesh surfaces.
+- `validate` reports them as "entry N: overlaps entry M" on the later-built module.
 
 ## Auto-placement (2026-10-13)
 `layout::auto_place` attaches a module list (for example a production plan's) to a design at exact snap positions, without overlaps and inside the plot.
