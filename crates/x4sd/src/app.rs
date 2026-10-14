@@ -398,12 +398,12 @@ async fn run_op(handle: AppHandle, op: Op) -> CmdResult {
 /// grow); the scene plus `placement` (what was placed, added and left over). Runs
 /// off the main thread: a big station takes a few seconds.
 #[tauri::command]
-async fn auto_place(handle: AppHandle, modules: Vec<ops::ModuleCount>, race: Option<String>) -> CmdResult {
+async fn auto_place(handle: AppHandle, modules: Vec<ops::ModuleCount>, race: Option<String>, fewer_connectors: bool) -> CmdResult {
     tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<Shared>();
         let mut app = state.lock().unwrap();
         let catalog = catalog(&app)?;
-        let args = ops::AutoPlaceArgs { modules: Some(modules), from_plan: None, grow_plot: Some(true), race };
+        let args = ops::AutoPlaceArgs { modules: Some(modules), from_plan: None, grow_plot: Some(true), race, fewer_connectors: Some(fewer_connectors) };
         let placement = ops::auto_place(&catalog, &mut app.design, args)?;
         let mut scene = scene_json(&app)?;
         scene["placement"] = placement;

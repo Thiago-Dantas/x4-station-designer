@@ -50,6 +50,12 @@ const TWISTS: [f64; 4] = [0.0, 90.0, 180.0, 270.0];
 /// 8x8x8 km), 4 km 37 (1.4%, 11x12x12 km).
 const HUB_PENALTY_M: f64 = 2000.0;
 
+/// `HUB_PENALTY_M` with `Options::fewer_connectors`. Tried (connection structures,
+/// plot): "100 solar" 37 (11x12x13 km), the rebuilt TerranScrapyard 1 against 56
+/// (14x16x12 km against 10x10x10); 6 km gives 25 on "100 solar" but 16x16x16 km,
+/// and no limit (hubs only where no free snap fits) a 20 km snake.
+const FEWER_HUBS_PENALTY_M: f64 = 4000.0;
+
 /// Axis-aligned bounds: (min, max) corner.
 type Bounds = ([f64; 3], [f64; 3]);
 
@@ -372,6 +378,10 @@ pub struct Options {
     /// inside), then dock areas, piers and bays. Makes a larger station; `optimize`
     /// uses it. Otherwise: biggest first, docks, piers and bays last (compact).
     pub layered: bool,
+    /// Add a new hub only when it puts the module `FEWER_HUBS_PENALTY_M` nearer the
+    /// centre (instead of `HUB_PENALTY_M`): fewer modules for the game to run, a
+    /// larger station.
+    pub fewer_connectors: bool,
 }
 
 /// Attaches the modules (macro, count) to the open design at exact snap
@@ -381,8 +391,9 @@ pub struct Options {
 /// structure with the most snaps) at the origin. Modules go biggest first, dock
 /// areas, piers and bays last (or in layers, see `Options::layered`). Each goes onto the
 /// free snap nearest the station's centre where it fits, with whichever of its own snaps and twists keeps it most compact; or,
-/// when that is `HUB_PENALTY_M` nearer, onto a new hub (or a straight connection
-/// structure and a hub) on a free snap.
+/// when that is `HUB_PENALTY_M` nearer (with `Options::fewer_connectors`:
+/// `FEWER_HUBS_PENALTY_M`), onto a new hub (or a straight connection structure and
+/// a hub) on a free snap.
 ///
 /// Docks and bays stay reachable: every run first lifts off the modules that need
 /// clear space (`outer`) and have nothing attached, and places them again last,
@@ -421,6 +432,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     let race = options.race.clone().or_else(|| common_race(&all, order.iter().map(|o| o.0.macro_name.as_str())));
     let connectors = Connectors::choose(catalog, &all, race.as_deref())?;
     let mut placer = Placer::new(catalog, design, if options.grow_plot { None } else { design.plot() })?;
+    placer.hub_penalty = if options.fewer_connectors { FEWER_HUBS_PENALTY_M } else { HUB_PENALTY_M };
     if design.plan().entries.is_empty() {
         let hub = design.add_root(catalog, &connectors.hub.module.macro_name, Transform::IDENTITY)?;
         placer.add(design, hub)?;
@@ -538,6 +550,8 @@ pub struct OptimizeOptions {
     pub grow_plot: bool,
     /// Race of the connection structures added; `None`: the most common race of the modules.
     pub race: Option<String>,
+    /// See `Options::fewer_connectors`.
+    pub fewer_connectors: bool,
 }
 
 /// Re-lays a station out in layers (see `auto_place`) and adds `fixes` (macro,
@@ -591,7 +605,7 @@ pub fn optimize(catalog: &Catalog, design: &mut Design, fixes: &[(String, u32)],
             None => modules.push((m.0.to_owned(), m.1)),
         }
     }
-    let placement = auto_place(catalog, design, &modules, &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true })?;
+    let placement = auto_place(catalog, design, &modules, &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true, fewer_connectors: options.fewer_connectors })?;
     if !placement.unplaced.is_empty() {
         if design.history_len() > history {
             design.squash_history(history);
@@ -718,6 +732,8 @@ struct Placer<'a> {
     /// module without slots), which they hug instead of filling gaps inside it.
     /// 0: plain nearest-first.
     shell: f64,
+    /// How much nearer the centre a new hub has to put a module (see `Options::fewer_connectors`).
+    hub_penalty: f64,
 }
 
 impl<'a> Placer<'a> {
@@ -737,6 +753,7 @@ impl<'a> Placer<'a> {
             heart: [0.0; 3],
             layers: Vec::new(),
             shell: 0.0,
+            hub_penalty: HUB_PENALTY_M,
         };
         for e in &design.plan().entries {
             if catalog.module(&e.macro_name).is_ok() {
@@ -906,13 +923,13 @@ impl<'a> Placer<'a> {
         let boxes = self.catalog.collision_boxes(&module.macro_name)?;
         let name = &module.macro_name;
         // Ways to place it, nearest the station's centre first: directly on a free
-        // snap, or through a new hub there (counted `HUB_PENALTY_M` further out).
+        // snap, or through a new hub there (counted `hub_penalty` further out).
         let mut options: Vec<(f64, &FreeSnap, bool)> = Vec::new();
         for f in &self.free {
             let out = sub(f.world.position, self.heart);
             let d = self.rank(dot(out, out).sqrt());
             options.push((d, f, false));
-            options.push((d + HUB_PENALTY_M, f, true));
+            options.push((d + self.hub_penalty, f, true));
         }
         options.sort_by(|a, b| a.0.total_cmp(&b.0));
         let options: Vec<(FreeSnap, bool)> = options.into_iter().map(|(_, f, x)| (f.clone(), x)).collect();

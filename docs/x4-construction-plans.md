@@ -266,6 +266,19 @@ The red volume the build menu draws in front of a pier while you move it is an *
     - Layers cost compactness. "100 solar, staffed" needs a 20×20×20 km plot in layers, against 8×8×8 biggest-first. So *Place all* stays biggest-first.
   - "Nearest" is measured from the centre of the station as it was (2026-10-14), so an off-centre station grows around itself; for a new design that is the origin.
 - **Placement:** each module goes onto the free snap nearest the origin where it fits, with the most compact of its own snaps and the four twists. Alternatively it goes onto a new hub (optionally on a strut) on a free snap, when that is 2 km nearer.
+  - **Fewer connection structures** (`Options::fewer_connectors`, 2026-10-14): 4 km instead of 2 km. Game-data test `fewer_connectors`:
+
+    | Case | Threshold | Connection structures | Plot |
+    |---|---|---|---|
+    | "100 solar, staffed" | 2 km (default) | 81 | 9×8×8 km |
+    | | 4 km | 37 | 11×12×13 km |
+    | | 6 km | 25 | 16×16×16 km |
+    | | 8 km | 20 | 20×20×20 km |
+    | | none (hubs only where no free snap fits) | 20 | 20 km snake, a dock blocked |
+    | TerranScrapyard rebuilt (Optimize) | 2 km | 56 (343 modules) | 10×10×10 km |
+    | | 4 km | 1 (288 modules) | 14×16×12 km |
+
+    4 km roughly halves them while the station stays well inside the largest plot; past that the station sprawls (also a load, see "In-game load").
   - **Docks stay reachable** (user request, 2026-10-14):
     - A dock area or pier needs a **clear corridor**: its own box swept 3 km straight out from the station's centre, clear of other modules' collision boxes.
     - No module (or connection structure) may enter the corridor of a dock already on the station.
@@ -305,6 +318,15 @@ The red volume the build menu draws in front of a pier while you move it is an *
 - **Not checked in game yet:**
   - that the game builds these stations (modules attached to modules, connectors);
   - that ships reach the docks.
+
+## In-game load (hypothesis, 2026-10-14)
+What likely costs the game frame rate, from players' experience; **nothing here is measured** in game:
+- **Module count** matters most: each module is an object the game draws and checks for collisions. Connection structures add to it and make nothing.
+- **Turrets:** each aims and fires on its own, which costs most in fights.
+- **Traffic and sprawl:** docking ships, and ships steering around a sprawling station (pathfinding).
+- **Location:** stations in other sectors run on a cheaper simulation, so the cost is mostly felt in the same sector.
+
+`perf::load` counts these (modules, connection structures, turrets and shields as slots filled, dock areas plus piers, size). It feeds the builder's *In-game load* section, MCP `station_load` and `x4sd show`. Checked on the samples: TerranScrapyard 84 modules (16 connection structures); "defense station" 288 turrets on 144 entries (`exact`), 144 shields. A way to verify: build a sprawling and a compact variant of one station in game and compare the frame rate in its sector.
 
 ## Unknowns
 - Does the game load external edits to `constructionplans.xml` at startup (option A after a restart)? Low priority now that B works.

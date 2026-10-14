@@ -48,7 +48,7 @@ enum Command {
     },
     /// List the snap connections of a module
     Snaps { macro_name: String },
-    /// Summarise the plans in a file, with the plot each needs
+    /// Summarise the plans in a file, with the plot each needs and its in-game load
     Show { file: PathBuf },
     /// Check plans for problems the game does not catch (exit code 1 if any)
     Validate {
@@ -136,6 +136,12 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 let roots = plan.entries.iter().filter(|e| e.predecessor.is_none()).count();
                 let plot = required_plot(&plan, &catalog).map_or("-".to_owned(), |p| p.to_string());
                 println!("{} \"{}\": {} modules, {} unattached, patches [{}], needs plot {plot}", plan.id, plan.name, plan.entries.len(), roots, patches.join(", "));
+                let l = x4sd_core::perf::load(&plan, &catalog);
+                let [x, y, z] = l.size_km;
+                println!(
+                    "  in-game load: {} modules ({} connection structures), {} turrets, {} shields, {} docks and piers, {x:.1} x {y:.1} x {z:.1} km",
+                    l.modules, l.connectors, l.turrets, l.shields, l.docks
+                );
             }
         }
         Command::Validate { file, plan, plot } => {

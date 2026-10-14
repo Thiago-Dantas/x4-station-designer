@@ -149,7 +149,8 @@ export const api = {
   planProduction: (args: PlanArgs, baseline: { macro: string; count: number }[] | null) =>
     serial<ProductionPlan>("plan_production", { args, baseline }),
   /** Places the modules at free snaps without overlaps (the plot may grow); one undo step. */
-  autoPlace: (modules: { macro: string; count: number }[], race: string | null) => serial<Scene>("auto_place", { modules, race }),
+  autoPlace: (modules: { macro: string; count: number }[], race: string | null, fewerConnectors: boolean) =>
+    serial<Scene>("auto_place", { modules, race, fewerConnectors }),
   /** A shared operation (`ops::Op` in Rust, as MCP agents use them): its result, and the scene if it may have changed. */
   runOp: <T>(op: { op: string } & Record<string, unknown>) => serial<{ result: T; scene?: Scene }>("run_op", { op }),
   undo: () => serial<Scene>("undo"),

@@ -12,6 +12,7 @@ pub mod geometry;
 pub mod import;
 pub mod layout;
 pub mod mesh;
+pub mod perf;
 pub mod plan;
 pub mod planner;
 pub mod plot;

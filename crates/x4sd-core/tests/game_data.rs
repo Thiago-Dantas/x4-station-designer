@@ -422,7 +422,7 @@ fn auto_place_planned_stations() {
     let planned = |d: &Design, r: &Request| -> Vec<(String, u32)> {
         plan_production(c, &x4sd_core::planner::module_counts(d.plan()), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
     };
-    let grow = Options { grow_plot: true, race: None, layered: false };
+    let grow = Options { grow_plot: true, race: None, layered: false, ..Default::default() };
 
     let mut d = Design::new("100 solar");
     let modules = planned(&d, &req(&[("energycells", 100)], None));
@@ -454,7 +454,7 @@ fn auto_place_planned_stations() {
     // Without growing, the default plot (2 km per side) holds only some of the solar station.
     let mut d = Design::new("small plot");
     let modules = planned(&d, &req(&[("energycells", 100)], None));
-    let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: false, race: None, layered: false });
+    let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: false, race: None, layered: false, ..Default::default() });
     assert!(!r.placed.is_empty() && !r.unplaced.is_empty());
 
     // An existing station: the planner's fix for the scrapyard, placed onto it.
@@ -464,6 +464,66 @@ fn auto_place_planned_stations() {
     let r = place_and_check(c, &mut d, &modules, &grow);
     eprintln!("scrapyard fix: {} modules to place", modules.iter().map(|m| m.1).sum::<u32>());
     assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+}
+
+/// "Fewer connection structures": a new station ("100 solar") and a rebuilt one
+/// (TerranScrapyard, Optimize without keeping its shape) need fewer of them than
+/// with the default placement, and still place everything without overlaps.
+#[test]
+fn fewer_connectors() {
+    use x4sd_core::layout::{optimize, overlaps, OptimizeOptions, Options};
+    use x4sd_core::planner::{module_counts, plan_production, Request};
+    let Some(c) = catalog() else { return };
+    let req = |targets: &[(&str, u32)], race: Option<&str>| Request {
+        targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        race: race.map(str::to_owned),
+        workforce: true,
+        storage_hours: 6.0,
+        buy: Vec::new(),
+        sunlight: 1.0,
+        method: "default".to_owned(),
+    };
+    let planned = |p: &x4sd_core::plan::Plan, r: &Request| -> Vec<(String, u32)> {
+        plan_production(c, &module_counts(p), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
+    };
+    let solar = planned(&Design::new("").plan().clone(), &req(&[("energycells", 100)], None));
+    let mut connectors = Vec::new();
+    for fewer_connectors in [false, true] {
+        let mut d = Design::new(if fewer_connectors { "100 solar, fewer connectors" } else { "100 solar" });
+        let r = place_and_check(c, &mut d, &solar, &Options { grow_plot: true, fewer_connectors, ..Default::default() });
+        assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+        connectors.push(r.connectors.len());
+    }
+    assert!(connectors[1] < connectors[0], "{connectors:?}");
+
+    let Some(plans) = sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml") else { return };
+    let yard = plans.iter().find(|p| p.name == "TerranScrapyard").unwrap();
+    let fixes = planned(yard, &req(&[], Some("terran")));
+    let yard_load = x4sd_core::perf::load(yard, c);
+    eprintln!("[scrapyard] {yard_load:?}");
+    assert!(yard_load.connectors > 0);
+    // Turrets and shields count the slots filled (`exact`): counted in the file, 144
+    // turret entries filling 288 slots and 144 shields.
+    let defence = x4sd_core::perf::load(plans.iter().find(|p| p.name == "defense station").unwrap(), c);
+    assert_eq!((defence.modules, defence.turrets, defence.shields), (14, 288, 144), "{defence:?}");
+    let docks_added: u32 = fixes.iter().filter(|(m, _)| ["dockarea", "pier"].contains(&c.module(m).unwrap().class.as_str())).map(|f| f.1).sum();
+    let mut connectors = Vec::new();
+    for fewer_connectors in [false, true] {
+        let mut d = Design::from_plan(yard.clone());
+        let options = OptimizeOptions { keep_shape: false, grow_plot: true, race: Some("terran".to_owned()), fewer_connectors };
+        let r = optimize(c, &mut d, &fixes, &options).unwrap();
+        let plot = x4sd_core::plot::required_plot(d.plan(), c).unwrap();
+        let load = x4sd_core::perf::load(d.plan(), c);
+        eprintln!("[scrapyard rebuilt, fewer connectors: {fewer_connectors}] {load:?}, plot {plot}");
+        assert!(overlaps(d.plan(), c).is_empty());
+        assert!(plot.is_allowed(), "{plot}");
+        // A rebuild removes every connection structure, so all of them are new ones.
+        assert_eq!((load.modules as usize, load.connectors as usize), (d.plan().entries.len(), r.placement.connectors.len()));
+        assert_eq!((load.turrets, load.shields, load.docks), (yard_load.turrets, yard_load.shields, yard_load.docks + docks_added), "equipment and docks stay");
+        assert!(load.size_km.iter().zip(plot.size()).all(|(s, p)| *s > 0.0 && *s <= f64::from(p)), "{:?} in {plot}", load.size_km);
+        connectors.push(load.connectors);
+    }
+    assert!(connectors[1] < connectors[0], "{connectors:?}");
 }
 
 /// Equipment: modules' turret and shield groups, the buildable turrets and shields,
@@ -567,7 +627,7 @@ fn optimize_station() {
     for keep_shape in [true, false] {
         let mut d = Design::from_plan(yard.clone());
         let start = Instant::now();
-        let r = optimize(c, &mut d, &fixes, &OptimizeOptions { keep_shape, grow_plot: true, race: Some("terran".to_owned()) }).unwrap();
+        let r = optimize(c, &mut d, &fixes, &OptimizeOptions { keep_shape, grow_plot: true, race: Some("terran".to_owned()), ..Default::default() }).unwrap();
         let elapsed = start.elapsed();
         let plot = x4sd_core::plot::required_plot(d.plan(), c).unwrap();
         // Mean distance from the station centre of the re-placed modules, per layer.
@@ -622,7 +682,7 @@ fn equip_station() {
     let mut d = Design::new("equipped");
     let modules = [("defence_arg_disc_01_macro", 1), ("prod_arg_foodrations_macro", 2), ("storage_arg_l_container_01_macro", 1)];
     let modules: Vec<(String, u32)> = modules.iter().map(|(m, n)| (m.to_string(), *n)).collect();
-    auto_place(c, &mut d, &modules, &Options { grow_plot: true, race: None, layered: false }).unwrap();
+    auto_place(c, &mut d, &modules, &Options { grow_plot: true, race: None, layered: false, ..Default::default() }).unwrap();
     let index_of = |d: &Design, m: &str| d.plan().entries.iter().filter(|e| e.macro_name == m).map(|e| e.index).collect::<Vec<_>>();
     let disc = index_of(&d, "defence_arg_disc_01_macro")[0];
     let food = index_of(&d, "prod_arg_foodrations_macro");
@@ -943,7 +1003,7 @@ fn optimize_keeps_zones_clear() {
     for keep_shape in [true, false] {
         let mut d = Design::from_plan(yard.clone());
         let start = Instant::now();
-        let r = optimize(c, &mut d, &fixes, &OptimizeOptions { keep_shape, grow_plot: true, race: Some("terran".to_owned()) }).unwrap();
+        let r = optimize(c, &mut d, &fixes, &OptimizeOptions { keep_shape, grow_plot: true, race: Some("terran".to_owned()), ..Default::default() }).unwrap();
         let plot = x4sd_core::plot::required_plot(d.plan(), c).unwrap();
         let blocked = blocked_zones(d.plan(), c);
         eprintln!(

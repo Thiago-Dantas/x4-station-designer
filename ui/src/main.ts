@@ -178,6 +178,7 @@ function redraw() {
   renderOrder();
   void refreshCost();
   void refreshAnalysis();
+  void refreshLoad();
   void refreshEquipment();
   renderEquipmentSummary();
   renderPlanner();
@@ -485,6 +486,30 @@ async function refreshAnalysis() {
   );
 }
 
+interface StationLoad { modules: number; connectors: number; turrets: number; shields: number; docks: number; size_km: [number, number, number] }
+let loadRequest = 0;
+
+/** Right pane: what likely costs the game frame rate (players' rules of thumb). */
+async function refreshLoad() {
+  if (!scene) return;
+  const request = ++loadRequest;
+  let l;
+  try {
+    l = (await api.runOp<StationLoad>({ op: "station_load" })).result;
+  } catch (e) {
+    $("load-summary").textContent = String(e);
+    return;
+  }
+  if (request !== loadRequest) return; // a newer request is on its way
+  const km = l.size_km.map((v) => v.toFixed(1)).join(" × ");
+  $("load-summary").textContent = l.modules
+    ? `Modules: ${l.modules} (${l.connectors} connection structure${l.connectors === 1 ? "" : "s"})
+Turrets: ${l.turrets} · Shields: ${l.shields}
+Docks and piers: ${l.docks}
+Size: ${km} km`
+    : "Nothing placed yet";
+}
+
 // ---------------------------------------------------------------- right pane
 
 // A section's title folds it away or opens it; most start folded (see index.html).
@@ -608,9 +633,9 @@ $("btn-equip-all").onclick = () => {
 
 // ---------------------------------------------------------------- planner
 
-interface PlannerState { targets: { ware: string; modules: number }[]; race: string; workforce: boolean; hours: number; buy: string[] }
+interface PlannerState { targets: { ware: string; modules: number }[]; race: string; workforce: boolean; hours: number; buy: string[]; fewerConnectors: boolean }
 let planner: PlannerState = (() => {
-  const fallback: PlannerState = { targets: [], race: "", workforce: true, hours: 6, buy: [] };
+  const fallback: PlannerState = { targets: [], race: "", workforce: true, hours: 6, buy: [], fewerConnectors: false };
   try {
     return { ...fallback, ...JSON.parse(localStorage.getItem("x4sd.planner") ?? "{}") };
   } catch {
@@ -771,7 +796,7 @@ async function placeAll() {
   status(`Placing ${todo.reduce((s, m) => s + m.count, 0)} modules…`);
   let note = "";
   await apply(
-    api.autoPlace(todo, planner.race || null).then((s) => {
+    api.autoPlace(todo, planner.race || null, planner.fewerConnectors).then((s) => {
       const p = s.placement!;
       const left = p.unplaced.map((u) => `${u.count} × ${moduleName(u.macro)}`).join(", ");
       note =
@@ -798,6 +823,7 @@ async function loadPlanner() {
   $<HTMLSelectElement>("planner-race").value = planner.race;
   $<HTMLInputElement>("planner-workforce").checked = planner.workforce;
   $<HTMLInputElement>("planner-hours").value = String(planner.hours);
+  $<HTMLInputElement>("planner-fewer").checked = planner.fewerConnectors;
   renderPlanner();
 }
 
@@ -890,6 +916,10 @@ $<HTMLInputElement>("planner-workforce").onchange = (ev) => {
   planner.workforce = (ev.target as HTMLInputElement).checked;
   savePlanner();
 };
+$<HTMLInputElement>("planner-fewer").onchange = (ev) => {
+  planner.fewerConnectors = (ev.target as HTMLInputElement).checked;
+  savePlanner();
+};
 $<HTMLInputElement>("planner-hours").onchange = (ev) => {
   planner.hours = Math.max(0, Number((ev.target as HTMLInputElement).value) || 0);
   savePlanner();
@@ -917,6 +947,7 @@ $("planner-optimize").onclick = async () => {
         sunlight,
         method: buildMethod,
         keep_shape: !$<HTMLInputElement>("optimize-rebuild").checked,
+        fewer_connectors: planner.fewerConnectors,
       })
       .then((r) => {
         const o = r.result;

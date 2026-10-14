@@ -43,6 +43,7 @@ one M shield, one L turret, one L shield: each group takes the first that fits) 
 list_equipment finds macros. build_cost includes equipment.
 Optimize: optimize_station fixes an existing station's shortfalls and re-lays it out in layers (non-defensible \
 modules inside, defensible outside, docks, piers and bays outermost); keep_shape keeps its connection structures.
+In-game load (frame rate): station_load counts what likely costs the game the most: modules (connection structures make nothing), turrets, docks and size. These are players' rules of thumb, not measured. For a lighter station: fewer_connectors on auto_place and optimize_station (fewer connection structures, a larger station), only the turrets needed, and no more docks than the trade needs.
 Clearance: piers, fabrication/maintenance bays and dock areas have exclusion zones (the space ships use to \
 dock or leave: XL 4x4 km, L 1.2x1.2 km, out to 100 km). validate_design reports modules in a zone (\"blocks the \
 approach of pier N\", \"blocks the exit of bay N\"); auto_place and optimize_station keep every zone clear.
@@ -406,6 +407,11 @@ impl Server {
         self.run(Op::AnalyzeStation { sunlight: a.sunlight })
     }
 
+    #[tool(description = "In-game load of the open station (what likely costs the game frame rate; players' rules of thumb, not measured): modules in total, connection structures among them (they make nothing), turrets and shields, dock areas plus piers, and size_km per axis.")]
+    fn station_load(&self) -> ToolResult {
+        self.run(Op::StationLoad)
+    }
+
     #[tool(description = "Wares that some buildable station module makes: ware id and name (for plan_production targets).")]
     fn list_wares(&self) -> ToolResult {
         self.run(Op::ListWares)
@@ -416,7 +422,7 @@ impl Server {
         self.run(Op::PlanProduction(a))
     }
 
-    #[tool(description = "Auto-placement: attach modules to the open design at exact snap positions, clear of each other and inside the plot, adding connection structures (hubs, straight pieces) where needed; one undo step. Give modules (macro and count), or from_plan (plan_production settings) to plan and place in one call (the result then has the plan too). Big modules go first, dock areas, piers and bays last: every run also lifts off the dock areas, piers and bays with nothing attached and places them again where their exclusion zones (and for dock areas a 3 km corridor out from the station) are clear, and no module may block a placed one's zones or corridor. Returns the new modules and connection structures (index, macro), what didn't fit, docks_moved and docks_blocked (docks, piers and bays: no clear space anywhere), and the plot: with grow_plot (default true) the station may outgrow its plot, up to 20 km per axis; then tell the user and fit_plot with grow_only.")]
+    #[tool(description = "Auto-placement: attach modules to the open design at exact snap positions, clear of each other and inside the plot, adding connection structures (hubs, straight pieces) where needed; one undo step. Give modules (macro and count), or from_plan (plan_production settings) to plan and place in one call (the result then has the plan too). Big modules go first, dock areas, piers and bays last: every run also lifts off the dock areas, piers and bays with nothing attached and places them again where their exclusion zones (and for dock areas a 3 km corridor out from the station) are clear, and no module may block a placed one's zones or corridor. Returns the new modules and connection structures (index, macro), what didn't fit, docks_moved and docks_blocked (docks, piers and bays: no clear space anywhere), and the plot: with grow_plot (default true) the station may outgrow its plot, up to 20 km per axis; then tell the user and fit_plot with grow_only. fewer_connectors (default false) adds a hub only when it brings a module 4 km nearer the centre instead of 2 km: about half the connection structures, a larger station.")]
     fn auto_place(&self, Parameters(a): Parameters<ops::AutoPlaceArgs>) -> ToolResult {
         self.run(Op::AutoPlace(a))
     }
@@ -441,7 +447,7 @@ impl Server {
         self.run(Op::EquipModules(a))
     }
 
-    #[tool(description = "Optimize the open station (x4ep_planner's Optimise plus a re-layout), one undo step: adds the modules that fix its shortfalls (plan_production settings; targets ignored), then re-places its modules in layers: those that can't carry turrets or shields in the middle, defensible ones around them, dock areas, piers and bays outermost, with their exclusion zones (and for dock areas a 3 km corridor) clear. keep_shape (default true) keeps the connection structures and the modules carrying them; false rebuilds the connection structures. Equipment stays with each module type. If anything finds no place, nothing changes (error). Returns what was added and moved, connection structures removed/added, the plot and the analysis.")]
+    #[tool(description = "Optimize the open station (x4ep_planner's Optimise plus a re-layout), one undo step: adds the modules that fix its shortfalls (plan_production settings; targets ignored), then re-places its modules in layers: those that can't carry turrets or shields in the middle, defensible ones around them, dock areas, piers and bays outermost, with their exclusion zones (and for dock areas a 3 km corridor) clear. keep_shape (default true) keeps the connection structures and the modules carrying them; false rebuilds the connection structures. fewer_connectors (default false): fewer new connection structures, a larger station. Equipment stays with each module type. If anything finds no place, nothing changes (error). Returns what was added and moved, connection structures removed/added, the plot and the analysis.")]
     fn optimize_station(&self, Parameters(a): Parameters<ops::OptimizeArgs>) -> ToolResult {
         self.run(Op::OptimizeStation(a))
     }

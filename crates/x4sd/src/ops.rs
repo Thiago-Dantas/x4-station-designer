@@ -15,6 +15,7 @@ use x4sd_core::equipment::{module_groups, Fill, Level};
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, renew_id_if_renamed, write_import_file};
 use x4sd_core::layout::{self, OptimizeOptions, Options};
+use x4sd_core::perf;
 use x4sd_core::plan::{parse_plans, write_plans};
 use x4sd_core::planner::{self, module_counts, producible_wares, ProductionPlan, Request};
 use x4sd_core::plot::{required_plot, Plot};
@@ -69,6 +70,8 @@ pub struct AutoPlaceArgs {
     pub grow_plot: Option<bool>,
     /// Race of the connection structures it adds: argon, boron, paranid, split, teladi, terran; default: the plan's race, else the most common race of the modules
     pub race: Option<String>,
+    /// Add fewer connection structures (less for the game to run, a larger station); default false
+    pub fewer_connectors: Option<bool>,
 }
 
 /// Optimize settings: the planner's (for the shortfall fixes) and the layout's.
@@ -79,6 +82,8 @@ pub struct OptimizeArgs {
     pub plan: PlanArgs,
     /// Keep the connection structures, and the modules carrying them, where they are (the station's shape); false rebuilds them from scratch (default true)
     pub keep_shape: Option<bool>,
+    /// Add fewer connection structures (less for the game to run, a larger station); default false
+    pub fewer_connectors: Option<bool>,
 }
 
 /// How equip_modules chooses equipment, and for which modules.
@@ -133,6 +138,8 @@ pub enum Op {
     BuildCost { index: Option<u32>, method: Option<String> },
     /// Production and use per hour, workforce, storage and docks of the whole station.
     AnalyzeStation { sunlight: Option<f64> },
+    /// What the station likely costs the game to run: modules, connection structures, turrets, docks, size.
+    StationLoad,
     /// Wares some buildable module makes.
     ListWares,
     /// The modules to add for target wares (or to fix the station's shortfalls).
@@ -167,6 +174,7 @@ impl Op {
                 | Op::ValidateDesign
                 | Op::BuildCost { .. }
                 | Op::AnalyzeStation { .. }
+                | Op::StationLoad
                 | Op::ListWares
                 | Op::ListEquipment { .. }
                 | Op::ModuleEquipment { .. }
@@ -314,6 +322,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         }
         Op::BuildCost { index, method } => build_cost(c, ctx.design, index, method.as_deref().unwrap_or("default")),
         Op::AnalyzeStation { sunlight } => analyze_station(c, ctx.design, sunlight.unwrap_or(100.0)),
+        Op::StationLoad => Ok(station_load(c, ctx.design)),
         Op::ListWares => list_wares(c),
         Op::ListEquipment { kind, size, race, search } => list_equipment(c, kind, size, race, search),
         Op::ModuleEquipment { index } => module_equipment(c, ctx.design, index),
@@ -396,6 +405,20 @@ pub fn analyze_station(catalog: &Catalog, design: &Design, sunlight: f64) -> Res
     analysis_json(catalog, &a, sunlight)
 }
 
+/// What the station likely costs the game to run (`perf::load`; hypotheses, not measured).
+pub fn station_load(catalog: &Catalog, design: &Design) -> Value {
+    let l = perf::load(design.plan(), catalog);
+    json!({
+        "modules": l.modules,
+        "connectors": l.connectors,
+        "turrets": l.turrets,
+        "shields": l.shields,
+        "docks": l.docks,
+        "size_km": l.size_km.map(|v| (v * 100.0).round() / 100.0),
+        "unknown": l.unknown,
+    })
+}
+
 /// Optimize (x4ep_planner's, plus a re-layout): adds the modules that fix the
 /// station's shortfalls, then re-places its modules in layers (without slots in
 /// the middle, defensible ones around them, docks, piers and bays outside), as one undo
@@ -406,7 +429,12 @@ pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeAr
     req.targets.clear();
     let p = planner::plan_production(catalog, &module_counts(design.plan()), &req).map_err(|e| e.to_string())?;
     let fixes: Vec<(String, u32)> = p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
-    let options = OptimizeOptions { keep_shape: args.keep_shape.unwrap_or(true), grow_plot: true, race: req.race };
+    let options = OptimizeOptions {
+        keep_shape: args.keep_shape.unwrap_or(true),
+        grow_plot: true,
+        race: req.race,
+        fewer_connectors: args.fewer_connectors.unwrap_or(false),
+    };
     let r = layout::optimize(catalog, design, &fixes, &options).map_err(|e| e.to_string())?;
     let mut out = json!({
         "added": r.added.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
@@ -525,7 +553,12 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
         }
         _ => return Err("give either modules or from_plan".to_owned()),
     };
-    let options = Options { grow_plot: args.grow_plot.unwrap_or(true), race: race.filter(|r| !r.is_empty() && r != "any"), layered: false };
+    let options = Options {
+        grow_plot: args.grow_plot.unwrap_or(true),
+        race: race.filter(|r| !r.is_empty() && r != "any"),
+        layered: false,
+        fewer_connectors: args.fewer_connectors.unwrap_or(false),
+    };
     let r = layout::auto_place(catalog, design, &modules, &options).map_err(|e| e.to_string())?;
     let mut out = json!({
         "placed": r.placed.iter().map(|(i, m)| json!({"index": i, "macro": m})).collect::<Vec<_>>(),

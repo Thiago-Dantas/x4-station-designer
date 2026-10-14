@@ -72,6 +72,7 @@ Proposed order (each step usable on its own):
   - [x] Plan files (user request, 2026-10-14): Open/Save as start in the game's plan folder; a renamed plan exports as a new plan (D-11). See [workflow-plan-files.md](workflow-plan-files.md).
   - [x] D. Optimize (user request, 2026-10-14): fix the shortfalls and re-lay the station out in layers (slotless inside, defensible outside, docks outermost), keeping its shape or rebuilding connectors. See [workflow-optimize.md](workflow-optimize.md).
   - [x] E. Clearance for fabrication bays and piers (user report 2026-10-14): exclusion zones from the game data, `validate` reports blocked ones, auto-place and Optimize keep them clear (D-12). Still to check in game. See [workflow-clearance.md](workflow-clearance.md).
+- [x] **In-game load** (user request, 2026-10-14): right-pane readout (modules, connection structures, turrets, docks, size), MCP `station_load`, `show`; Planner option *Fewer connection structures* (D-13). See [workflow-fps-load.md](workflow-fps-load.md). Still to check in game: that these counts track frame rate.
 - [x] Build cost in the right pane: selected module or whole station, build method (user request; see [workflow-build-cost.md](workflow-build-cost.md))
 - [x] Move placed modules (re-attach to another snap, detach, gizmo for free-standing ones) and warn about unsaved changes (user requests; see [workflow-move-and-unsaved.md](workflow-move-and-unsaved.md))
 - [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`

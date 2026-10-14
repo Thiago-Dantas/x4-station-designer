@@ -63,6 +63,7 @@
           <button id="planner-generate" class="primary">Generate plan</button>
           <button id="planner-optimize" title="Add the modules that fix the open station's shortfalls (the settings above, no wares), then re-place its modules in layers: those without turret/shield slots in the middle, defensible ones around them, docks and piers outside with a clear approach. Equipment stays; one undo step; nothing changes if something has no room.">Optimize station</button>
           <label><span>Rebuild connection structures</span> <input type="checkbox" id="optimize-rebuild" title="Off: keep the station's connection structures (its shape) and re-place what hangs on them. On: rebuild them from scratch, often more compact." /></label>
+          <label><span>Fewer connection structures</span> <input type="checkbox" id="planner-fewer" title="Place all and Optimize add a connection structure only when it brings a module 4 km nearer the centre (instead of 2 km): about half as many, for less in-game load, but a larger station" /></label>
           <div id="planner-summary" class="details"></div>
           <button id="planner-place" hidden title="Attach every module still to place at free snaps, clear of each other, adding connection structures where needed (one undo step)">Place all</button>
           <div id="planner-placed"></div>
@@ -142,6 +143,11 @@
           <table id="economy-flows"></table>
           <div id="economy-storage" class="details"></div>
           <ul id="economy-notes"></ul>
+        </section>
+        <section id="load-panel" class="collapsed">
+          <h3>In-game load</h3>
+          <div id="load-summary" class="details"></div>
+          <div class="details" title="Players' rules of thumb; nothing here is measured in game">Fewer modules (connection structures make nothing), turrets and docks, and a smaller station, likely cost less frame rate. Not measured in game.</div>
         </section>
         <section id="plot-panel" class="collapsed">
           <h3>Plot</h3>
