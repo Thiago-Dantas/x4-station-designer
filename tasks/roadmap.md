@@ -82,6 +82,8 @@ Proposed order (each step usable on its own):
 - [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`
   - [x] GIFs of the main features in `docs/media/` (`research/record_gifs.py`; see [workflow-release-gifs.md](workflow-release-gifs.md))
   - [x] First placement backs the view off 5 km (user request during the recording)
+  - [x] README.md with the GIFs, getting started, MCP and CLI
+  - [ ] Versioning, a license (none yet), the GitHub release with `x4sd.exe`
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 
 ## Later: live bridge (option D)

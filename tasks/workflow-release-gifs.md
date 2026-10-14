@@ -1,6 +1,6 @@
 # Workflow: GIFs for the GitHub page (release prep)
 
-Status: **done** (GIFs recorded; the README that links them is the next release step) (started 2026-10-14). Part of the roadmap item "Release build for players".
+Status: **done** (five GIFs; README.md written and links them) (started 2026-10-14). Part of the roadmap item "Release build for players".
 
 User request: record GIFs that show the builder's features, for the GitHub page. Decisions (user, 2026-10-14): all four scenes; GIFs live in `docs/media/` in the repo and the README links them.
 
@@ -18,6 +18,8 @@ User request: record GIFs that show the builder's features, for the GitHub page.
 - [x] Scene 4, open a game plan + analysis panels + build-order timeline
 - [x] Review every GIF (frames look right, size OK)
 - [x] Docs: CLAUDE.md layout row, docs/dev-setup.md, roadmap
+- [x] Scene 5 (user request): Optimize on the saved "megashipyard terran" (332 modules, the in-game save, not the 434-module import file of the same id) with *Rebuild connection structures* and *Fewer connection structures*
+- [x] README.md (user request): features, the five GIFs, getting started, MCP, CLI, status (what's unconfirmed in game), building from source
 
 ## Notes
 - Page fixed at 1440x810 with `Emulation.setDeviceMetricsOverride` (at 1280 the toolbar wraps once "unsaved" and the patches text show); GIFs 1080 wide. Capture runs at ~25 fps; GIFs are resampled to 12 fps.
@@ -28,3 +30,4 @@ User request: record GIFs that show the builder's features, for the GitHub page.
 - Range inputs ignore synthetic mouse drags: the build-order timeline is stepped from JS with the cursor kept on the thumb.
 - The start-up status line names the profile folder (user name, profile id): setup clears it before recording.
 - Results (2026-10-14): build 30 s / 3.5 MB, planner 21 s / 3.0 MB, agent 23 s / 3.8 MB, analysis 32 s / 5.5 MB, all 1080×608 at 12 fps, in `docs/media/`. The planner scene stops at Place all + Production (no Optimize). The analysis scene's Open dialog shows the player's plan names.
+- Optimize scene: the ~6 s Apply plan wait is cut from the GIF (`Recorder.pause`, timestamps shifted so the GIF doesn't jump). Result: 332 modules (137 connection structures) → 349 (7), 147 modules added for shortfalls, plot fitted 11×12×17 km. gifski quality 60 for this scene (8.2 MB at 80).

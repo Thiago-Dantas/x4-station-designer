@@ -3,7 +3,7 @@ builder over DevTools and turns the frames into GIFs with gifski.
 
     python -I research/record_gifs.py <x4sd.exe> <out dir> [scene ...] [--gifski PATH]
 
-Scenes: build, planner, agent, analysis (default: all). Each starts a fresh
+Scenes: build, planner, agent, analysis, optimize (default: all). Each starts a fresh
 builder (no unsaved-changes dialog can block it) with the page fixed at
 1440x810, and writes <out dir>/<scene>.gif. A second DevTools connection grabs
 JPEG frames in a thread while the scene runs. Input is synthetic, so a drawn
@@ -72,12 +72,21 @@ class Recorder:
         targets = json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json"))
         page = next(t for t in targets if t.get("type") == "page")
         self.cdp = Cdp(page["webSocketDebuggerUrl"])
-        self.frames, self.running = [], False
+        self.frames, self.running, self.paused, self.skipped = [], False, False, 0.0
 
     def _run(self):
         while self.running:
             data = self.cdp.call("Page.captureScreenshot", format="jpeg", quality=90)["data"]
-            self.frames.append((time.time(), base64.b64decode(data)))
+            if self.paused:  # cut out of the GIF (a long wait), with no jump in the timing
+                now = time.time()
+                self.skipped += now - self.paused_at
+                self.paused_at = now
+                continue
+            self.frames.append((time.time() - self.skipped, base64.b64decode(data)))
+
+    def pause(self, on):
+        self.paused_at = time.time()
+        self.paused = on
 
     def start(self):
         self.running = True
@@ -432,13 +441,56 @@ def scene_analysis(s):
     time.sleep(1.5)
 
 
+def setup_optimize(cdp):
+    """Planner without targets (Optimize plans the shortfall fixes), both Optimize boxes unticked."""
+    clear_planner(cdp)
+    cdp.js("['optimize-rebuild', 'planner-fewer'].forEach(id => { const c = document.getElementById(id); if (c.checked) c.click(); })")
+
+
+def scene_optimize(s):
+    """Optimize on the player's Terran megashipyard: rebuild connection structures, fewer of them."""
+    s.click_el("#btn-open-game")
+    s.wait("[...document.querySelectorAll('.plan-row')].length > 0")
+    time.sleep(0.6)
+    row = "[...document.querySelectorAll('.plan-row')].find(r => r.textContent.startsWith('megashipyard terran') && r.textContent.includes('saved'))"
+    s.click(*s.js("(() => { const r = %s.getBoundingClientRect(); return [r.left + 80, r.top + r.height / 2] })()" % row))
+    s.wait(status_starts("Opened"), 60)
+    time.sleep(2.5)  # textures stream in
+    s.open_section("load-panel")
+    time.sleep(0.6)
+    s.orbit(220, 2.5)
+    s.click_el("#tab-planner")
+    time.sleep(0.4)
+    s.click_el("#optimize-rebuild")
+    time.sleep(0.3)
+    s.click_el("#planner-fewer")
+    time.sleep(0.4)
+    s.click_el("#planner-optimize")
+    s.wait("!document.getElementById('planner-apply').hidden", 120)
+    time.sleep(2.5)
+    s.click_el("#planner-apply")
+    time.sleep(1.0)
+    started = time.time()
+    s.rec.pause(True)
+    s.wait(status_starts("Optimized"), 300)
+    s.rec.pause(False)
+    print(f"   optimize took {time.time() - started:.1f} s (cut from the GIF):", s.js("document.getElementById('status').textContent"))
+    time.sleep(2.5)
+    s.orbit(300, 3.5)
+    time.sleep(1.5)
+
+
 # name: (play, setup)
 SCENES = {
     "build": (scene_build, lambda cdp: new_design(cdp, 5)),
     "planner": (scene_planner, lambda cdp: (new_design(cdp, 10), clear_planner(cdp))),
     "agent": (scene_agent, None),
     "analysis": (scene_analysis, None),
+    "optimize": (scene_optimize, setup_optimize),
 }
+
+# gifski quality per scene (default 80): big textured stations in motion make large GIFs.
+QUALITY = {"optimize": 60}
 
 SETUP_JS = """(() => {
   const st = document.createElement('style'); st.textContent = '#viewport .fps { display: none }'; document.head.appendChild(st);
@@ -472,7 +524,7 @@ def run(exe, out, name, gifski):
         time.sleep(1.0)
         s = Scene(cdp)
         s.mouse("mouseMoved", s.x, s.y)
-        rec = Recorder()
+        rec = s.rec = Recorder()
         rec.start()
         try:
             play(s, *extra)
@@ -482,7 +534,7 @@ def run(exe, out, name, gifski):
             raise
         finally:
             frames = rec.stop()
-        encode(frames, os.path.join(out, name + ".gif"), gifski)
+        encode(frames, os.path.join(out, name + ".gif"), gifski, quality=QUALITY.get(name, 80))
     finally:
         app.terminate()
         app.wait(10)
@@ -496,7 +548,7 @@ if __name__ == "__main__":
         i = argv.index("--gifski")
         gifski = argv[i + 1]
         del argv[i:i + 2]
-    exe, out, names = argv[0], argv[1], argv[2:] or ["build", "planner", "agent", "analysis"]
+    exe, out, names = argv[0], argv[1], argv[2:] or list(SCENES)
     os.makedirs(out, exist_ok=True)
     for name in names:
         print(name)
