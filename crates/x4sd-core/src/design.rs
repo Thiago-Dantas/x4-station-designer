@@ -106,6 +106,14 @@ impl Design {
         self.plan.name = name.to_owned();
     }
 
+    /// Gives the plan another id (it becomes another plan in the game), in every
+    /// undo and redo state too, so undoing an edit never brings the old id back.
+    pub fn set_id(&mut self, id: &str) {
+        for plan in std::iter::once(&mut self.plan).chain(&mut self.undo).chain(&mut self.redo) {
+            plan.id = id.to_owned();
+        }
+    }
+
     /// Places a module on its own (not attached to anything) at `at`.
     pub fn add_root(&mut self, catalog: &Catalog, macro_name: &str, at: Transform) -> Result<u32> {
         let module = catalog.module(macro_name)?;

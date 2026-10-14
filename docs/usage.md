@@ -89,8 +89,10 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - An overlap means two modules' collision meshes intersect. Modules joined at a snap may interlock, and are never counted. See docs/x4-construction-plans.md, "Overlaps".
 - **Toolbar:**
   - *Open game plan…* lists your saved plans and import files.
-  - *Open file…* / *Save as…* work with plan files.
+  - *Open file…* / *Save as…* work with plan files. Both start in the game's plan folder, `<profile>\constructionplan\`. *Save as…* proposes the file name the game would give the plan.
   - *Export to game* writes the plan into `constructionplan\`; then click Import in the game's build menu.
+    - Import replaces your plan with the same id, after the game asks.
+    - **A renamed plan becomes a new plan.** If your saved plans or import files have the plan's id under another name, *Export* and *Save as* give it a new id first. In game it then imports next to the original instead of replacing it. The status line says so.
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
   - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
 - **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load.
@@ -144,7 +146,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `move_in_build_order`, `build_first`, `build_last`, `set_stage_end` | Reorder the build (renumbers; the result includes `moved_to`) and set stage ends. `describe_design` lists modules in build order with `stage_end`. |
 | `set_plot`, `fit_plot` | Set the plot (km per side), or fit it to the station (optionally only growing it). `describe_design` shows the plot, the size needed and whether it fits; `validate_design` includes plot issues. |
 | `validate_design` | Same checks as `x4sd validate` (overlaps and equipment included), plus the plot |
-| `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import |
+| `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import. A renamed plan gets a new id first (`new_plan: true`), so it imports as a new plan. |
 
 **Live link (D-7):** if the builder window is open, every tool works on the design shown there. You watch the agent's changes appear ("Agent: …" in the status bar) and can drag, twist or undo alongside it. Without a builder, `x4sd mcp` keeps its own design (headless). `builder_status` tells the agent which mode it is in. The link is a local TCP socket on `127.0.0.1:47823`, one JSON line per message; only the first builder window opened listens.
 

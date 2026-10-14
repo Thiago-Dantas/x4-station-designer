@@ -15,7 +15,7 @@ use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
 use x4sd_core::equipment::KINDS;
 use x4sd_core::geometry::{fit, Quat, Transform};
-use x4sd_core::import::{new_plan_id, write_import_file};
+use x4sd_core::import::{file_name, new_plan_id, plan_files, renew_id_if_renamed, write_import_file};
 use x4sd_core::plan::{parse_plans, write_plans, Plan};
 
 use crate::link;
@@ -223,12 +223,8 @@ fn new_design(state: State<'_, Shared>, name: String) -> CmdResult {
 fn list_game_plans(state: State<'_, Shared>) -> CmdResult {
     let app = state.lock().unwrap();
     let profile = app.profile_dir.as_ref().ok_or("player profile not found")?;
-    let mut files = vec![profile.join("constructionplans.xml")];
-    if let Ok(dir) = std::fs::read_dir(profile.join("constructionplan")) {
-        files.extend(dir.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "xml")));
-    }
     let mut out = Vec::new();
-    for file in files.iter().filter(|f| f.exists()) {
+    for file in &plan_files(profile) {
         let source = if file.ends_with("constructionplans.xml") { "saved" } else { "import folder" };
         for p in read_plans(file)? {
             out.push(json!({"file": file, "source": source, "id": p.id, "name": p.name, "modules": p.entries.len()}));
@@ -255,31 +251,38 @@ fn open_design(state: State<'_, Shared>, file: String, id: String) -> CmdResult 
     scene_json(&app)
 }
 
+/// Writes the design to a plan file. A renamed plan becomes a new plan
+/// (`new_plan`: it got a new id, see `renew_id_if_renamed`).
 #[tauri::command]
 fn save_design(state: State<'_, Shared>, file: String) -> CmdResult {
     let mut app = state.lock().unwrap();
-    std::fs::write(&file, write_plans(std::slice::from_ref(app.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
-    app.design.mark_saved();
-    Ok(json!({"file": file}))
+    let App { design, profile_dir, .. } = &mut *app;
+    let new_plan = profile_dir.as_deref().is_some_and(|p| renew_id_if_renamed(p, design));
+    std::fs::write(&file, write_plans(std::slice::from_ref(design.plan()))).map_err(|e| format!("{file}: {e}"))?;
+    design.mark_saved();
+    Ok(json!({"file": file, "new_plan": new_plan}))
 }
 
 /// Writes the design into `<profile>/constructionplan/` for in-game Import.
 /// Fails with a message starting "exists:" when the file is there and `overwrite` is false.
+/// A renamed plan becomes a new plan, as in `save_design`.
 #[tauri::command]
 fn export_design(state: State<'_, Shared>, new_id: bool, overwrite: bool) -> CmdResult {
     let mut app = state.lock().unwrap();
-    let profile = app.profile_dir.as_ref().ok_or("player profile not found")?;
-    let mut plan = app.design.plan().clone();
-    if new_id {
-        plan.id = new_plan_id();
-    }
-    let path = profile.join("constructionplan").join(x4sd_core::import::file_name(&plan.name));
+    let App { design, profile_dir, .. } = &mut *app;
+    let profile = profile_dir.as_deref().ok_or("player profile not found")?;
+    let path = profile.join("constructionplan").join(file_name(&design.plan().name));
     if path.exists() && !overwrite {
         return Err(format!("exists: {}", path.display()));
     }
+    let new_plan = renew_id_if_renamed(profile, design);
+    let mut plan = design.plan().clone();
+    if new_id {
+        plan.id = new_plan_id();
+    }
     let path = write_import_file(profile, &plan, true).map_err(|e| e.to_string())?;
-    app.design.mark_saved();
-    Ok(json!({"file": path, "id": plan.id}))
+    design.mark_saved();
+    Ok(json!({"file": path, "id": plan.id, "new_plan": new_plan}))
 }
 
 #[tauri::command]

@@ -62,6 +62,13 @@ What we know about how X4 stores station plans, and the ways we could inject one
 - **Id:** the file keeps the plan's `id`. Import uses that id; if the player already has a plan with it, the menu asks whether to overwrite. Generated plans therefore need unique ids. `player_<unix time>` works; other id patterns are untested.
 - **Pickup:** the Import list is rescanned when the build menu opens (and probably by the ↻ icon in the Import dialog), so files written while the game runs show up without a restart.
 - **Import copies the plan verbatim** into the player's in-memory list and loads it on the build map. It reaches `constructionplans.xml` at the next Save or Export.
+- **Same id, other name** (verified from the build menu's Lua, `menu.getImportablePlans` and `menu.buttonImport`, 2026-10-14):
+  - The Import list marks a file "[Imported]" when the player has a plan with its id, whatever the names.
+  - Importing it asks to overwrite that plan (shown by its old name), then removes it and imports the file.
+  - So a plan renamed outside the game with its id kept looks already imported, and the saved plan keeps its old name until the player imports and confirms. Seen with `megashipyard terran2.xml`.
+  - **Our rule (D-11):** before writing a plan, if the player's saved plans or import files have its id under another name, it gets a new id (`import::renew_id_if_renamed`).
+    - Ids are `player_<unix seconds>`, unique per run, even when two are made in the same second.
+    - The design keeps the new id in every undo state.
 
 ### Extra forms seen in the game's library plans (verified)
 - `plan@name` / `@description` can be text references such as `{20102,1241}` (page, id in `t/`).

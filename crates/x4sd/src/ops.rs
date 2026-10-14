@@ -13,7 +13,7 @@ use x4sd_core::design::Design;
 use x4sd_core::economy::{analyze, Analysis};
 use x4sd_core::equipment::{module_groups, Fill, Level};
 use x4sd_core::geometry::{Quat, Transform};
-use x4sd_core::import::{new_plan_id, write_import_file};
+use x4sd_core::import::{new_plan_id, renew_id_if_renamed, write_import_file};
 use x4sd_core::layout::{self, OptimizeOptions, Options};
 use x4sd_core::plan::{parse_plans, write_plans};
 use x4sd_core::planner::{self, module_counts, producible_wares, ProductionPlan, Request};
@@ -343,19 +343,21 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         Op::PlanProduction(args) => plan_production(c, ctx.design, args, None),
         Op::AutoPlace(args) => auto_place(c, ctx.design, args),
         Op::SaveDesign { file } => {
+            let new_plan = ctx.profile_dir.is_some_and(|p| renew_id_if_renamed(p, ctx.design));
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
             ctx.design.mark_saved();
-            Ok(json!({"saved": file}))
+            Ok(json!({"saved": file, "new_plan": new_plan}))
         }
         Op::ExportDesign { new_id, overwrite } => {
             let profile = ctx.profile_dir.ok_or("player profile not found")?;
+            let new_plan = renew_id_if_renamed(profile, ctx.design);
             let mut plan = ctx.design.plan().clone();
             if new_id.unwrap_or(false) {
                 plan.id = new_plan_id();
             }
             let path = write_import_file(profile, &plan, overwrite.unwrap_or(false)).map_err(err)?;
             ctx.design.mark_saved();
-            Ok(json!({"file": path, "id": plan.id, "next": "In game: station build menu > Import > select the plan"}))
+            Ok(json!({"file": path, "id": plan.id, "new_plan": new_plan, "next": "In game: station build menu > Import > select the plan"}))
         }
     }
 }

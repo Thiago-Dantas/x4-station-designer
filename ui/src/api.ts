@@ -119,8 +119,9 @@ export const api = {
   listGamePlans: () => invoke<PlanRef[]>("list_game_plans"),
   listPlansInFile: (file: string) => invoke<PlanRef[]>("list_plans_in_file", { file }),
   openDesign: (file: string, id: string) => serial<Scene>("open_design", { file, id }),
-  saveDesign: (file: string) => serial<{ file: string }>("save_design", { file }),
-  exportDesign: (newId: boolean, overwrite: boolean) => serial<{ file: string; id: string }>("export_design", { newId, overwrite }),
+  saveDesign: (file: string) => serial<{ file: string; new_plan: boolean }>("save_design", { file }),
+  exportDesign: (newId: boolean, overwrite: boolean) =>
+    serial<{ file: string; id: string; new_plan: boolean }>("export_design", { newId, overwrite }),
   renameDesign: (name: string) => serial<Scene>("rename_design", { name }),
   addModule: (macroName: string, position: Vec3) => serial<Scene>("add_module", { macroName, position }),
   attachModule: (macroName: string, snap: string, to: number, toSnap: string, twist: number) =>

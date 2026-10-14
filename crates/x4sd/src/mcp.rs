@@ -353,7 +353,7 @@ impl Server {
         self.run(Op::ValidateDesign)
     }
 
-    #[tool(description = "Save the open design to a plan file (single-plan format, like the game's exports).")]
+    #[tool(description = "Save the open design to a plan file (single-plan format, like the game's exports). A renamed plan becomes a new plan: if the player's plans have its id under another name, it gets a new id (new_plan: true).")]
     fn save_design(&self, Parameters(a): Parameters<SaveArgs>) -> ToolResult {
         self.run(Op::SaveDesign { file: a.file })
     }
@@ -453,7 +453,7 @@ impl Server {
         self.run(Op::SetStageEnd { index: a.index, end: a.end })
     }
 
-    #[tool(description = "Put the open design into the game: writes it to the player profile's constructionplan folder. The player then clicks Import in the station build menu.")]
+    #[tool(description = "Put the open design into the game: writes it to the player profile's constructionplan folder. The player then clicks Import in the station build menu. Import replaces the player's plan with the same id; a renamed plan becomes a new plan instead (new id, new_plan: true), so the original stays.")]
     fn export_design(&self, Parameters(a): Parameters<ExportArgs>) -> ToolResult {
         self.run(Op::ExportDesign { new_id: a.new_id, overwrite: a.overwrite })
     }

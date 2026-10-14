@@ -34,6 +34,8 @@ let quality: Quality = (() => {
 })();
 let modules: ModuleInfo[] = [];
 let scene: Scene | null = null;
+/** The player profile folder (from the catalog), for the plan file dialogs. */
+let profileDir: string | null = null;
 let selected: number | null = null;
 let armed: ModuleInfo | null = null;
 /** Module being moved onto another snap (with everything attached to it), if any. */
@@ -1137,7 +1139,8 @@ async function exportToGame() {
       result = await api.exportDesign(false, true);
     }
     await apply(api.scene());
-    status(`Exported to ${result.file}. In game: station build menu → Import.`, "good");
+    const renamed = result.new_plan ? " as a new plan (it was renamed, so the original stays)" : "";
+    status(`Exported${renamed} to ${result.file}. In game: station build menu → Import.`, "good");
   } catch (e) {
     status(String(e), "error");
   }
@@ -1159,8 +1162,13 @@ $("btn-open-game").onclick = async () => {
     status(String(e), "error");
   }
 };
+/** The game's plan folder, `<profile>\constructionplan` (its Import and Export files). */
+const planFolder = () => (profileDir ? `${profileDir}\\constructionplan` : null);
+/** The file name the game gives a plan: the name with characters outside `[A-Za-z0-9_-() ]` as `_` (as `import::file_name`). */
+const planFileName = (name: string) => `${name.replace(/[^A-Za-z0-9_\-() ]/g, "_")}.xml`;
+
 $("btn-open-file").onclick = async () => {
-  const file = await open({ filters: [{ name: "Plan files", extensions: ["xml"] }] });
+  const file = await open({ defaultPath: planFolder() ?? undefined, filters: [{ name: "Plan files", extensions: ["xml"] }] });
   if (typeof file !== "string") return;
   try {
     await openPlans("Open plan", await api.listPlansInFile(file));
@@ -1169,12 +1177,14 @@ $("btn-open-file").onclick = async () => {
   }
 };
 $("btn-save").onclick = async () => {
-  const file = await save({ defaultPath: `${scene?.name ?? "station"}.xml`, filters: [{ name: "Plan file", extensions: ["xml"] }] });
+  const name = planFileName(scene?.name ?? "station");
+  const folder = planFolder();
+  const file = await save({ defaultPath: folder ? `${folder}\\${name}` : name, filters: [{ name: "Plan file", extensions: ["xml"] }] });
   if (!file) return;
   try {
-    await api.saveDesign(file);
+    const result = await api.saveDesign(file);
     await apply(api.scene());
-    status(`Saved ${file}`, "good");
+    status(`Saved ${file}${result.new_plan ? " as a new plan (it was renamed, so the original stays)" : ""}`, "good");
   } catch (e) {
     status(String(e), "error");
   }
@@ -1344,6 +1354,7 @@ void listen<{ scene: Scene; op: string; replaced: boolean }>("scene-changed", (e
   try {
     const catalog = await api.loadCatalog();
     modules = catalog.modules;
+    profileDir = catalog.profile;
     void loadPlanner().catch((e) => status(`Planner: ${e}`));
     void loadEquipment().catch((e) => status(`Equipment: ${e}`));
     // Game order: by build-menu category, then by name.
