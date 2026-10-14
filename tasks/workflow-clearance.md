@@ -8,6 +8,15 @@ Status: **proposed** (2026-10-14). Nothing checked yet. The user asked to write 
   - Likely cause: `layout::layer` puts modules without turret/shield slots in the core, and build modules have none, so Optimize puts them in the middle on purpose. Nothing models the space a bay needs.
 - **Terran 3-Dock E Piers** face the wrong way. In game, large-ship piers show an approach volume (red wireframe frustum from the pier outward) while you move them.
   - Our dock rule only sweeps the dock's box *radially* away from the station centre (`layout::corridor`, `DOCK_CLEARANCE_M`). It ignores which way the pier's approach actually faces, so a pier can pass while its approach points along or into the station.
+- From the user's screenshots (the next session can't see them):
+  - **Builder, keep shape:** the selected XL bay (#164, attached to #57, twist 90°, 1 free snap) sits low in the middle, inside a lattice of connection structures and production modules.
+  - **Builder, rebuild:** the XL bay is **entry #3, attached straight to #1, 0 free snaps**: placed first, at the very core, and buried.
+    - The 3-dock E piers stand vertically along the cube's edges, arms parallel to the station's faces.
+  - **Builder, from above:** several piers are stacked close and parallel across the top, and more stand along the sides. They likely **block each other's** approaches, not just face the station.
+  - **In game** (the user's station "Asteroid Belt Scrapyard", planner, a Terran 3-Dock E Pier being moved): the approach volume is a large red frustum.
+    - It starts at the pier and extends to one side, **at right angles to the pier's arm**, away from the station.
+    - It's **much wider than the pier**, and made of **several overlapping volumes** (hypothesis: one per dock).
+    - The plan status still said "Everything is OK". Hypothesis: red is the normal display colour, or the game shows a blocked approach without failing the plan. Check which.
 
 ## Steps
 ### A. Research (game data first; REA only if the XML/Lua can't answer; tag findings verified/hypothesis)
