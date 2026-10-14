@@ -31,6 +31,7 @@ python -I research\ui_smoke.py  target\release\x4sd.exe <scratch dir>           
 python -I research\link_smoke.py target\release\x4sd.exe <scratch dir>           # live link: an agent edits the open builder (scratch profile)
 python -I research\texture_smoke.py target\release\x4sd.exe <scratch dir> [plan]  # textures off vs on: load time, GPU memory, fps
 ```
+- **Native dialogs block CDP scripts** (user remark, 2026-10-14). The builder's prompts (enlarge the plot, unsaved changes, replace an export) are Windows dialogs that CDP can't click, so a script that triggers one waits forever. Avoid them: set the largest plot (10 km per side) before Place all or Optimize, start a fresh builder rather than opening a plan over unsaved changes, and end with `app.terminate()` (no close prompt).
 
 ### Builder stack notes
 - **Tauri 2.x stable** (`tauri` 2.12, `@tauri-apps/api` 2.12). Tauri 3 was alpha in 2026-10.
