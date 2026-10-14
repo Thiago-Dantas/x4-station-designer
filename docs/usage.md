@@ -8,8 +8,8 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 - **First module:** with an empty design, click in the view (or drop the module there): it goes where you click, on the ground plane (rounded to 10 m). *Place as first module* puts it at the origin. Raise or lower it afterwards with the move gizmo.
 - **Attaching:** free snaps show as cyan cones. Click a cone (or drop a dragged module on it) to attach the armed module. *Connect by snap* chooses which snap of the new module connects; *Twist* rotates it around the snap axis.
 - **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it around its snap with everything attached to it, by the **rotation step** (90°, 45°, 30°, 15° or 5°; remembered; the game's own plans use fine twists too). *Remove* (Del) removes it with everything attached.
-  - The same step sets the twists offered when attaching (*Placing* panel) and the rotate gizmo's snap.
-  - A selected **free-standing module** (like the first one) shows a gizmo. *Rotate gizmo* / *Move gizmo* switches it between moving (10 m steps) and rotating around the module's own axes (tilt, yaw, roll) by the rotation step. Everything attached to it turns along and stays on its snaps.
+  - The same step sets the twists offered when attaching (*Placing* panel). The rotate gizmo always turns in 5° steps.
+  - A selected **free-standing module** (like the first one) shows a gizmo. *Rotate gizmo* / *Move gizmo* switches it between moving (10 m steps) and rotating around the module's own axes (tilt, yaw, roll) in 5° steps. Everything attached to it turns along and stays on its snaps.
   - *Rotate gizmo* while a module is armed for placing drops the placement and shows the gizmo on the selected module.
   - An **attached module** turns with *Rotate gizmo* too. The gizmo sits on the module, as in the game; the module turns so that it stays on its **joint** (where its snap meets the other module's), with everything on it.
     - Turning around the snap axis is a twist. Any other turn **tilts** it off the snap axis; the details line shows "tilted N°".

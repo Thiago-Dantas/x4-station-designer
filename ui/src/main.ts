@@ -203,7 +203,6 @@ function redraw() {
         }
       : null,
     root?.attached ? "rotate" : gizmoMode,
-    rotationStep,
   );
   // The button stays while placing: it drops the placement (see its onclick).
   $("gizmo-row").hidden = !(root && moving === null && buildStep === null);
@@ -1039,7 +1038,7 @@ async function twistSelected(direction: 1 | -1) {
 
 // ---------------------------------------------------------------- rotation
 
-/** Step for twists and the rotate gizmo, in degrees; remembered. */
+/** Step for twists, in degrees; remembered. */
 let rotationStep = (() => {
   try {
     return Number(localStorage.getItem("x4sd.rotationStep")) || 90;

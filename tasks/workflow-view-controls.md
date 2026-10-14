@@ -63,3 +63,6 @@ User, 2026-10-14:
 - 2026-10-14, user: "on the rotate gizmo, it only updates the view when i release the mouse click, i want the view to update as i drag".
   - While a gizmo is dragged, the view moves the module and everything on it along (an attached one swings about its joint); the design still changes once, on release (one undo step).
   - Checked by a real mouse drag over CDP on TerranScrapyard (rotation step 30°), for attached pier #2 and the root #1: mid-drag, before any edit was sent, the modules had turned; the screenshot after release showed the same pose.
+- 2026-10-14, user: "the gizmo rotation rate seems to be following the angle selector, it should always move at 5º steps".
+  - The rotate gizmo snaps to 5° whatever the rotation step; the step still sets twists (⟲/⟳, R) and the twists offered when attaching.
+  - Checked by a real mouse drag over CDP: with the step at 90°, a short drag tilted pier #2 of TerranScrapyard by 20°.

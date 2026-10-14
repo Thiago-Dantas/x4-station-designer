@@ -311,14 +311,13 @@ export class View3D {
 
   /** Shows the gizmo on a module at `at` (game frame), or hides it with null:
    * `translate` moves it in 10 m steps, `rotate` turns it around its own axes in
-   * `stepDegrees` steps. While dragging, the modules in `carries` follow it (an
+   * 5° steps. While dragging, the modules in `carries` follow it (an
    * attached module swings about its `joint`); `onMoved` gets the new position
    * and rotation when the drag ends. */
   setGizmo(
     at: { position: Vec3; rotation: Quat; joint: Vec3 | null; carries: Set<number> } | null,
     onMoved: ((position: Vec3, rotation: Quat) => void) | null = null,
     mode: "translate" | "rotate" = "translate",
-    stepDegrees = 90,
   ) {
     this.onGizmoMoved = onMoved;
     if (!at) {
@@ -329,7 +328,7 @@ export class View3D {
     this.gizmoCarries = at.carries;
     this.gizmo.setMode(mode);
     this.gizmo.setSpace(mode === "rotate" ? "local" : "world");
-    this.gizmo.setRotationSnap(THREE.MathUtils.degToRad(stepDegrees));
+    this.gizmo.setRotationSnap(THREE.MathUtils.degToRad(5));
     if (!this.gizmo.dragging) {
       this.gizmoTarget.position.copy(toVec(at.position));
       this.gizmoTarget.quaternion.copy(toQuat(at.rotation));
