@@ -370,19 +370,25 @@ fn plan_production(state: State<'_, Shared>, args: ops::PlanArgs, baseline: Opti
 }
 
 /// Runs a shared operation (`ops::Op`, as MCP agents do) on the open design: its
-/// `result`, plus the `scene` when the design may have changed.
+/// `result`, plus the `scene` when the design may have changed. Off the main
+/// thread: some (optimizing a station) take seconds.
 #[tauri::command]
-fn run_op(state: State<'_, Shared>, op: Op) -> CmdResult {
-    let mut app = state.lock().unwrap();
-    let catalog = catalog(&app)?;
-    let changes = op.changes_design();
-    let App { info, design, profile_dir, .. } = &mut *app;
-    let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref() })?;
-    let mut out = json!({"result": result});
-    if changes {
-        out["scene"] = scene_json(&app)?;
-    }
-    Ok(out)
+async fn run_op(handle: AppHandle, op: Op) -> CmdResult {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<Shared>();
+        let mut app = state.lock().unwrap();
+        let catalog = catalog(&app)?;
+        let changes = op.changes_design();
+        let App { info, design, profile_dir, .. } = &mut *app;
+        let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref() })?;
+        let mut out = json!({"result": result});
+        if changes {
+            out["scene"] = scene_json(&app)?;
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Places modules (macro, count) with auto-placement (`ops::auto_place`, plot may

@@ -50,6 +50,15 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
     - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
   - Sunlight and build method come from the right pane. The settings are remembered.
+  - **Optimize station** (the x4ep_planner's *Optimise*, plus a re-layout) works on the open station with the settings above (wares to make are ignored). One undo step.
+    - It adds the modules that cover the station's shortfalls, then re-places the station's modules **in layers**:
+      - those that can't carry turrets or shields (habitats, welfare, build modules…) in the middle;
+      - defensible ones (production, storage, defence) wrapped around them;
+      - dock areas and piers outermost, with a clear approach.
+    - Equipment stays with each module type.
+    - **Rebuild connection structures** off (default) keeps the station's connection structures, and the modules carrying them, so the station keeps its shape; on, they are rebuilt from scratch.
+    - If anything finds no room, nothing changes and the status line says what didn't fit.
+    - Layers make a larger station than *Place all*, which packs biggest first. TerranScrapyard plus its fixes: 9–11 km per axis.
 - **Right pane sections** fold: click a section's title (▸/▾). Equipment, Build cost, Production, Plot and Checks start folded on every start; the controls help at the bottom always shows. *Checks* shows the number of problems in its title. *Selected* and *Placing* open when they apply; the Equipment list inside *Selected* starts folded.
 - **Equipment (right):** the whole station; one undo step each.
   - Shows how many turret and shield groups are equipped.
@@ -127,6 +136,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `module_equipment` | A placed module's groups: for each group and kind the slot size and count, what is equipped, and the macros that fit |
 | `set_equipment` | Put a fitting macro on one kind of slot in a group (`count`, default all its slots), or remove it |
 | `equip_modules` | Equip many modules at once (one undo step): `picks` (each group takes, per kind, the first that fits) or `level` (none, low, medium, high); every module with groups by default, or `modules` / `defence_only`. Reports groups filled, cleared and skipped. |
+| `optimize_station` | Optimize the open station: add the modules that fix its shortfalls (plan_production settings), then re-place its modules in layers (no turret/shield slots inside, defensible outside, docks outermost with a clear corridor). `keep_shape` (default true) keeps the connection structures. One undo step; nothing changes if anything finds no place. Returns what was added and moved, the plot and the analysis. |
 | `copy_equipment` | Copy a module's equipment: `same_type` (default) to every module of its type, or `all` (its macros as picks for every module) |
 | `analyze_station` | Production and use per hour (net per ware), workforce needed vs housed and the bonus, storage per cargo type in hours, dock areas and piers, notes on what is missing; `sunlight` in percent |
 | `build_cost` | Resources and estimated value to build one module (with its equipment) or the whole station, for a build method; lists the methods |

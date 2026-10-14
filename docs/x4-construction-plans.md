@@ -209,6 +209,9 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   - The hub is the race's buildable connection structure with the most snaps (Argon or Terran cross 01).
   - The struts are its straight 2-snap structures, one per length (Argon 400, 800, 1600 m).
 - **Order:** the largest modules first; dock areas and piers last.
+  - With `Options::layered` (Optimize), the order goes in layers instead. Modules without turret/shield slots come first. Defensible ones come next, ranked by distance from the core's radius (the farthest slotless module), so they wrap the core rather than fill gaps in it. Dock areas and piers come last.
+    - Layers cost compactness. "100 solar, staffed" needs a 20×20×20 km plot in layers, against 8×8×8 biggest-first. So *Place all* stays biggest-first.
+  - "Nearest" is measured from the centre of the station as it was (2026-10-14), so an off-centre station grows around itself; for a new design that is the origin.
 - **Placement:** each module goes onto the free snap nearest the origin where it fits, with the most compact of its own snaps and the four twists. Alternatively it goes onto a new hub (optionally on a strut) on a free snap, when that is 2 km nearer.
   - **Docks stay reachable** (user request, 2026-10-14):
     - A dock area or pier needs a **clear corridor**: its own box swept 3 km straight out from the station's centre, clear of other modules' collision boxes.
@@ -229,6 +232,18 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   | TerranScrapyard's fix | 219, onto the existing station (its one free dock moved outside) | 21 | 10×10×11 km | 1.1 s |
   | "100 solar" again, plus 10 solar | 10; both docks lifted and placed again, clear | 9 | 8×8×8 km | 0.9 s |
 
+- **Optimize** (`layout::optimize`, user request 2026-10-14):
+  - It lifts the station's modules: keeping the shape, all but the connection structures and the modules carrying them; rebuilding, everything.
+  - It places them again, together with the shortfall fixes, in layers, and gives each module back the equipment of one lifted module of its type.
+  - All or nothing, one undo step. Unknown modules make it refuse.
+  - TerranScrapyard plus its 219 fixes, Terran:
+
+    | Mode | Time | Plot | Mean distance: no slots / defensible / docks |
+    |---|---|---|---|
+    | Keep shape | 2.8 s | 11×11×10 km | 2.3 / 3.8 / 3.7 km |
+    | Rebuild | 1.9 s | 9×10×10 km | 2.1 / 3.7 / 3.0 km |
+
+  - Both modes: nothing lost, equipment kept, no overlaps, docks clear.
 - **Not checked in game yet:**
   - that the game builds these stations (modules attached to modules, connectors);
   - that ships reach the docks.

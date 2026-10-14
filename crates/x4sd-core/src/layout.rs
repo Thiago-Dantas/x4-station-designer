@@ -9,7 +9,7 @@
 //! meshes themselves (`meshes_intersect`); auto-placement keeps the stricter box
 //! test. Calibration in docs/x4-construction-plans.md, "Overlaps".
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, CollisionMesh, MeshNode, Module, ShapeBox, Snap};
@@ -306,6 +306,11 @@ pub struct Options {
     pub grow_plot: bool,
     /// Race of the connection structures; `None`: the most common race of the modules.
     pub race: Option<String>,
+    /// Place in layers, inside out (see `layer`): modules without turret/shield
+    /// slots first, then defensible ones wrapping them (rather than filling gaps
+    /// inside), then dock areas and piers. Makes a larger station; `optimize` uses
+    /// it. Otherwise: biggest first, docks and piers last (compact).
+    pub layered: bool,
 }
 
 /// Attaches the modules (macro, count) to the open design at exact snap
@@ -313,8 +318,8 @@ pub struct Options {
 ///
 /// Greedy: an empty design starts with a connection hub (the race's connection
 /// structure with the most snaps) at the origin. Modules go biggest first, dock
-/// areas and piers last. Each goes onto the free snap nearest the origin where it
-/// fits, with whichever of its own snaps and twists keeps it most compact; or,
+/// areas and piers last (or in layers, see `Options::layered`). Each goes onto the
+/// free snap nearest the station's centre where it fits, with whichever of its own snaps and twists keeps it most compact; or,
 /// when that is `HUB_PENALTY_M` nearer, onto a new hub (or a straight connection
 /// structure and a hub) on a free snap.
 ///
@@ -346,7 +351,8 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
         order.push((m, s, Some((at, upgrades))));
         design.remove(catalog, index)?;
     }
-    order.sort_by(|(a, sa, _), (b, sb, _)| docking(a).cmp(&docking(b)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
+    let rank = |m: &Module| if options.layered { layer(m) } else { u8::from(docking(m)) * 2 };
+    order.sort_by(|(a, sa, _), (b, sb, _)| rank(a).cmp(&rank(b)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
 
     let all = candidates(catalog)?;
     let race = options.race.clone().or_else(|| common_race(&all, order.iter().map(|o| o.0.macro_name.as_str())));
@@ -359,7 +365,14 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     }
 
     let mut unplaced: BTreeMap<String, u32> = BTreeMap::new();
+    let mut current = None;
     for (module, _, lifted) in &order {
+        // In layers, defensible modules wrap the core of those without slots. Docks
+        // go nearest the centre with a clear corridor, which puts them outside.
+        if current != Some(layer(module)) {
+            current = Some(layer(module));
+            placer.shell = if options.layered && layer(module) == 1 { placer.core_radius() } else { 0.0 };
+        }
         match (placer.place(design, &connectors, module)?, lifted) {
             (Some((index, added)), None) => {
                 out.placed.push((index, module.macro_name.clone()));
@@ -419,6 +432,120 @@ fn corridor(bounds: &Bounds, centre: [f64; 3]) -> Option<Vec<Bounds>> {
 /// Dock areas and piers: ships have to reach them.
 fn docking(m: &Module) -> bool {
     m.class == "dockarea" || m.class == "pier"
+}
+
+/// Placement layer, inside out: 0 modules that can't carry turrets or shields
+/// (habitats, welfare, build modules…), 1 defensible ones (production, storage,
+/// defence), 2 dock areas and piers.
+fn layer(m: &Module) -> u8 {
+    if docking(m) {
+        2
+    } else if m.equipment_slots.is_empty() {
+        0
+    } else {
+        1
+    }
+}
+
+/// What `optimize` did.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Optimized {
+    /// Modules added (the fixes passed in): (macro, count).
+    pub added: Vec<(String, u32)>,
+    /// Modules the station had that were placed again.
+    pub moved: u32,
+    /// Connection structures removed (a full rebuild removes them all).
+    pub connectors_removed: u32,
+    /// The placement: what went where, and the connection structures added.
+    pub placement: Placement,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct OptimizeOptions {
+    /// Keep the connection structures (and the modules carrying them) where they
+    /// are; otherwise rebuild them from scratch.
+    pub keep_shape: bool,
+    /// Let the station outgrow its plot, up to the largest plot (20 km per axis).
+    pub grow_plot: bool,
+    /// Race of the connection structures added; `None`: the most common race of the modules.
+    pub race: Option<String>,
+}
+
+/// Re-lays a station out in layers (see `auto_place`) and adds `fixes` (macro,
+/// count; e.g. the modules that cover its shortfalls), as one undo step.
+///
+/// It lifts the station's modules (keeping the shape: all but the connection
+/// structures and the modules they hang on; else everything), then places them
+/// and the fixes again; each placed module gets the equipment one lifted module
+/// of its type had. All or nothing: if any module finds no place, the design is
+/// left as it was and the error says what didn't fit.
+pub fn optimize(catalog: &Catalog, design: &mut Design, fixes: &[(String, u32)], options: &OptimizeOptions) -> Result<Optimized> {
+    let unknown: Vec<&str> = design.plan().entries.iter().filter(|e| catalog.module(&e.macro_name).is_err()).map(|e| e.macro_name.as_str()).collect();
+    if !unknown.is_empty() {
+        return Err(Error(format!("can't optimize a station with unknown modules: {}", unknown.join(", "))));
+    }
+    let history = design.history_len();
+    let connector = |m: &str| catalog.module(m).is_ok_and(|m| m.class == "connectionmodule");
+    let mut lifted: Vec<(String, Vec<Upgrade>)> = Vec::new();
+    let mut out = Optimized { added: fixes.to_vec(), ..Default::default() };
+    if options.keep_shape {
+        // What no connection structure depends on: modules with nothing attached, repeatedly.
+        loop {
+            let entries = &design.plan().entries;
+            let leaf = entries
+                .iter()
+                .filter(|e| !connector(&e.macro_name))
+                .find(|e| !entries.iter().any(|x| x.predecessor.as_ref().is_some_and(|p| p.index == e.index)));
+            let Some(e) = leaf else { break };
+            lifted.push((e.macro_name.clone(), e.upgrades.clone()));
+            let index = e.index;
+            design.remove(catalog, index)?;
+        }
+    } else {
+        for e in &design.plan().entries {
+            if connector(&e.macro_name) {
+                out.connectors_removed += 1;
+            } else {
+                lifted.push((e.macro_name.clone(), e.upgrades.clone()));
+            }
+        }
+        while let Some(first) = design.plan().entries.first().map(|e| e.index) {
+            design.remove(catalog, first)?;
+        }
+    }
+    out.moved = lifted.len() as u32;
+
+    let mut modules: Vec<(String, u32)> = Vec::new();
+    for m in lifted.iter().map(|(m, _)| (m.as_str(), 1)).chain(fixes.iter().map(|(m, n)| (m.as_str(), *n))) {
+        match modules.iter_mut().find(|(x, _)| x.eq_ignore_ascii_case(m.0)) {
+            Some((_, n)) => *n += m.1,
+            None => modules.push((m.0.to_owned(), m.1)),
+        }
+    }
+    let placement = auto_place(catalog, design, &modules, &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true })?;
+    if !placement.unplaced.is_empty() {
+        if design.history_len() > history {
+            design.squash_history(history);
+            design.undo();
+        }
+        let left: Vec<String> = placement.unplaced.iter().map(|(m, n)| format!("{n} x {m}")).collect();
+        return Err(Error(format!("nothing changed: no room for {}", left.join(", "))));
+    }
+    // Equipment back: each placed module takes that of one lifted module of its type.
+    let mut equipment: HashMap<String, VecDeque<Vec<Upgrade>>> = HashMap::new();
+    for (m, upgrades) in lifted {
+        equipment.entry(m.to_ascii_lowercase()).or_default().push_back(upgrades);
+    }
+    for (index, m) in &placement.placed {
+        if let Some(upgrades) = equipment.get_mut(&m.to_ascii_lowercase()).and_then(VecDeque::pop_front) {
+            if !upgrades.is_empty() {
+                design.restore_upgrades(*index, upgrades);
+            }
+        }
+    }
+    design.squash_history(history);
+    out.placement = placement;
+    Ok(out)
 }
 
 /// The most common maker race among the modules (`None` if none has one).
@@ -509,6 +636,15 @@ struct Placer<'a> {
     corridors: Vec<Vec<Bounds>>,
     /// Docks placed (or put back) without a clear corridor.
     blocked: u32,
+    /// What "nearest" means: the centre of the station as it was (the origin for
+    /// an empty design), so an off-centre station grows around itself.
+    heart: [f64; 3],
+    /// Each body's placement layer (`layer`); `None` for connection structures.
+    layers: Vec<Option<u8>>,
+    /// While placing defensible modules: the radius of the core (the farthest
+    /// module without slots), which they hug instead of filling gaps inside it.
+    /// 0: plain nearest-first.
+    shell: f64,
 }
 
 impl<'a> Placer<'a> {
@@ -524,12 +660,16 @@ impl<'a> Placer<'a> {
             outward: false,
             corridors: Vec::new(),
             blocked: 0,
+            heart: [0.0; 3],
+            layers: Vec::new(),
+            shell: 0.0,
         };
         for e in &design.plan().entries {
             if catalog.module(&e.macro_name).is_ok() {
                 placer.add(design, e.index)?;
             }
         }
+        placer.heart = placer.centre();
         // Docks that stay (something is attached to them) keep their corridor clear.
         for e in &design.plan().entries {
             if catalog.module(&e.macro_name).is_ok_and(|m| docking(&m)) {
@@ -537,6 +677,22 @@ impl<'a> Placer<'a> {
             }
         }
         Ok(placer)
+    }
+
+    /// How far from where it should be a module at `distance` from the heart is:
+    /// the distance itself, or while hugging the core, the distance from its shell.
+    fn rank(&self, distance: f64) -> f64 {
+        if self.shell > 0.0 { (distance - self.shell).abs() } else { distance }
+    }
+
+    /// The core's radius: the farthest module without turret/shield slots from the heart.
+    fn core_radius(&self) -> f64 {
+        self.bodies
+            .iter()
+            .zip(&self.layers)
+            .filter(|(_, l)| **l == Some(0))
+            .map(|(b, _)| distance(&b.bounds, self.heart).sqrt())
+            .fold(0.0, f64::max)
     }
 
     /// The centre of the station's bounds.
@@ -564,6 +720,7 @@ impl<'a> Placer<'a> {
         let world = design.world(index)?;
         self.bodies.push(Body::new(&self.catalog.collision_boxes(&e.macro_name)?, &module.snaps, &world));
         self.owners.push(index);
+        self.layers.push((module.class != "connectionmodule").then(|| layer(&module)));
         if let Some(b) = module_bounds(&module, &world) {
             self.bounds = Some(self.bounds.map_or(b, |s| union(s, b)));
         }
@@ -613,8 +770,8 @@ impl<'a> Placer<'a> {
             for twist in TWISTS {
                 let at = attach(snap, &Transform::IDENTITY, &s.transform, twist);
                 let Some((lo, hi)) = module_bounds(module, &at) else { continue };
-                let centre = [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0);
-                options.push((dot(centre, centre), &s.name, twist, at));
+                let out = [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0 - self.heart[i]);
+                options.push((self.rank(dot(out, out).sqrt()), &s.name, twist, at));
             }
         }
         options.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -643,11 +800,12 @@ impl<'a> Placer<'a> {
     fn place_with(&mut self, design: &mut Design, conn: &Connectors, module: &Module) -> Result<Option<Placed>> {
         let boxes = self.catalog.collision_boxes(&module.macro_name)?;
         let name = &module.macro_name;
-        // Ways to place it, nearest the origin first: directly on a free snap, or
-        // through a new hub there (counted `HUB_PENALTY_M` further out).
+        // Ways to place it, nearest the station's centre first: directly on a free
+        // snap, or through a new hub there (counted `HUB_PENALTY_M` further out).
         let mut options: Vec<(f64, &FreeSnap, bool)> = Vec::new();
         for f in &self.free {
-            let d = dot(f.world.position, f.world.position).sqrt();
+            let out = sub(f.world.position, self.heart);
+            let d = self.rank(dot(out, out).sqrt());
             options.push((d, f, false));
             options.push((d + HUB_PENALTY_M, f, true));
         }
@@ -709,7 +867,10 @@ impl<'a> Placer<'a> {
                     .iter()
                     .filter(|o| o.name != hs.name)
                     .filter_map(|o| self.best_at(module, boxes, &at.then(&o.transform), &extra).map(|c| (o.name.clone(), c)))
-                    .min_by(|a, b| distance(&a.1 .2.bounds).total_cmp(&distance(&b.1 .2.bounds)));
+                    .min_by(|a, b| {
+                        let rank = |c: &Choice| self.rank(distance(&c.2.bounds, self.heart).sqrt());
+                        rank(&a.1).total_cmp(&rank(&b.1))
+                    });
                 if let Some((on, choice)) = best {
                     return Some((hs.name.clone(), twist, on, choice));
                 }
@@ -748,9 +909,9 @@ impl<'a> Placer<'a> {
     }
 }
 
-/// Squared distance of the bounds' centre from the origin.
-fn distance((lo, hi): &Bounds) -> f64 {
-    let c = [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0);
+/// Squared distance of the bounds' centre from `from`.
+fn distance((lo, hi): &Bounds, from: [f64; 3]) -> f64 {
+    let c = [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0 - from[i]);
     dot(c, c)
 }
 

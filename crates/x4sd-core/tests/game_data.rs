@@ -422,7 +422,7 @@ fn auto_place_planned_stations() {
     let planned = |d: &Design, r: &Request| -> Vec<(String, u32)> {
         plan_production(c, &x4sd_core::planner::module_counts(d.plan()), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
     };
-    let grow = Options { grow_plot: true, race: None };
+    let grow = Options { grow_plot: true, race: None, layered: false };
 
     let mut d = Design::new("100 solar");
     let modules = planned(&d, &req(&[("energycells", 100)], None));
@@ -454,7 +454,7 @@ fn auto_place_planned_stations() {
     // Without growing, the default plot (2 km per side) holds only some of the solar station.
     let mut d = Design::new("small plot");
     let modules = planned(&d, &req(&[("energycells", 100)], None));
-    let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: false, race: None });
+    let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: false, race: None, layered: false });
     assert!(!r.placed.is_empty() && !r.unplaced.is_empty());
 
     // An existing station: the planner's fix for the scrapyard, placed onto it.
@@ -542,6 +542,75 @@ fn equipment_groups_and_fit() {
     }
 }
 
+/// Optimize (the x4ep_planner's, plus our re-layout): TerranScrapyard with the
+/// modules that fix its shortfalls, re-laid out keeping its shape and rebuilt.
+/// Nothing is lost, equipment stays, no overlaps, docks outside, layers inside
+/// out, one undo step.
+#[test]
+fn optimize_station() {
+    use std::collections::BTreeMap;
+    use x4sd_core::layout::{optimize, overlaps, OptimizeOptions};
+    use x4sd_core::planner::{module_counts, plan_production, Request};
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
+    let yard = plans.iter().find(|p| p.name == "TerranScrapyard").unwrap();
+    let req = Request { targets: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
+    let fixes: Vec<(String, u32)> = plan_production(c, &module_counts(yard), &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
+    let class = |m: &str| c.module(m).unwrap().class.clone();
+    let counts = |p: &x4sd_core::plan::Plan| {
+        let mut n: BTreeMap<String, u32> = BTreeMap::new();
+        for e in p.entries.iter().filter(|e| class(&e.macro_name) != "connectionmodule") {
+            *n.entry(e.macro_name.clone()).or_default() += 1;
+        }
+        n
+    };
+    let equipped = |p: &x4sd_core::plan::Plan| p.entries.iter().filter(|e| !e.upgrades.is_empty()).count();
+    for keep_shape in [true, false] {
+        let mut d = Design::from_plan(yard.clone());
+        let start = Instant::now();
+        let r = optimize(c, &mut d, &fixes, &OptimizeOptions { keep_shape, grow_plot: true, race: Some("terran".to_owned()) }).unwrap();
+        let elapsed = start.elapsed();
+        let plot = x4sd_core::plot::required_plot(d.plan(), c).unwrap();
+        // Mean distance from the station centre of the re-placed modules, per layer.
+        let placed: Vec<u32> = r.placement.placed.iter().map(|p| p.0).collect();
+        let bounds: Vec<_> = d.plan().entries.iter().filter_map(|e| x4sd_core::plot::entry_bounds(d.plan(), c, e.index)).collect();
+        let (lo, hi) = bounds.iter().fold(bounds[0], |(l, h), (a, b)| (std::array::from_fn(|i| l[i].min(a[i])), std::array::from_fn(|i| h[i].max(b[i]))));
+        let centre: [f64; 3] = std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0);
+        let mut layers: BTreeMap<&str, (f64, u32)> = BTreeMap::new();
+        for e in d.plan().entries.iter().filter(|e| placed.contains(&e.index)) {
+            let m = c.module(&e.macro_name).unwrap();
+            let layer = if ["dockarea", "pier"].contains(&m.class.as_str()) { "3 docks" } else if m.equipment_slots.is_empty() { "1 no slots" } else { "2 defensible" };
+            let (l, h) = x4sd_core::plot::entry_bounds(d.plan(), c, e.index).unwrap();
+            let dist = (0..3).map(|i| ((l[i] + h[i]) / 2.0 - centre[i]).powi(2)).sum::<f64>().sqrt();
+            let slot = layers.entry(layer).or_default();
+            slot.0 += dist;
+            slot.1 += 1;
+        }
+        let means: BTreeMap<&str, f64> = layers.iter().map(|(k, (s, n))| (*k, s / f64::from(*n))).collect();
+        eprintln!(
+            "[keep shape: {keep_shape}] {elapsed:?}: moved {}, added {}, connectors -{} +{}, docks blocked {}; plot {plot}; mean distance per layer {:?}",
+            r.moved,
+            fixes.iter().map(|f| f.1).sum::<u32>(),
+            r.connectors_removed,
+            r.placement.connectors.len(),
+            r.placement.docks_blocked,
+            means.iter().map(|(k, v)| format!("{k} {v:.0} m")).collect::<Vec<_>>()
+        );
+        // Nothing lost: every module the yard had, plus the fixes.
+        let mut expected = counts(yard);
+        for (m, n) in &fixes {
+            *expected.entry(m.clone()).or_default() += n;
+        }
+        assert_eq!(counts(d.plan()), expected);
+        assert_eq!(equipped(d.plan()), equipped(yard), "equipment stays");
+        assert!(overlaps(d.plan(), c).is_empty());
+        assert!(plot.is_allowed(), "{plot}");
+        assert_docks_outside(c, &d);
+        assert!(means["1 no slots"] < means["2 defensible"], "{means:?}");
+        assert!(d.undo());
+        assert_eq!(d.plan(), yard, "one undo step");
+    }
+}
+
 /// Equipping a station: one group by hand, every group by picks and by level,
 /// copying to modules of the same type; each is one undo step, and the result
 /// validates, costs more and survives writing the plan.
@@ -553,7 +622,7 @@ fn equip_station() {
     let mut d = Design::new("equipped");
     let modules = [("defence_arg_disc_01_macro", 1), ("prod_arg_foodrations_macro", 2), ("storage_arg_l_container_01_macro", 1)];
     let modules: Vec<(String, u32)> = modules.iter().map(|(m, n)| (m.to_string(), *n)).collect();
-    auto_place(c, &mut d, &modules, &Options { grow_plot: true, race: None }).unwrap();
+    auto_place(c, &mut d, &modules, &Options { grow_plot: true, race: None, layered: false }).unwrap();
     let index_of = |d: &Design, m: &str| d.plan().entries.iter().filter(|e| e.macro_name == m).map(|e| e.index).collect::<Vec<_>>();
     let disc = index_of(&d, "defence_arg_disc_01_macro")[0];
     let food = index_of(&d, "prod_arg_foodrations_macro");

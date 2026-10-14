@@ -894,6 +894,52 @@ $<HTMLInputElement>("planner-hours").onchange = (ev) => {
   savePlanner();
 };
 $("planner-generate").onclick = () => void generatePlan(true);
+
+interface Optimized { added: { macro: string; count: number }[]; moved: number; connectors_removed: number; connectors_added: number; docks_blocked: number }
+
+/** Optimize: fix the open station's shortfalls (the planner's settings) and re-lay it out in layers. */
+$("planner-optimize").onclick = async () => {
+  if (!scene?.entries.length) {
+    status("Nothing to optimize: the design is empty", "error");
+    return;
+  }
+  status("Optimizing…");
+  let note = "";
+  await apply(
+    api
+      .runOp<Optimized>({
+        op: "optimize_station",
+        race: planner.race || null,
+        workforce: planner.workforce,
+        storage_hours: planner.hours,
+        buy: planner.buy,
+        sunlight,
+        method: buildMethod,
+        keep_shape: !$<HTMLInputElement>("optimize-rebuild").checked,
+      })
+      .then((r) => {
+        const o = r.result;
+        const added = o.added.reduce((s, a) => s + a.count, 0);
+        note =
+          `Optimized: re-placed ${o.moved} modules` +
+          (added ? `, added ${added} to cover shortfalls` : ", no shortfalls to cover") +
+          `; connection structures −${o.connectors_removed} +${o.connectors_added}` +
+          (o.docks_blocked ? `. ${o.docks_blocked} docks have no clear approach` : "");
+        return r.scene!;
+      }),
+    undefined,
+    true,
+    true,
+  );
+  if (!note) return;
+  status(note, note.includes("no clear approach") ? "error" : "good");
+  // The plan (if any) was for the station before: start over.
+  plan = null;
+  $("planner-result").replaceChildren();
+  $("planner-summary").textContent = "";
+  $("planner-placed").textContent = "";
+  $("planner-place").hidden = true;
+};
 $("planner-place").onclick = () => void placeAll();
 
 /** `index` and every module attached to it, directly or not. */

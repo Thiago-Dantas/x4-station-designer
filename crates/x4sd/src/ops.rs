@@ -14,7 +14,7 @@ use x4sd_core::economy::{analyze, Analysis};
 use x4sd_core::equipment::{module_groups, Fill, Level};
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
-use x4sd_core::layout::{self, Options};
+use x4sd_core::layout::{self, OptimizeOptions, Options};
 use x4sd_core::plan::{parse_plans, write_plans};
 use x4sd_core::planner::{self, module_counts, producible_wares, ProductionPlan, Request};
 use x4sd_core::plot::{required_plot, Plot};
@@ -69,6 +69,16 @@ pub struct AutoPlaceArgs {
     pub grow_plot: Option<bool>,
     /// Race of the connection structures it adds: argon, boron, paranid, split, teladi, terran; default: the plan's race, else the most common race of the modules
     pub race: Option<String>,
+}
+
+/// Optimize settings: the planner's (for the shortfall fixes) and the layout's.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct OptimizeArgs {
+    /// Planner settings for the modules that fix the shortfalls (targets are ignored)
+    #[serde(flatten)]
+    pub plan: PlanArgs,
+    /// Keep the connection structures, and the modules carrying them, where they are (the station's shape); false rebuilds them from scratch (default true)
+    pub keep_shape: Option<bool>,
 }
 
 /// How equip_modules chooses equipment, and for which modules.
@@ -137,6 +147,8 @@ pub enum Op {
     SetEquipment { index: u32, group: String, kind: String, r#macro: Option<String>, count: Option<u32> },
     /// Equip many modules by picks or by loadout level.
     EquipModules(EquipArgs),
+    /// Fix the station's shortfalls and re-lay it out in layers.
+    OptimizeStation(OptimizeArgs),
     /// Give modules the equipment of one: `same_type` (default) copies it to the
     /// modules of its type, `all` uses its equipment as picks for every module.
     CopyEquipment { from: u32, scope: Option<String> },
@@ -314,6 +326,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             module_equipment(c, ctx.design, index)
         }
         Op::EquipModules(args) => equip_modules(c, ctx.design, args),
+        Op::OptimizeStation(args) => optimize_station(c, ctx.design, args),
         Op::CopyEquipment { from, scope } => match scope.as_deref().unwrap_or("same_type") {
             "same_type" => Ok(json!({"modules": ctx.design.copy_equipment(from).map_err(err)?})),
             "all" => {
@@ -379,6 +392,33 @@ pub fn build_cost(catalog: &Catalog, design: &Design, index: Option<u32>, method
 pub fn analyze_station(catalog: &Catalog, design: &Design, sunlight: f64) -> Result<Value, String> {
     let a = analyze(catalog, design.plan(), sunlight / 100.0).map_err(|e| e.to_string())?;
     analysis_json(catalog, &a, sunlight)
+}
+
+/// Optimize (x4ep_planner's, plus a re-layout): adds the modules that fix the
+/// station's shortfalls, then re-places its modules in layers (without slots in
+/// the middle, defensible ones around them, docks and piers outside), as one undo
+/// step. Nothing changes if anything finds no place.
+pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeArgs) -> Result<Value, String> {
+    let sunlight = args.plan.sunlight.unwrap_or(100.0);
+    let mut req = request(args.plan);
+    req.targets.clear();
+    let p = planner::plan_production(catalog, &module_counts(design.plan()), &req).map_err(|e| e.to_string())?;
+    let fixes: Vec<(String, u32)> = p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
+    let options = OptimizeOptions { keep_shape: args.keep_shape.unwrap_or(true), grow_plot: true, race: req.race };
+    let r = layout::optimize(catalog, design, &fixes, &options).map_err(|e| e.to_string())?;
+    let mut out = json!({
+        "added": r.added.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
+        "moved": r.moved,
+        "connectors_removed": r.connectors_removed,
+        "connectors_added": r.placement.connectors.len(),
+        "docks_blocked": r.placement.docks_blocked,
+        "plot": plot_status(design, catalog),
+        "analysis": analyze_station(catalog, design, sunlight)?,
+    });
+    if !out["plot"]["fits"].as_bool().unwrap_or(true) {
+        out["next"] = json!("The station outgrew its plot: tell the user, then fit_plot with grow_only=true");
+    }
+    Ok(out)
 }
 
 /// Turrets and shields players can build, filtered: [{macro, name, kind, size, race, mk, price}].
@@ -483,7 +523,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
         }
         _ => return Err("give either modules or from_plan".to_owned()),
     };
-    let options = Options { grow_plot: args.grow_plot.unwrap_or(true), race: race.filter(|r| !r.is_empty() && r != "any") };
+    let options = Options { grow_plot: args.grow_plot.unwrap_or(true), race: race.filter(|r| !r.is_empty() && r != "any"), layered: false };
     let r = layout::auto_place(catalog, design, &modules, &options).map_err(|e| e.to_string())?;
     let mut out = json!({
         "placed": r.placed.iter().map(|(i, m)| json!({"index": i, "macro": m})).collect::<Vec<_>>(),

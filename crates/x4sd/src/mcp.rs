@@ -41,6 +41,8 @@ what fits; set_equipment fills one group; equip_modules fills many at once, from
 one M shield, one L turret, one L shield: each group takes the first that fits) or a loadout level \
 (none/low/medium/high); copy_equipment copies one module's equipment to its type or, as picks, to all. \
 list_equipment finds macros. build_cost includes equipment.
+Optimize: optimize_station fixes an existing station's shortfalls and re-lays it out in layers (non-defensible \
+modules inside, defensible outside, docks outermost); keep_shape keeps its connection structures.
 Overlaps: validate_design reports modules whose collision shapes intersect (modules joined at a snap may \
 interlock); auto_place never creates any.
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
@@ -434,6 +436,11 @@ impl Server {
     #[tool(description = "Equip many modules at once (one undo step): picks (equipment macros; each group takes, per kind, the first that fits all its slots) or a loadout level (none, low, medium, high). Default: every module with groups; modules or defence_only narrow it. Returns how many group slots were filled, cleared or skipped (nothing fitted).")]
     fn equip_modules(&self, Parameters(a): Parameters<ops::EquipArgs>) -> ToolResult {
         self.run(Op::EquipModules(a))
+    }
+
+    #[tool(description = "Optimize the open station (x4ep_planner's Optimise plus a re-layout), one undo step: adds the modules that fix its shortfalls (plan_production settings; targets ignored), then re-places its modules in layers: those that can't carry turrets or shields in the middle, defensible ones around them, dock areas and piers outermost with a clear 3 km corridor. keep_shape (default true) keeps the connection structures and the modules carrying them; false rebuilds the connection structures. Equipment stays with each module type. If anything finds no place, nothing changes (error). Returns what was added and moved, connection structures removed/added, the plot and the analysis.")]
+    fn optimize_station(&self, Parameters(a): Parameters<ops::OptimizeArgs>) -> ToolResult {
+        self.run(Op::OptimizeStation(a))
     }
 
     #[tool(description = "Copy a module's equipment: scope same_type (default) gives every module of its type the same equipment; all uses its equipment macros as picks for every module.")]

@@ -69,6 +69,7 @@ Proposed order (each step usable on its own):
   - [x] A. Station analysis: production per hour, workforce, storage, docks (right pane, MCP `analyze_station`)
   - [x] B. Production planner: target wares to a module list, with a "to place" list (Planner tab, MCP `plan_production`, `list_wares`)
   - [x] C. Auto-placement of the planned modules: Planner tab *Place all*, MCP `auto_place`; overlap checks on collision meshes (also in `validate`)
+  - [x] D. Optimize (user request, 2026-10-14): fix the shortfalls and re-lay the station out in layers (slotless inside, defensible outside, docks outermost), keeping its shape or rebuilding connectors. See [workflow-optimize.md](workflow-optimize.md).
 - [x] Build cost in the right pane: selected module or whole station, build method (user request; see [workflow-build-cost.md](workflow-build-cost.md))
 - [x] Move placed modules (re-attach to another snap, detach, gizmo for free-standing ones) and warn about unsaved changes (user requests; see [workflow-move-and-unsaved.md](workflow-move-and-unsaved.md))
 - [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`
