@@ -250,6 +250,8 @@ The red volume the build menu draws in front of a pier while you move it is an *
   - **Import (verified, user, 2026-10-14):** `megashipyard terran2` (39 blocked zones by this model) imports and builds with no errors, and the status says "Everything is OK".
   - **Moving a module in the build menu (user's observation; not retested):** a module that blocks a zone turns red, like a collision.
   - **The engine's layout generator (verified, string in X4.exe; x4ep_planner logs):** `ConstructionSequenceGenerator %s! After %u failed connection attempts, %u collisions, %u exclusion zone intersections`. It treats a zone intersection like a collision and gives up.
+- **Our rule (D-12, implemented 2026-10-14):** `layout::zones` builds the boxes, `layout::blocked_zones` lists modules reaching more than 1 m into another's zone (not its own, not one joined to it at a snap), and `validate` reports "entry N: blocks the approach of pier M" / "blocks the exit of bay M". Auto-placement keeps every zone clear (see "Auto-placement").
+  - Game-data test `clearance_zones`: the user's game-built plans block nothing; `megashipyard terran2` (our first Optimize) has 652 blocker/zone pairs.
 - **Ships leaving a bay:** the space is the bay's two zones (L: 1.2 km square, XL: 4 km square, out of both ends). L bays also have a `launchpos` and a `todock` connection. We use the zone sizes instead of measuring the largest ship of each size: the game sizes the space itself.
 
 ## Auto-placement (2026-10-13)
@@ -270,6 +272,11 @@ The red volume the build menu draws in front of a pier while you move it is an *
     - A lifted dock that fits nowhere goes back to its old position, free-standing.
     - The run reports `docks_moved` and `docks_blocked` (placed without a clear corridor because there was no such spot).
     - **Hypothesis:** a 3 km corridor straight out is enough room for ships to reach them. Not checked in game.
+  - **Clearance** (D-12, 2026-10-14; see "Clearance: exclusion zones"): modules that need clear space (`layout::outer`: dock areas, piers, and every module with exclusion zones, such as fabrication and maintenance bays) form the outer layer, go last, and are lifted and re-placed on every run like docks.
+    - They are placed where all their zones are clear of modules not joined to them; their zones are then protected like corridors.
+    - The 3 km corridor stays for dock areas and piers whose zones are all shorter than it (M dock areas: 500 m up). Without it a dock area sat among the "100 solar" panels with only a clear column above it. Piers don't need it (100 km zones); requiring it too left 6 modules of the megashipyard without a spot.
+    - Game-data test `optimize_keeps_zones_clear`, the user's megashipyard terran plus its 147 fixes: keep shape 483 entries, 19×20×12 km, 6 s; rebuild 351 entries, 11×12×16 km, 7–11 s. Both: no zone blocked, nothing lost, no overlaps. The builder shows "No problems found" for both.
+    - **Why *Rebuild connection structures* made bays worse before:** bays have no turret/shield slots, so they were in the slotless core layer; a rebuild places biggest-first within a layer, so the XL bay went first, onto the hub.
 - **Plot:** with *grow*, it stays within the largest plot (20 km per axis) and reports the plot needed. Placements keep 1 m inside the plot, so rounding to stored positions can't push a module out.
 - **Undo:** the whole placement is one undo step.
 - **Results** (game-data test `auto_place_planned_stations`):

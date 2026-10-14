@@ -1,6 +1,6 @@
 # Workflow: clearance for fabrication bays and piers
 
-Status: **in progress** (2026-10-14): A (research) under way.
+Status: **done** (2026-10-14); the in-game check (E) is still open
 
 ## What the user saw (2026-10-14)
 - Optimize on `megashipyard terran`, saved as `megashipyard terran2` (probably `<profile>\constructionplan\megashipyard terran2.xml`; the plan uses a mod module, so load the catalog with the real profile). In game it imports and builds with no errors.
@@ -53,10 +53,13 @@ Status: **in progress** (2026-10-14): A (research) under way.
   - Texts: MCP instructions and tool descriptions, the builder's status line ("docks or bays have no clear space"). JSON field names `docks_moved`/`docks_blocked` kept; they now count bays too.
 
 ### D. Checks (targeted, per the standing "test only new things" rule)
-- [ ] Game-data test: Optimize `megashipyard terran` (both modes) leaves every pier approach and bay exit clear, with no overlaps and nothing lost.
-- [ ] Builder screenshot of the result (CDP, as in `research/ui_smoke.py`).
-- [ ] Docs: x4-construction-plans.md (clearance volumes, verified/hypothesis), usage.md (new checks), decisions.md (clearance rule). CLAUDE.md if module roles change.
-- [ ] Commit and push.
+- [x] Game-data test: Optimize `megashipyard terran` (both modes) leaves every pier approach and bay exit clear, with no overlaps and nothing lost.
+- [x] Builder screenshot of the result (CDP, as in `research/ui_smoke.py`).
+- [x] Docs: x4-construction-plans.md (clearance volumes, verified/hypothesis), usage.md (new checks), decisions.md (clearance rule). CLAUDE.md if module roles change.
+- [x] Commit and push.
+
+- D done (2026-10-14): game-data test `optimize_keeps_zones_clear` (both modes: no zone blocked, nothing lost, no overlaps, `docks_blocked` 0); `optimize_station` and `auto_place_planned_stations` still pass. Builder (scratch CDP script, release build): Optimize of megashipyard terran gives "No problems found" in both modes; screenshots show the piers sticking out with their docks facing away.
+  - CDP scripts must not trigger native dialogs (they wait for a click): set the largest plot before Optimize, and use a fresh builder instead of opening a second plan over unsaved changes (user remark, 2026-10-14).
 
 ### E. In game (user)
 - [ ] Import the re-optimized megashipyard and look at the pier approach volumes while moving a pier: none red.

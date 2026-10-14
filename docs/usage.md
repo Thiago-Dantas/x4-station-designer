@@ -43,18 +43,18 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Race* uses that race's modules where it has them (generic ones otherwise, then any race). *House the workforce* can be turned off.
   - Each row shows **placed/needed** and counts down as you place modules. Click a row to arm that module.
   - **Place all (N)** attaches every module still to place at once (auto-placement).
-    - Modules go onto free snaps at exact positions, clear of each other, with connection structures of the plan's race added where needed. The largest go first; dock areas and piers go last, where they face open space.
+    - Modules go onto free snaps at exact positions, clear of each other, with connection structures of the plan's race added where needed. The largest go first; dock areas, piers and bays go last, where they have clear space.
     - The station may outgrow the plot (up to 20 km per axis); the builder then offers to enlarge it.
-    - Every Place all also moves the dock areas and piers that have nothing attached to the outside, where a 3 km corridor out from the station is clear. Docks carrying other modules stay. No module is ever placed in a dock's corridor. The status line says how many docks moved, and warns if one has no clear approach.
+    - Every Place all also moves the dock areas, piers and bays that have nothing attached to the outside, where their exclusion zones are clear (the space ships use to dock or leave; see Checks). Dock areas also need a 3 km corridor out from the station. Modules carrying other modules stay. No module is ever placed in a zone or a dock's corridor. The status line says how many docks and bays moved, and warns if one has no clear space.
     - What found no room is listed under the button. Ctrl+Z undoes the whole placement.
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
     - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
   - Sunlight and build method come from the right pane. The settings are remembered.
   - **Optimize station** (the x4ep_planner's *Optimise*, plus a re-layout) works on the open station with the settings above (wares to make are ignored). One undo step.
     - It adds the modules that cover the station's shortfalls, then re-places the station's modules **in layers**:
-      - those that can't carry turrets or shields (habitats, welfare, build modules…) in the middle;
+      - those that can't carry turrets or shields (habitats, welfare…) in the middle;
       - defensible ones (production, storage, defence) wrapped around them;
-      - dock areas and piers outermost, with a clear approach.
+      - dock areas, piers and fabrication/maintenance bays outermost, with their approaches and exits clear (both ends of an L/XL bay).
     - Equipment stays with each module type.
     - **Rebuild connection structures** off (default) keeps the station's connection structures, and the modules carrying them, so the station keeps its shape; on, they are rebuilt from scratch.
     - If anything finds no room, nothing changes and the status line says what didn't fit.
@@ -87,6 +87,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - The plot is not stored in plan files (the game keeps plots per station).
 - **Checks (right):** the validator's findings, live, including modules outside the plot and **overlapping modules**. Click one to select the module.
   - An overlap means two modules' collision meshes intersect. Modules joined at a snap may interlock, and are never counted. See docs/x4-construction-plans.md, "Overlaps".
+  - **Blocked approaches and exits:** "entry N: blocks the approach of pier M" (or the exit of bay M, the approach of dock area M). Piers, bays and most dock areas keep exclusion zones free for ships: boxes in front of each dock or bay end, XL 4×4 km, L 1.2×1.2 km, both 100 km long, M 180×180×500 m. A module reaching more than 1 m into one is reported, unless it is joined to that module at a snap. The game imports such plans without a word, but ships may struggle. See docs/x4-construction-plans.md, "Clearance: exclusion zones".
 - **Toolbar:**
   - *Open game plan…* lists your saved plans and import files.
   - *Open file…* / *Save as…* work with plan files. Both start in the game's plan folder, `<profile>\constructionplan\`. *Save as…* proposes the file name the game would give the plan.
@@ -107,7 +108,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 | `x4sd list-modules [--class C] [--race R] [text]` | Buildable station modules (base, DLCs, enabled mods): macro, class, race, source, name. `text` matches the name or macro. |
 | `x4sd snaps <macro>` | A module's snap connections with position and facing direction (module frame, metres) |
 | `x4sd show <file>` | Plans in a plan file: id, name, module count, unattached modules, DLC patches, **plot needed** |
-| `x4sd validate <file> [--plan P] [--plot +X,-X,+Y,-Y,+Z,-Z]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, overlapping modules, equipment on a group the module lacks or that doesn't fit, missing DLC patches. With `--plot` (km per side) it also flags modules outside that plot. Exit code 1 if any. |
+| `x4sd validate <file> [--plan P] [--plot +X,-X,+Y,-Y,+Z,-Z]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, overlapping modules, modules blocking a pier's approach or a bay's exit, equipment on a group the module lacks or that doesn't fit, missing DLC patches. With `--plot` (km per side) it also flags modules outside that plot. Exit code 1 if any. |
 | `x4sd export <file> --plan P [--new-id] [--overwrite]` | Writes the plan into `<profile>\constructionplan\` for in-game **Import** (build menu, Import button; the folder is rescanned when the menu opens). `--new-id` makes the import add a new plan instead of replacing one with the same id. |
 
 A plan file is either the profile's `constructionplans.xml` (all saved plans) or a single-plan file like the ones the game exports. Exit code 2 means an error (file not found, game not found, ambiguous plan, and so on).
@@ -138,7 +139,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `module_equipment` | A placed module's groups: for each group and kind the slot size and count, what is equipped, and the macros that fit |
 | `set_equipment` | Put a fitting macro on one kind of slot in a group (`count`, default all its slots), or remove it |
 | `equip_modules` | Equip many modules at once (one undo step): `picks` (each group takes, per kind, the first that fits) or `level` (none, low, medium, high); every module with groups by default, or `modules` / `defence_only`. Reports groups filled, cleared and skipped. |
-| `optimize_station` | Optimize the open station: add the modules that fix its shortfalls (plan_production settings), then re-place its modules in layers (no turret/shield slots inside, defensible outside, docks outermost with a clear corridor). `keep_shape` (default true) keeps the connection structures. One undo step; nothing changes if anything finds no place. Returns what was added and moved, the plot and the analysis. |
+| `optimize_station` | Optimize the open station: add the modules that fix its shortfalls (plan_production settings), then re-place its modules in layers (no turret/shield slots inside, defensible outside, docks, piers and bays outermost with their exclusion zones clear). `keep_shape` (default true) keeps the connection structures. One undo step; nothing changes if anything finds no place. Returns what was added and moved, the plot and the analysis. |
 | `copy_equipment` | Copy a module's equipment: `same_type` (default) to every module of its type, or `all` (its macros as picks for every module) |
 | `analyze_station` | Production and use per hour (net per ware), workforce needed vs housed and the bonus, storage per cargo type in hours, dock areas and piers, notes on what is missing; `sunlight` in percent |
 | `build_cost` | Resources and estimated value to build one module (with its equipment) or the whole station, for a build method; lists the methods |
