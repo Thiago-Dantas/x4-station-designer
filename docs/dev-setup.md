@@ -11,6 +11,7 @@ What is installed on the dev machine and how to build. Installs go on H: or D:, 
 | WebView2 runtime | 155 | system | ships with Windows (needed by Tauri) |
 | Node.js | 24.18 | system | already present (for bundling the UI in Phase 3) |
 | Python | 3.11 | system | already present (research scripts only) |
+| gifski | 1.34.0 | `H:\dev\gifski\gifski.exe` (not on PATH) | `win/gifski.exe` from the GitHub release tarball, 2026-10-14 (README GIFs; the `ffmpeg` on PATH is a 2013 build without `palettegen`) |
 
 `RUSTUP_HOME` and `CARGO_HOME` are permanent user environment variables. Terminals opened before the install don't see them or the PATH change.
 
@@ -32,6 +33,7 @@ python -I research\link_smoke.py target\release\x4sd.exe <scratch dir>          
 python -I research\texture_smoke.py target\release\x4sd.exe <scratch dir> [plan]  # textures off vs on: load time, GPU memory, fps
 python -I research\snap_pick_smoke.py target\release\x4sd.exe <scratch dir>     # choosing the connecting snap: labels, C/T keys, preview, own-snap cones when moving, Connected by
 ```
+README GIFs (`docs/media/`): `python -I research\record_gifs.py target\release\x4sd.exe <out dir> [build planner agent analysis]` plays each scene in a fresh builder (page fixed at 1440×810, a drawn cursor) and encodes `<out dir>\<scene>.gif` with gifski (`--gifski PATH`, default `H:\dev\gifski\gifski.exe`). Copy the ones you want into `docs/media/`. The `agent` scene needs no other builder open; `analysis` opens the player's TerranScrapyard plan.
 - **Native dialogs block CDP scripts** (user remark, 2026-10-14). The builder's prompts (enlarge the plot, unsaved changes, replace an export) are Windows dialogs that CDP can't click, so a script that triggers one waits forever. Avoid them: set the largest plot (10 km per side) before Place all or Optimize, start a fresh builder rather than opening a plan over unsaved changes, and end with `app.terminate()` (no close prompt).
 
 ### Builder stack notes

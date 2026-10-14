@@ -24,6 +24,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `research/mcp_smoke.py` | Drives `x4sd mcp` like an agent (build, validate, export a station) |
 | `research/gizmo_checks_smoke.py` | Live checks during a gizmo drag: drags a module out of the plot and back with a real mouse drag, reading the checks before release |
 | `research/blueprint_smoke.py` | Blueprint limit (D-16): MCP tools headless, then the builder's checkbox, Re-read and restart |
+| `research/record_gifs.py`, `docs/media/` | Records the README GIFs (snap-building, planner, agent live edit, plan analysis) by scripting the builder over DevTools; gifski encodes them. Usage in docs/dev-setup.md |
 | `research/xmf.py` | Research parser for `.xmf` meshes (format notes in its docstring and docs/x4-game-data.md) |
 | `crates/x4sd-core/examples/zonecheck.rs` | Research: which modules sit in other modules' exclusion zones in real plans, and `--list` of the modules with zones. Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#clearance-exclusion-zones-research-2026-10-14). |
 | `research/snapcheck.py` | Research script that checks plan offsets against snap geometry (base + DLC virtual file system). Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#snap-math-verified-2026-10-13-with-researchsnapcheckpy). |
