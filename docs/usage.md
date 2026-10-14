@@ -1,6 +1,6 @@
 # Using x4sd
 
-`x4sd.exe` is one self-contained program (about 1 MB; nothing to install). It finds the game through Steam and the player profile under `Documents\Egosoft\X4\<id>` by itself. Override with `--game-dir` / `X4_GAME_DIR` and `--profile-dir`.
+`x4sd.exe` is one self-contained program (about 15 MB, the builder's UI included; nothing to install; it needs the WebView2 runtime, which comes with Windows 11 and current Windows 10). It finds the game through Steam and the player profile under `Documents\Egosoft\X4\<id>` by itself. Override with `--game-dir` / `X4_GAME_DIR` and `--profile-dir`.
 
 ## Visual builder
 Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game data in about half a second and opens the builder.
@@ -47,7 +47,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - the targets;
     - the production chain for their inputs;
     - habitats for the workforce, and the food and medicine they eat;
-    - storage for *Storage hours* of everything the station makes and uses, and at least *Storage at least*;
+    - storage that holds *Storage hours* of the station's production and consumption, and at least *Storage at least*;
     - the other modules;
     - a dock area and a pier if there are none.
   - It also shows the cost and what is left per hour, split into **raw materials to bring in** (mined ones such as ore and ice, and scrap metal; never made) and **to buy**.
@@ -93,7 +93,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - the net per ware: green is a surplus, red a shortfall; hover a row for made and used;
   - workforce housed (per race) against workforce needed, and the workforce bonus;
   - dock areas and piers;
-  - storage per cargo type, with the hours it holds of everything the station makes and uses;
+  - storage per cargo type, with how many hours of the station's production and consumption it holds;
   - notes on what is missing (housing, a storage type, a dock).
   - Workers' food and medicine count as use.
   - Raw materials are marked *(raw)*: ore, ice, silicon, nividium, methane, helium, hydrogen, and scrap metal (salvaged). A shortfall of any other ware is noted as "Not self-sufficient".
@@ -117,7 +117,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
 - **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load.
 - **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt). Right drag pans. Keys follow the game: **W/S** move forward/back where you look (kept level), **A/D** left/right, **Z/X** straight down/up, **Q/E** turn the camera left/right (like the arrow keys).
-- **Middle click** a placed module to place more of that type (like a palette click). On empty space it takes the selected module's type. Middle drag still zooms. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
+- **Middle click** a placed module to place more of that type (like a palette click). On empty space it takes the selected module's type. Middle drag still zooms. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, with textures (below) or tinted by module class.
 - **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.
 - **Textures** (toolbar, on by default): the game's diffuse textures on the models. Without them, models are tinted by module class. The status bar reports how many loaded and their GPU memory, typically about 10 MB in 0.2 s. Turn them off on weak graphics hardware. The choice is remembered.
 
@@ -135,7 +135,7 @@ A plan file is either the profile's `constructionplans.xml` (all saved plans) or
 ## MCP server for AI agents
 `x4sd mcp` speaks MCP over stdio. Register it with an MCP client, for example Claude Code:
 ```
-claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
+claude mcp add x4sd -- "C:\path\to\x4sd.exe" mcp
 ```
 (add `--game-dir …` / `--profile-dir …` before `mcp` if they aren't found automatically). The server explains the workflow to the agent in its instructions, including the recipe for requests like "a staffed station with 100 solar panels": `list_wares`, then `auto_place` with `from_plan` (plans and places in one call), then `validate_design` (and `fit_plot` if the station outgrew its plot), then `analyze_station`.
 - **Self-sufficient** means every made ware is produced on the station. Raw materials are brought in, mined or salvaged, never planned (user's definition, 2026-10-13). Flows carry `raw`, and the analysis has `self_sufficient`.

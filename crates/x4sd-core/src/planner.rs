@@ -21,7 +21,7 @@ pub struct Request {
     pub race: Option<String>,
     /// House the workforce: habitats, and the food and medicine they eat.
     pub workforce: bool,
-    /// Storage for this many hours of everything the station makes and uses.
+    /// Hours of production and consumption the storage should hold.
     pub storage_hours: f64,
     /// At least this much storage per cargo type: (transport, m³), e.g. ("liquid", 200000.0).
     pub storage: Vec<(String, f64)>,

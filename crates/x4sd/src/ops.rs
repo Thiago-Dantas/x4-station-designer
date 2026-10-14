@@ -43,7 +43,7 @@ pub struct PlanArgs {
     pub race: Option<String>,
     /// Add habitats for the workforce and make their food and medicine (default true)
     pub workforce: Option<bool>,
-    /// Storage for this many hours of everything the station makes and uses (default 6)
+    /// Hours of production and consumption the storage should hold (default 6)
     pub storage_hours: Option<f64>,
     /// At least this much storage in m³ per cargo type (container, solid, liquid; gases are liquid), e.g. {"container": 1000000, "liquid": 200000}; on top of storage_hours (each type gets the larger)
     pub storage: Option<BTreeMap<String, f64>>,
