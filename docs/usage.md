@@ -51,14 +51,18 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
     - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
   - Sunlight and build method come from the right pane. The settings are remembered.
-  - **Optimize station** (the x4ep_planner's *Optimise*, plus a re-layout) works on the open station with the settings above (wares to make are ignored). One undo step.
-    - It adds the modules that cover the station's shortfalls, then re-places the station's modules **in layers**:
+  - **Optimize station** (the x4ep_planner's *Optimise*, plus a re-layout) works on the open station with the settings above (wares to make are ignored).
+    - First it only shows a **plan**: the modules that cover the station's shortfalls, by role. Nothing changes yet. Trim it:
+      - *Buy* on a production-chain row buys that ware instead and plans again, so modules that only fed it drop out too (the chip above *Generate* makes it again);
+      - ✕ on a habitat, storage or dock row leaves those modules out.
+    - **Apply plan** adds what is left, then re-places the station's modules **in layers**, as one undo step:
       - those that can't carry turrets or shields (habitats, welfare…) in the middle;
       - defensible ones (production, storage, defence) wrapped around them;
       - dock areas, piers and fabrication/maintenance bays outermost, with their approaches and exits clear (both ends of an L/XL bay).
     - Equipment stays with each module type.
     - **Rebuild connection structures** off (default) keeps the station's connection structures, and the modules carrying them, so the station keeps its shape; on, they are rebuilt from scratch.
     - If anything finds no room, nothing changes and the status line says what didn't fit.
+    - Afterwards the plot is **fitted to the station** (the smallest that holds it), without asking. Like every plot change, undo doesn't restore the old plot.
     - Layers make a larger station than *Place all*, which packs biggest first. TerranScrapyard plus its fixes: 9–11 km per axis.
   - **Fewer connection structures** (off by default, remembered) applies to *Place all* and *Optimize*. A new connection structure is added only when it brings a module 4 km nearer the centre, instead of 2 km. That means about half as many connection structures (less in-game load, see *In-game load*) but a larger station. "100 solar, staffed": 37 instead of 81 (11×12×13 km instead of 9×8×8). TerranScrapyard rebuilt by Optimize: 1 instead of 56 (288 modules instead of 343; 14×16×12 km instead of 10×10×10).
 - **Right pane sections** fold: click a section's title (▸/▾). Equipment, Build cost, Production, In-game load, Plot and Checks start folded on every start; the controls help at the bottom always shows. *Checks* shows the number of problems in its title. *Selected* and *Placing* open when they apply; the Equipment list inside *Selected* starts folded.
@@ -142,7 +146,7 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `module_equipment` | A placed module's groups: for each group and kind the slot size and count, what is equipped, and the macros that fit |
 | `set_equipment` | Put a fitting macro on one kind of slot in a group (`count`, default all its slots), or remove it |
 | `equip_modules` | Equip many modules at once (one undo step): `picks` (each group takes, per kind, the first that fits) or `level` (none, low, medium, high); every module with groups by default, or `modules` / `defence_only`. Reports groups filled, cleared and skipped. |
-| `optimize_station` | Optimize the open station: add the modules that fix its shortfalls (plan_production settings), then re-place its modules in layers (no turret/shield slots inside, defensible outside, docks, piers and bays outermost with their exclusion zones clear). `keep_shape` (default true) keeps the connection structures; `fewer_connectors` as in `auto_place`. One undo step; nothing changes if anything finds no place. Returns what was added and moved, the plot and the analysis. |
+| `optimize_station` | Optimize the open station: add the modules that fix its shortfalls (plan_production settings), then re-place its modules in layers (no turret/shield slots inside, defensible outside, docks, piers and bays outermost with their exclusion zones clear). `keep_shape` (default true) keeps the connection structures; `fewer_connectors` as in `auto_place`; `modules` adds exactly these instead (e.g. a `plan_production` result with no targets, trimmed by the user). The plot is then fitted to the station. One undo step; nothing changes if anything finds no place. Returns what was added and moved, the plot and the analysis. |
 | `copy_equipment` | Copy a module's equipment: `same_type` (default) to every module of its type, or `all` (its macros as picks for every module) |
 | `analyze_station` | Production and use per hour (net per ware), workforce needed vs housed and the bonus, storage per cargo type in hours, dock areas and piers, notes on what is missing; `sunlight` in percent |
 | `station_load` | In-game load (players' rules of thumb, not measured): modules, connection structures among them, turrets, shields, dock areas plus piers, `size_km` per axis |

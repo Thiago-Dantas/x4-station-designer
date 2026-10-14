@@ -39,6 +39,14 @@ User, 2026-10-14: "now i want to add the x4ep_planner optimize functionality. a 
 - [x] Tests (targeted): TerranScrapyard both ways (nothing lost, no overlaps, docks outside, layers, one undo step); a UI click
 - [x] Docs
 
+## Follow-up: plan first, then apply (user request, 2026-10-14)
+User: "When users click to optimize station, always after the optimizer finishes always fit the plot to the station without confirmation. Optimize station instead of just doing it should present a plan (ill add this this and that) that the user can fine tune if they dont want to add a specific intermediary item they can remove, only apply after they click "Apply plan" button".
+Choices (user): removing a chain row = Buy it and re-plan; other rows: ✕; plot fit = exact (D-14).
+- [x] Ops/MCP: `optimize_station` takes `modules` (the trimmed plan) and fits the plot exactly afterwards (no "outgrew its plot" step any more)
+- [x] Builder: Optimize station plans only (Optimize mode of the plan view: Buy / ✕ per row, removed rows kept across re-plans); *Apply plan* runs it without the plot prompt
+- [x] Check (scratch CDP): TerranScrapyard, plan of 219; ✕ habitats → 197; Buy protein paste → re-plan, still Optimize mode; Apply → "added 194", plot fitted 10×7×10 km, no dialog, no problems
+- [x] Docs: usage.md, decisions D-14
+
 ## Notes
 - 2026-10-14: **layers vs. compactness.** In the plain layer order (no slots first, nearest-first), big habitats skip near gaps that smaller defensible modules then fill: defensible ended *nearer* the centre (TerranScrapyard: 1.8 km against 2.3 km for the habitats).
   - **Fix:** defensible modules rank spots by distance from the core's radius (the shell), so they wrap the core. Result: slotless 2.1–2.3 km, defensible 3.7–3.8 km.

@@ -84,6 +84,8 @@ pub struct OptimizeArgs {
     pub keep_shape: Option<bool>,
     /// Add fewer connection structures (less for the game to run, a larger station); default false
     pub fewer_connectors: Option<bool>,
+    /// The modules to add, e.g. a plan_production result (no targets) the user trimmed; default: plan the shortfall fixes with the settings
+    pub modules: Option<Vec<ModuleCount>>,
 }
 
 /// How equip_modules chooses equipment, and for which modules.
@@ -420,15 +422,21 @@ pub fn station_load(catalog: &Catalog, design: &Design) -> Value {
 }
 
 /// Optimize (x4ep_planner's, plus a re-layout): adds the modules that fix the
-/// station's shortfalls, then re-places its modules in layers (without slots in
-/// the middle, defensible ones around them, docks, piers and bays outside), as one undo
-/// step. Nothing changes if anything finds no place.
+/// station's shortfalls (or `modules`), then re-places its modules in layers
+/// (without slots in the middle, defensible ones around them, docks, piers and
+/// bays outside), as one undo step, and fits the plot to the station. Nothing
+/// changes if anything finds no place.
 pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeArgs) -> Result<Value, String> {
     let sunlight = args.plan.sunlight.unwrap_or(100.0);
     let mut req = request(args.plan);
     req.targets.clear();
-    let p = planner::plan_production(catalog, &module_counts(design.plan()), &req).map_err(|e| e.to_string())?;
-    let fixes: Vec<(String, u32)> = p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
+    let fixes: Vec<(String, u32)> = match args.modules {
+        Some(list) => list.into_iter().filter(|m| m.count > 0).map(|m| (m.r#macro, m.count)).collect(),
+        None => {
+            let p = planner::plan_production(catalog, &module_counts(design.plan()), &req).map_err(|e| e.to_string())?;
+            p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
+        }
+    };
     let options = OptimizeOptions {
         keep_shape: args.keep_shape.unwrap_or(true),
         grow_plot: true,
@@ -436,7 +444,8 @@ pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeAr
         fewer_connectors: args.fewer_connectors.unwrap_or(false),
     };
     let r = layout::optimize(catalog, design, &fixes, &options).map_err(|e| e.to_string())?;
-    let mut out = json!({
+    design.fit_plot(catalog, false).map_err(|e| e.to_string())?;
+    Ok(json!({
         "added": r.added.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
         "moved": r.moved,
         "connectors_removed": r.connectors_removed,
@@ -444,11 +453,7 @@ pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeAr
         "docks_blocked": r.placement.docks_blocked,
         "plot": plot_status(design, catalog),
         "analysis": analyze_station(catalog, design, sunlight)?,
-    });
-    if !out["plot"]["fits"].as_bool().unwrap_or(true) {
-        out["next"] = json!("The station outgrew its plot: tell the user, then fit_plot with grow_only=true");
-    }
-    Ok(out)
+    }))
 }
 
 /// Turrets and shields players can build, filtered: [{macro, name, kind, size, race, mk, price}].

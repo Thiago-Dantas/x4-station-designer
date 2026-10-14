@@ -643,8 +643,16 @@ let planner: PlannerState = (() => {
   }
 })();
 let wareNames = new Map<string, string>();
-/** The last plan, and how many of each macro the design had when it was made. */
-let plan: { result: ProductionPlan; baseline: Map<string, number> } | null = null;
+/** The last plan, and how many of each macro the design had when it was made.
+ * `optimize`: an Optimize plan (the shortfall fixes), applied with Apply plan;
+ * `dropped` holds the macros of rows the user removed. */
+let plan: { result: ProductionPlan; baseline: Map<string, number>; optimize?: { dropped: Set<string> } } | null = null;
+
+/** An Optimize plan's modules, without the rows the user removed. */
+function optimizeModules() {
+  const dropped = plan?.optimize?.dropped;
+  return (plan?.result.modules ?? []).filter((m) => !dropped?.has(m.macro.toLowerCase()));
+}
 
 function savePlanner() {
   try {
@@ -702,6 +710,11 @@ function renderPlanner() {
   );
   if (!plan) return;
   const { result } = plan;
+  if (plan.optimize) {
+    renderOptimizePlan();
+    return;
+  }
+  $("planner-apply").hidden = true;
   const now = macroCounts();
   const groups: [PlannedModule["role"], string][] = [["target", "Targets"], ["chain", "Production chain"], ["habitat", "Habitats"], ["storage", "Storage"], ["dock", "Docks"]];
   let left = 0;
@@ -757,18 +770,74 @@ function renderPlanner() {
     (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "");
 }
 
+/** An Optimize plan: the modules it adds (chain rows can be bought instead, the
+ * others removed) and an Apply plan button. */
+function renderOptimizePlan() {
+  const n = (x: number) => Math.round(x).toLocaleString("en-US");
+  const { result, optimize } = plan!;
+  const kept = optimizeModules();
+  const groups: [PlannedModule["role"], string][] = [["chain", "Production chain"], ["habitat", "Habitats"], ["storage", "Storage"], ["dock", "Docks"]];
+  const rows: HTMLElement[] = [];
+  for (const [role, title] of groups) {
+    const members = kept.filter((m) => m.role === role);
+    if (!members.length) continue;
+    const h = document.createElement("h4");
+    h.textContent = title;
+    rows.push(h);
+    for (const m of members) {
+      const row = document.createElement("div");
+      row.className = "planned-row";
+      row.title = m.macro;
+      row.innerHTML = `<span class="name"></span><span class="n"></span><button></button>`;
+      row.querySelector(".name")!.textContent = m.name;
+      row.querySelector(".n")!.textContent = `+${m.count}`;
+      const b = row.querySelector("button")!;
+      if (role === "chain" && m.ware) {
+        b.textContent = "Buy";
+        b.title = `Buy ${wareNames.get(m.ware) ?? m.ware} instead of making it (modules that only fed it drop out too)`;
+        b.onclick = () => {
+          planner.buy.push(m.ware!);
+          savePlanner();
+          void generatePlan(false);
+        };
+      } else {
+        b.textContent = "✕";
+        b.title = "Don't add these";
+        b.onclick = () => {
+          optimize!.dropped.add(m.macro.toLowerCase());
+          renderPlanner();
+        };
+      }
+      rows.push(row);
+    }
+  }
+  $("planner-result").replaceChildren(...rows);
+  $("planner-place").hidden = true;
+  $("planner-apply").hidden = false;
+  const total = kept.reduce((s, m) => s + m.count, 0);
+  $("planner-apply").textContent = total ? `Apply plan (+${total})` : "Apply plan (re-layout only)";
+  const short = result.analysis.flows.filter((f) => f.net < -0.5 && !f.raw).map((f) => `${f.name} ${n(-f.net)}`).join(", ");
+  $("planner-summary").textContent =
+    `Optimize: ${total ? `${total} modules to add · ≈ ${n(result.cost.value)} Cr` : "nothing to add, the station covers its needs"}` +
+    (short ? `\nTo buy per hour: ${short}` : "") +
+    (optimize!.dropped.size ? "\nRemoved rows aren't counted in these figures" : "") +
+    "\nApply plan adds them and re-places the station's modules in layers.";
+}
+
 /** Plans the targets. `fresh` (Generate plan): a new plan for the design as it is
  * now. Otherwise (buying a ware, or making it again) the current plan is redone
  * for the station it was made for, so what is placed keeps counting and its
  * modules are never added twice. */
-async function generatePlan(fresh: boolean) {
+async function generatePlan(fresh: boolean, optimize = false) {
   if (!scene) return;
   const baseline = fresh || !plan ? macroCounts() : plan.baseline;
+  // A re-plan (buying a ware) keeps an Optimize plan's mode and removed rows.
+  const mode = fresh ? (optimize ? { dropped: new Set<string>() } : undefined) : plan?.optimize;
   let result;
   try {
     result = await api.planProduction(
       {
-        targets: planner.targets,
+        targets: mode ? [] : planner.targets,
         race: planner.race || null,
         workforce: planner.workforce,
         storage_hours: planner.hours,
@@ -783,7 +852,7 @@ async function generatePlan(fresh: boolean) {
     return;
   }
   if (fresh || !plan) $("planner-placed").textContent = "";
-  plan = { result, baseline };
+  plan = { result, baseline, optimize: mode };
   renderPlanner();
 }
 
@@ -926,14 +995,20 @@ $<HTMLInputElement>("planner-hours").onchange = (ev) => {
 };
 $("planner-generate").onclick = () => void generatePlan(true);
 
-interface Optimized { added: { macro: string; count: number }[]; moved: number; connectors_removed: number; connectors_added: number; docks_blocked: number }
+interface Optimized { added: { macro: string; count: number }[]; moved: number; connectors_removed: number; connectors_added: number; docks_blocked: number; plot: { plot: { text: string } | null } }
 
-/** Optimize: fix the open station's shortfalls (the planner's settings) and re-lay it out in layers. */
-$("planner-optimize").onclick = async () => {
+/** Optimize: plan the open station's shortfall fixes (the planner's settings) for the user to trim. */
+$("planner-optimize").onclick = () => {
   if (!scene?.entries.length) {
     status("Nothing to optimize: the design is empty", "error");
     return;
   }
+  void generatePlan(true, true);
+};
+
+/** Apply plan: add the Optimize plan's modules, re-lay the station out in layers, fit the plot. */
+$("planner-apply").onclick = async () => {
+  if (!plan?.optimize) return;
   status("Optimizing…");
   let note = "";
   await apply(
@@ -948,6 +1023,7 @@ $("planner-optimize").onclick = async () => {
         method: buildMethod,
         keep_shape: !$<HTMLInputElement>("optimize-rebuild").checked,
         fewer_connectors: planner.fewerConnectors,
+        modules: optimizeModules().map((m) => ({ macro: m.macro, count: m.count })),
       })
       .then((r) => {
         const o = r.result;
@@ -956,11 +1032,11 @@ $("planner-optimize").onclick = async () => {
           `Optimized: re-placed ${o.moved} modules` +
           (added ? `, added ${added} to cover shortfalls` : ", no shortfalls to cover") +
           `; connection structures −${o.connectors_removed} +${o.connectors_added}` +
-          (o.docks_blocked ? `. ${o.docks_blocked} docks or bays have no clear space` : "");
+          (o.docks_blocked ? `. ${o.docks_blocked} docks or bays have no clear space` : "") +
+          (o.plot.plot ? `; plot fitted: ${o.plot.plot.text}` : "");
         return r.scene!;
       }),
     undefined,
-    true,
     true,
   );
   if (!note) return;
@@ -971,6 +1047,7 @@ $("planner-optimize").onclick = async () => {
   $("planner-summary").textContent = "";
   $("planner-placed").textContent = "";
   $("planner-place").hidden = true;
+  $("planner-apply").hidden = true;
 };
 $("planner-place").onclick = () => void placeAll();
 

@@ -42,7 +42,7 @@ one M shield, one L turret, one L shield: each group takes the first that fits) 
 (none/low/medium/high); copy_equipment copies one module's equipment to its type or, as picks, to all. \
 list_equipment finds macros. build_cost includes equipment.
 Optimize: optimize_station fixes an existing station's shortfalls and re-lays it out in layers (non-defensible \
-modules inside, defensible outside, docks, piers and bays outermost); keep_shape keeps its connection structures.
+modules inside, defensible outside, docks, piers and bays outermost); keep_shape keeps its connection structures. To let the user choose what is added: plan_production with no targets, show the modules, then optimize_station with the modules they keep (buying a ware instead: plan again with it in buy). Optimize fits the plot to the station.
 In-game load (frame rate): station_load counts what likely costs the game the most: modules (connection structures make nothing), turrets, docks and size. These are players' rules of thumb, not measured. For a lighter station: fewer_connectors on auto_place and optimize_station (fewer connection structures, a larger station), only the turrets needed, and no more docks than the trade needs.
 Clearance: piers, fabrication/maintenance bays and dock areas have exclusion zones (the space ships use to \
 dock or leave: XL 4x4 km, L 1.2x1.2 km, out to 100 km). validate_design reports modules in a zone (\"blocks the \
@@ -447,7 +447,7 @@ impl Server {
         self.run(Op::EquipModules(a))
     }
 
-    #[tool(description = "Optimize the open station (x4ep_planner's Optimise plus a re-layout), one undo step: adds the modules that fix its shortfalls (plan_production settings; targets ignored), then re-places its modules in layers: those that can't carry turrets or shields in the middle, defensible ones around them, dock areas, piers and bays outermost, with their exclusion zones (and for dock areas a 3 km corridor) clear. keep_shape (default true) keeps the connection structures and the modules carrying them; false rebuilds the connection structures. fewer_connectors (default false): fewer new connection structures, a larger station. Equipment stays with each module type. If anything finds no place, nothing changes (error). Returns what was added and moved, connection structures removed/added, the plot and the analysis.")]
+    #[tool(description = "Optimize the open station (x4ep_planner's Optimise plus a re-layout), one undo step: adds the modules that fix its shortfalls (plan_production settings; targets ignored), then re-places its modules in layers: those that can't carry turrets or shields in the middle, defensible ones around them, dock areas, piers and bays outermost, with their exclusion zones (and for dock areas a 3 km corridor) clear. keep_shape (default true) keeps the connection structures and the modules carrying them; false rebuilds the connection structures. fewer_connectors (default false): fewer new connection structures, a larger station. modules: add exactly these instead of planning the fixes (e.g. plan_production with no targets, trimmed by the user). The plot is then fitted to the station. Equipment stays with each module type. If anything finds no place, nothing changes (error). Returns what was added and moved, connection structures removed/added, the plot and the analysis.")]
     fn optimize_station(&self, Parameters(a): Parameters<ops::OptimizeArgs>) -> ToolResult {
         self.run(Op::OptimizeStation(a))
     }
