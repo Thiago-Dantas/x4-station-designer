@@ -79,7 +79,7 @@ impl fmt::Display for Issue {
             Issue::UnknownSnap { index, macro_name, snap } => write!(f, "entry {index}: {macro_name} has no snap {snap}"),
             Issue::MissingPredecessor { index, predecessor } => write!(f, "entry {index}: predecessor {predecessor} does not exist"),
             Issue::SnapGap { index, metres } => write!(f, "entry {index}: {metres:.3} m away from its linked snap"),
-            Issue::SnapMisaligned { index, degrees } => write!(f, "entry {index}: snap axis off by {degrees:.2}°"),
+            Issue::SnapMisaligned { index, degrees } => write!(f, "entry {index}: tilted {degrees:.1}° off its snap"),
             Issue::MissingPatch { extension } => write!(f, "plan uses {extension} but does not list it in <patches>"),
             Issue::Overlap { index, other } => write!(f, "entry {index}: overlaps entry {other}"),
             Issue::OutsidePlot { index } => write!(f, "entry {index}: outside the plot"),

@@ -73,6 +73,8 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             reattach_module,
             detach_module,
             move_root,
+            rotate_attached,
+            straighten,
             build_cost,
             analyze_station,
             list_wares,
@@ -427,6 +429,20 @@ fn move_root(state: State<'_, Shared>, index: u32, position: [f64; 3], rotation:
     })
 }
 
+/// Turns an attached module (and everything on it) about its joint to `rotation`
+/// (w, x, y, z), staying attached; turns off the snap axis tilt it.
+#[tauri::command]
+fn rotate_attached(state: State<'_, Shared>, index: u32, rotation: [f64; 4]) -> CmdResult {
+    let [w, x, y, z] = rotation;
+    edit(&state, |d, c| d.rotate_attached(c, index, Quat { w, x, y, z }))
+}
+
+/// Takes the tilt off an attached module, keeping its twist.
+#[tauri::command]
+fn straighten(state: State<'_, Shared>, index: u32) -> CmdResult {
+    edit(&state, |d, c| d.straighten(c, index))
+}
+
 fn reorder(state: &State<'_, Shared>, op: impl FnOnce(&mut Design) -> x4sd_core::Result<u32>) -> CmdResult {
     let mut app = state.lock().unwrap();
     let focus = op(&mut app.design).map_err(|e| e.to_string())?;
@@ -498,14 +514,23 @@ fn scene_json(app: &App) -> CmdResult {
         let world = design.world(e.index).map_err(|e| e.to_string())?;
         let info = app.info.get(&e.macro_name.to_ascii_lowercase());
         let attached = e.predecessor.as_ref().map(|p| {
-            let twist = catalog.as_ref().and_then(|c| {
+            // Twist, tilt off the snap axis (degrees) and the joint (where the snaps meet).
+            let joint = catalog.as_ref().and_then(|c| {
                 let pred = plan.entries.iter().find(|x| x.index == p.index)?;
                 let ps = c.module(&pred.macro_name).ok()?.snap(&p.connection)?.transform;
                 let cs = c.module(&e.macro_name).ok()?.snap(e.connection.as_deref()?)?.transform;
-                // 359.99... rounds to 360: show it as 0.
-                Some(fit(&design.world(p.index).ok()?, &ps, &world, &cs).twist.round().rem_euclid(360.0))
+                let at = design.world(p.index).ok()?;
+                Some((fit(&at, &ps, &world, &cs), at.then(&ps).position))
             });
-            json!({"to": p.index, "to_snap": p.connection, "snap": e.connection, "twist": twist})
+            json!({
+                "to": p.index,
+                "to_snap": p.connection,
+                "snap": e.connection,
+                // 359.99... rounds to 360: show it as 0.
+                "twist": joint.map(|(f, _)| f.twist.round().rem_euclid(360.0)),
+                "tilt": joint.map(|(f, _)| (f.misalignment * 10.0).round() / 10.0),
+                "joint": joint.map(|(_, p)| p),
+            })
         });
         let free: Vec<Value> = match &catalog {
             Some(c) => design.free_snaps(c, e.index).map(|v| v.iter().map(|s| snap_json(&s.name, &s.world)).collect()).unwrap_or_default(),

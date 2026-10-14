@@ -149,6 +149,12 @@ So:
   - For the player's plans it gives TerranScrapyard 8×5×9 km, the defense stations 4×4×(3–4), and the megashipyard 19×20×15. The megashipyard sits at the 20 km limit, and it was built in game, so our bounds aren't larger than the game's.
   - `validate_plot` reports modules outside, the plot needed, and stations too big for any plot.
 
+## Tilted joints (builder feature, 2026-10-14; game behaviour is a hypothesis)
+- The builder can tilt an attached module about its joint (`Design::rotate_attached`): its snap point stays on the predecessor's, its snap axis turns off the predecessor's, and `connection`/`predecessor` stay.
+  - A tilt is the swing part of the joint's turn (swing-twist about the snap axis). `set_twist` keeps it; `straighten` removes it.
+- The game's build menu never makes such joints. Offsets are authoritative (test C), so the game should place the module tilted.
+- **Hypothesis:** it builds them like any other module. Not checked in game. `validate` reports each as "tilted N° off its snap" (`SnapMisaligned`, 0.5° tolerance).
+
 ## Equipment: turrets and shields (verified 2026-10-13, game-data test `equipment_groups_and_fit`)
 ```xml
 <upgrades><groups>

@@ -1,6 +1,6 @@
 # Workflow: middle-click pick, W/S forward, rotation steps and free rotation (user requests)
 
-Status: **done** (2026-10-14); tilting attached modules left out (would detach them), see notes
+Status: **done** (2026-10-14); attached modules tilt about their joint (whether the game builds tilted joints is to be checked)
 
 User, 2026-10-14:
 - "when placing modules, i want middle mouse click to copy the currently selected module to be placed, like a pallete selection"
@@ -25,3 +25,21 @@ User, 2026-10-14:
   - ui_smoke's W check now expects forward motion.
 - The rotate gizmo itself (dragging its rings) wasn't driven by the check: synthetic drags on TransformControls aren't reliable. Its result goes through the same `move_root` call.
 - **Hypothesis:** the game builds a free-standing module (or a tilted sub-assembly) where its offset says. Test C's floating module showed "Everything is OK" in the plan status, but the build itself was not watched.
+
+## Follow-up (user, 2026-10-14)
+"when i click on the rotation step R and shift+R stop working, i have to select again the module" / "after tilting how do i attach? would be nice to tilt while still attached, make it more painless to do"
+- [x] The rotation-step dropdown gives up keyboard focus after a change (the shortcuts ignore keys while a dropdown has focus).
+- [x] Tilt attached modules: turn them about their joint (where the snaps meet), staying linked, with everything on them.
+  - The rotate gizmo also works for attached modules, placed at the joint.
+  - R keeps the tilt; *Straighten* removes it.
+  - Core: `Design::rotate_attached`, `straighten`; `set_twist` keeps a tilt.
+  - The check list names tilted modules ("tilted N° off its snap"): the game's build menu only twists around snaps, so whether it builds tilts is to be checked in game.
+- [x] Small fixes seen in the screenshot: the controls text still said "WASD: pan"; two "Equipment" headings (the station one becomes "Station equipment").
+- 2026-10-14, checks:
+  - Core unit test `tilt_keeps_the_joint_and_survives_twists`.
+  - Scratch CDP check of the builder:
+    - after a step change focus is back on the page, and a real R press twists by 30°;
+    - `rotate_attached` 30° keeps the snap on the joint (only "tilted 30.0° off its snap");
+    - R keeps the tilt (twist 30 to 60);
+    - *Straighten* removes it, keeping the twist;
+    - the new help text and "Station equipment" heading show.

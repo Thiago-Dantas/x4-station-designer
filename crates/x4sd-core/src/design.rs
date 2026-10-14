@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use crate::catalog::{Catalog, Module, Snap};
 use crate::equipment::{choose, exact, module_groups, Choice, Fill};
-use crate::geometry::{attach as attach_transform, Transform};
+use crate::geometry::{attach as attach_transform, Axis, Quat, Transform};
 use crate::import::new_plan_id;
 use crate::plan::{Entry, Plan, Predecessor, Upgrade};
 use crate::plot::{required_plot, Plot};
@@ -143,18 +143,51 @@ impl Design {
     }
 
     /// Re-attaches entry `index` to its predecessor with a new twist; everything
-    /// attached to it moves along.
+    /// attached to it moves along. A tilt (see `rotate_attached`) is kept.
     pub fn set_twist(&mut self, catalog: &Catalog, index: u32, twist_degrees: f64) -> Result<()> {
+        let (joint, child_snap) = self.joint(catalog, index)?;
+        let tilt = tilt_of(&joint, &self.world(index)?, &child_snap);
+        let target = at_joint(&joint, tilt, &child_snap, twist_degrees);
+        self.checkpoint();
+        self.move_subtree(index, &target);
+        Ok(())
+    }
+
+    /// Turns attached entry `index`, with everything attached to it, about its
+    /// joint (where its snap meets its predecessor's) to the station-frame
+    /// `rotation`. It stays linked: a turn around the snap axis is a twist, any
+    /// other turn tilts it off the snap axis, which the game's build menu never does.
+    pub fn rotate_attached(&mut self, catalog: &Catalog, index: u32, rotation: Quat) -> Result<()> {
+        let (joint, child_snap) = self.joint(catalog, index)?;
+        let rotation = rotation.normalized();
+        let offset = rotation.rotate(child_snap.position);
+        let target = Transform { position: [0, 1, 2].map(|i| joint.position[i] - offset[i]), rotation };
+        self.checkpoint();
+        self.move_subtree(index, &target);
+        Ok(())
+    }
+
+    /// Takes the tilt off attached entry `index` (its snap axis lines up with its
+    /// predecessor's again), keeping its twist; everything attached to it moves along.
+    pub fn straighten(&mut self, catalog: &Catalog, index: u32) -> Result<()> {
+        let (joint, child_snap) = self.joint(catalog, index)?;
+        let twist = crate::geometry::fit(&joint, &Transform::IDENTITY, &self.world(index)?, &child_snap).twist;
+        let target = at_joint(&joint, Quat::IDENTITY, &child_snap, twist);
+        self.checkpoint();
+        self.move_subtree(index, &target);
+        Ok(())
+    }
+
+    /// Where attached entry `index` joins its predecessor: the predecessor's snap
+    /// frame in the station frame, and the entry's own snap (module frame).
+    fn joint(&self, catalog: &Catalog, index: u32) -> Result<(Transform, Transform)> {
         let e = self.entry(index)?;
         let (Some(conn), Some(pred)) = (&e.connection, &e.predecessor) else {
             return Err(Error(format!("entry {index} is not attached to anything; move it instead")));
         };
         let child_snap = find_snap(&catalog.module(&e.macro_name)?, conn)?;
         let pred_snap = find_snap(&catalog.module(&self.entry(pred.index)?.macro_name)?, &pred.connection)?;
-        let target = attach_transform(&self.world(pred.index)?, &pred_snap.transform, &child_snap.transform, twist_degrees);
-        self.checkpoint();
-        self.move_subtree(index, &target);
-        Ok(())
+        Ok((self.world(pred.index)?.then(&pred_snap.transform), child_snap.transform))
     }
 
     /// Moves an attached or free-standing module, with everything attached to it,
@@ -544,6 +577,29 @@ fn put_upgrade(upgrades: &mut Vec<Upgrade>, group: &str, kind: &str, choice: Opt
     }
 }
 
+/// A module at a joint (its predecessor's snap frame): its snap meets the joint's
+/// point, facing it, tilted by `tilt` (in the joint's frame) and twisted around
+/// its own snap axis. With no tilt this is `geometry::attach`.
+fn at_joint(joint: &Transform, tilt: Quat, child_snap: &Transform, twist_degrees: f64) -> Transform {
+    let snap = joint.rotation * tilt * Quat::axis_angle(Axis::Y, 180.0) * Quat::axis_angle(Axis::Z, twist_degrees);
+    let rotation = snap * child_snap.rotation.conj();
+    let offset = rotation.rotate(child_snap.position);
+    Transform { position: [0, 1, 2].map(|i| joint.position[i] - offset[i]), rotation }
+}
+
+/// The tilt of a module at `world` attached by `child_snap` at `joint`: the part of
+/// its turn (in the joint's frame) that isn't around the snap axis (swing-twist
+/// decomposition about Z). Identity for a straight joint.
+fn tilt_of(joint: &Transform, world: &Transform, child_snap: &Transform) -> Quat {
+    let snap = world.then(child_snap).rotation;
+    let q = joint.rotation.conj() * snap * Quat::axis_angle(Axis::Y, 180.0).conj();
+    let n = (q.w * q.w + q.z * q.z).sqrt();
+    if n < 1e-9 {
+        return q; // flipped right over: all tilt
+    }
+    q * Quat { w: q.w / n, x: 0.0, y: 0.0, z: q.z / n }.conj()
+}
+
 fn new_entry(index: u32, module: &Arc<Module>, link: Option<(String, Predecessor)>, at: Transform) -> Entry {
     let (connection, predecessor) = link.map_or((None, None), |(c, p)| (Some(c), Some(p)));
     Entry {
@@ -635,6 +691,36 @@ mod tests {
         assert!(p[0].abs() < 1e-3 && (p[1].abs() - 600.0).abs() < 1e-3 && (p[2] - 600.0).abs() < 1e-3, "{p:?}");
         assert_attached(&d, &c, cross);
         assert_attached(&d, &c, side);
+    }
+
+    #[test]
+    fn tilt_keeps_the_joint_and_survives_twists() {
+        let c = catalog();
+        let mut d = Design::new("test");
+        let root = d.add_root(&c, "beam", Transform::IDENTITY).unwrap();
+        let cross = d.attach(&c, "cross", "s", root, "s1", 0.0).unwrap();
+        let side = d.attach(&c, "beam", "s2", cross, "e", 0.0).unwrap();
+        let measure = |d: &Design| {
+            let s = c.module("cross").unwrap().snap("s").unwrap().transform;
+            fit(&d.world(root).unwrap(), &c.module("beam").unwrap().snap("s1").unwrap().transform, &d.world(cross).unwrap(), &s)
+        };
+        // Tilt the cross 30° about x: its snap point stays on the beam's, the axis is 30° off
+        // (within f32 rounding of the stored offsets).
+        let tilted = Quat::axis_angle(Axis::X, 30.0) * d.world(cross).unwrap().rotation;
+        d.rotate_attached(&c, cross, tilted).unwrap();
+        let f = measure(&d);
+        assert!(f.gap < 1e-3 && (f.misalignment - 30.0).abs() < 1e-3, "{f:?}");
+        assert_attached(&d, &c, side); // what hangs on it moved along
+        // A twist keeps the tilt; straightening keeps the twist.
+        d.set_twist(&c, cross, 90.0).unwrap();
+        let f = measure(&d);
+        assert!(f.gap < 1e-3 && (f.misalignment - 30.0).abs() < 1e-3 && (f.twist - 90.0).abs() < 1e-3, "{f:?}");
+        d.straighten(&c, cross).unwrap();
+        let f = measure(&d);
+        assert!(f.gap < 1e-3 && f.misalignment < 1e-3 && (f.twist - 90.0).abs() < 1e-3, "{f:?}");
+        assert_attached(&d, &c, cross);
+        assert_attached(&d, &c, side);
+        assert!(d.rotate_attached(&c, root, Quat::IDENTITY).is_err(), "the root isn't attached");
     }
 
     #[test]

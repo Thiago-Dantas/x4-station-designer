@@ -48,7 +48,7 @@ impl Quat {
         [r.x, r.y, r.z]
     }
 
-    fn normalized(self) -> Quat {
+    pub fn normalized(self) -> Quat {
         let n = (self.w * self.w + self.x * self.x + self.y * self.y + self.z * self.z).sqrt();
         Quat { w: self.w / n, x: self.x / n, y: self.y / n, z: self.z / n }
     }

@@ -90,7 +90,8 @@
           </div>
           <label>Rotation step <select class="rot-step" title="Twist and rotation steps, in degrees"><option>90</option><option>45</option><option>30</option><option>15</option><option>5</option></select></label>
           <div class="row" id="gizmo-row" hidden>
-            <button id="btn-gizmo-mode" title="Switch the gizmo between moving and rotating this free-standing module (and everything on it)">Rotate</button>
+            <button id="btn-gizmo-mode" title="Rotate gizmo: turn the module (and everything on it); an attached module turns about its joint and stays attached">Rotate</button>
+            <button id="btn-straighten" title="Take the tilt off: line its snap up with the one it attaches to again, keeping the twist" hidden>Straighten</button>
           </div>
           <div class="row order-actions">
             <button id="btn-move" title="Move it (with everything attached) onto another free snap">Move…</button>
@@ -111,7 +112,7 @@
           </div>
         </section>
         <section id="equipment-panel" class="collapsed">
-          <h3>Equipment</h3>
+          <h3>Station equipment</h3>
           <div id="equip-summary" class="details"></div>
           <label>Loadout level
             <select id="equip-level" title="Our own picks per group: fitting non-missile equipment of the module's race, cheapest (low) to most expensive (high)">
@@ -158,7 +159,7 @@
           <ul id="issues"></ul>
         </section>
         <section class="help">
-          <p>Left drag or arrow keys: rotate · Right drag or WASD: pan · Q/E: down/up · Wheel: zoom<br />Click a module to select · Del removes · R twists</p>
+          <p>Left drag or arrow keys: rotate · Right drag: pan · W/S: forward/back · A/D: left/right · Q/E: down/up · Wheel: zoom<br />Click a module to select · Middle click: place more of that type · Del removes · R twists</p>
         </section>
       </aside>
     </main>

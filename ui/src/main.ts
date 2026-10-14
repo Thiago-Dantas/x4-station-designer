@@ -185,20 +185,27 @@ function redraw() {
     windowTitle = title;
     void getCurrentWindow().setTitle(title).catch(() => undefined);
   }
-  // A selected free-standing module can be moved or rotated with the gizmo.
+  // The selected module's gizmo: a free-standing one moves or rotates; an attached
+  // one rotates about its joint (where its snap meets the other's), staying attached.
   const root = entry(selected);
-  const free = root && !root.attached && !armed && moving === null && buildStep === null;
+  const editable = root && !armed && moving === null && buildStep === null;
+  const joint = root?.attached?.joint;
+  const gizmoAt = !editable ? null : !root.attached ? root.position : gizmoMode === "rotate" ? joint : null;
   view.setGizmo(
-    free ? { position: root.position, rotation: root.rotation } : null,
+    gizmoAt ? { position: gizmoAt, rotation: root!.rotation } : null,
     root
-      ? (p, q) =>
-          void apply(api.moveRoot(root.index, p, q), `${gizmoMode === "rotate" ? "Rotated" : "Moved"} ${root.name ?? root.macro}`, false, true)
+      ? (p, q) => {
+          const name = root.name ?? root.macro;
+          if (root.attached) void apply(api.rotateAttached(root.index, q), `Turned ${name} about its joint`, false, true);
+          else void apply(api.moveRoot(root.index, p, q), `${gizmoMode === "rotate" ? "Rotated" : "Moved"} ${name}`, false, true);
+        }
       : null,
-    gizmoMode,
+    root?.attached ? "rotate" : gizmoMode,
     rotationStep,
   );
-  $("gizmo-row").hidden = !free;
-  $("btn-gizmo-mode").textContent = gizmoMode === "rotate" ? "Move gizmo" : "Rotate gizmo";
+  $("gizmo-row").hidden = !editable;
+  $("btn-gizmo-mode").textContent = gizmoMode !== "rotate" ? "Rotate gizmo" : root?.attached ? "Hide gizmo" : "Move gizmo";
+  $("btn-straighten").hidden = !(root?.attached && (root.attached.tilt ?? 0) > 0.05);
   $("btn-twist-left").textContent = `⟲ ${rotationStep}°`;
   $("btn-twist-right").textContent = `⟳ ${rotationStep}°`;
   $<HTMLInputElement>("design-name").value = scene.name;
@@ -232,7 +239,7 @@ function redraw() {
     const a = sel.attached;
     $("sel-details").textContent =
       `#${sel.index} · ${sel.macro}\n` +
-      (a ? `attached to #${a.to} (${a.to_snap}) by ${a.snap}, twist ${a.twist ?? "?"}°` : "not attached (root)") +
+      (a ? `attached to #${a.to} (${a.to_snap}) by ${a.snap}, twist ${a.twist ?? "?"}°${a.tilt ? `, tilted ${a.tilt}°` : ""}` : "not attached (root)") +
       `\n${sel.free_snaps.length} free snap(s)`;
     $<HTMLButtonElement>("btn-twist-left").disabled = !a;
     $<HTMLButtonElement>("btn-twist-right").disabled = !a;
@@ -1006,6 +1013,7 @@ document.querySelectorAll<HTMLSelectElement>(".rot-step").forEach(
   (s) =>
     (s.onchange = () => {
       rotationStep = Number(s.value);
+      s.blur(); // give the keys back (R / Shift+R ignore a focused dropdown)
       try {
         localStorage.setItem("x4sd.rotationStep", String(rotationStep));
       } catch {
@@ -1016,6 +1024,10 @@ document.querySelectorAll<HTMLSelectElement>(".rot-step").forEach(
     }),
 );
 renderRotationStep();
+$("btn-straighten").onclick = () => {
+  const sel = entry(selected);
+  if (sel?.attached) void apply(api.straighten(sel.index), `Straightened ${sel.name ?? sel.macro}`, false, true);
+};
 $("btn-gizmo-mode").onclick = () => {
   gizmoMode = gizmoMode === "rotate" ? "translate" : "rotate";
   redraw();

@@ -12,7 +12,8 @@ export interface ModuleInfo { macro: string; class: string; race: string | null;
 export interface SnapInfo { name: string; position: Vec3; facing: Vec3 }
 export interface ShapeBox { position: Vec3; rotation: Quat; half: Vec3 }
 export interface Shape { macro: string; class: string; snaps: SnapInfo[]; boxes: ShapeBox[] }
-export interface Attachment { to: number; to_snap: string; snap: string; twist: number | null }
+/** `tilt`: degrees off the snap axis (0 = straight); `joint`: where the snaps meet. */
+export interface Attachment { to: number; to_snap: string; snap: string; twist: number | null; tilt: number | null; joint: Vec3 | null }
 export interface Entry {
   index: number;
   /** Turret and shield groups (one per group and kind): equipped, total. */
@@ -135,6 +136,9 @@ export const api = {
   reattachModule: (index: number, snap: string, to: number, toSnap: string, twist: number) =>
     serial<Scene>("reattach_module", { index, snap, to, toSnap, twist }),
   detachModule: (index: number) => serial<Scene>("detach_module", { index }),
+  /** Turns an attached module (and everything on it) about its joint, staying attached. */
+  rotateAttached: (index: number, rotation: Quat) => serial<Scene>("rotate_attached", { index, rotation }),
+  straighten: (index: number) => serial<Scene>("straighten", { index }),
   /** Moves (and with `rotation`, turns) a free-standing module and everything on it. */
   moveRoot: (index: number, position: Vec3, rotation: Quat | null = null) => serial<Scene>("move_root", { index, position, rotation }),
   buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),

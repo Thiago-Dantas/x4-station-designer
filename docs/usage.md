@@ -10,7 +10,10 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 - **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it around its snap with everything attached to it, by the **rotation step** (90°, 45°, 30°, 15° or 5°; remembered; the game's own plans use fine twists too). *Remove* (Del) removes it with everything attached.
   - The same step sets the twists offered when attaching (*Placing* panel) and the rotate gizmo's snap.
   - A selected **free-standing module** (like the first one) shows a gizmo. *Rotate gizmo* / *Move gizmo* switches it between moving (10 m steps) and rotating around the module's own axes (tilt, yaw, roll) by the rotation step. Everything attached to it turns along and stays on its snaps.
-  - An attached module only turns around its snap: the game connects modules snap to snap. To tilt part of a station, detach its first module and rotate that.
+  - An **attached module** turns with *Rotate gizmo* too, about its **joint** (where its snap meets the other module's), and stays attached; everything on it turns along.
+    - Turning around the snap axis is a twist. Any other turn **tilts** it off the snap axis; the details line shows "tilted N°".
+    - R / Shift+R keep a tilt. *Straighten* takes it off and keeps the twist.
+    - The game's build menu only twists modules around snaps. Whether the game builds tilted joints is not checked yet, so *Checks* lists each one ("tilted N° off its snap").
   - *Build first* moves the module (and the chain it hangs on) to the front of the build order; *Build last* moves it (and everything on it) to the end.
   - *A build stage ends here* closes a build stage after it.
   - **Move…** lifts the module with everything attached to it; click any free snap cone (cones of the moving part are hidden) to re-attach it there. The panel picks which of its snaps connects and the twist; Esc cancels. If the new spot comes later in the build order, the moved part is re-sequenced after it.
