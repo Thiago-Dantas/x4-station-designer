@@ -150,7 +150,7 @@ export class View3D {
   }
 
   private bindPanKeys() {
-    const codes = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
+    const codes = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "KeyZ", "KeyX", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
     const typing = (ev: KeyboardEvent) =>
       ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.target instanceof HTMLTextAreaElement;
     window.addEventListener("keydown", (ev) => {
@@ -163,16 +163,17 @@ export class View3D {
     window.addEventListener("blur", () => this.panKeys.clear());
   }
 
-  /** Keyboard navigation while keys are held: W/S move forward/back along the view
-   * direction kept level, A/D left/right, Q/E straight down/up, speeds scaled to
-   * the zoom; arrow keys orbit around the target (left/right) and tilt (up/down). */
+  /** Keyboard navigation while keys are held, like the game's: W/S move forward/back
+   * along the view direction kept level, A/D left/right, Z/X straight down/up
+   * (speeds scaled to the zoom); Q/E (and the left/right arrows) turn the camera
+   * around the target, the up/down arrows tilt it. */
   private keyNavigate(seconds: number) {
     if (this.panKeys.size === 0) return;
     const dt = Math.min(seconds, 0.1);
     const held = (code: string) => (this.panKeys.has(code) ? 1 : 0);
     const right = held("KeyD") - held("KeyA");
     const ahead = held("KeyW") - held("KeyS");
-    const rise = held("KeyE") - held("KeyQ");
+    const rise = held("KeyX") - held("KeyZ");
     if (right || ahead || rise) {
       const step = this.camera.position.distanceTo(this.controls.target) * 0.8 * dt;
       // Forward = where the camera looks, without the vertical part (looking
@@ -187,7 +188,7 @@ export class View3D {
       this.camera.position.add(offset);
       this.controls.target.add(offset);
     }
-    const spin = held("ArrowRight") - held("ArrowLeft");
+    const spin = held("ArrowRight") + held("KeyE") - held("ArrowLeft") - held("KeyQ");
     const tilt = held("ArrowUp") - held("ArrowDown");
     if (spin || tilt) {
       const offset = this.camera.position.clone().sub(this.controls.target);
@@ -326,6 +327,14 @@ export class View3D {
   /** Whether the pointer is on (or dragging) the gizmo: clicks there aren't picks. */
   gizmoBusy(): boolean {
     return this.gizmo.dragging || this.gizmo.axis !== null;
+  }
+
+  /** Where the cursor points on the ground plane (y = 0), in the game's frame;
+   * null when it points above the horizon. */
+  groundPoint(clientX: number, clientY: number): Vec3 | null {
+    this.setRay(clientX, clientY);
+    const hit = this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), new THREE.Vector3());
+    return hit ? [hit.x, 0, -hit.z] : null; // back to the game's frame (mirror Z)
   }
 
   /** What is under the cursor: free snaps take priority over modules. */

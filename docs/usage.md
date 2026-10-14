@@ -5,12 +5,12 @@
 ## Visual builder
 Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game data in about half a second and opens the builder.
 - **Palette (left):** all buildable modules, **grouped and ordered like the game's build menu** (Production, Build, Storage, Habitation, Welfare, Dock, Defence, Processing, Other, Venture; then by name), with search, a category filter and **race chips** (pick one or several races, e.g. Terran + Boron; *All* shows every race; modules without a race are *Generic*; remembered), coloured by class. Click a module to *arm* it, or drag it into the view.
-- **First module:** with an empty design, click *Place as first module* (or drop it anywhere in the view).
+- **First module:** with an empty design, click in the view (or drop the module there): it goes where you click, on the ground plane (rounded to 10 m). *Place as first module* puts it at the origin. Raise or lower it afterwards with the move gizmo.
 - **Attaching:** free snaps show as cyan cones. Click a cone (or drop a dragged module on it) to attach the armed module. *Connect by snap* chooses which snap of the new module connects; *Twist* rotates it around the snap axis.
 - **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it around its snap with everything attached to it, by the **rotation step** (90°, 45°, 30°, 15° or 5°; remembered; the game's own plans use fine twists too). *Remove* (Del) removes it with everything attached.
   - The same step sets the twists offered when attaching (*Placing* panel) and the rotate gizmo's snap.
   - A selected **free-standing module** (like the first one) shows a gizmo. *Rotate gizmo* / *Move gizmo* switches it between moving (10 m steps) and rotating around the module's own axes (tilt, yaw, roll) by the rotation step. Everything attached to it turns along and stays on its snaps.
-  - An **attached module** turns with *Rotate gizmo* too, about its **joint** (where its snap meets the other module's), and stays attached; everything on it turns along.
+  - An **attached module** turns with *Rotate gizmo* too. The gizmo sits on the module, as in the game; the module turns so that it stays on its **joint** (where its snap meets the other module's), with everything on it.
     - Turning around the snap axis is a twist. Any other turn **tilts** it off the snap axis; the details line shows "tilted N°".
     - R / Shift+R keep a tilt. *Straighten* takes it off and keeps the twist.
     - The game's build menu only twists modules around snaps. Whether the game builds tilted joints is not checked yet, so *Checks* lists each one ("tilted N° off its snap").
@@ -71,7 +71,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Sunlight %* is the sector's sunlight, which solar output (energy cells) follows. It is remembered.
   - The rules and which parts are still hypotheses are in [tasks/workflow-production-planner.md](../tasks/workflow-production-planner.md).
 - **Plot (right):** the plot the station must fit, in whole km per side from the station origin (+X, −X, +Y, −Y, +Z, −Z; each axis 1–20 km, as in the game), drawn as a box (green when everything fits, red when not).
-  - New designs start at 2×2×2 km; opened plans start on the smallest plot that holds them.
+  - New designs start at 2 km on every side (4×4×4 km), the game's default; opened plans start on the smallest plot that holds them.
   - *Fit plot to station* sets that minimum.
   - When an edit pushes the station outside the plot, the builder offers to enlarge it, or, if no plot could hold it (over 20 km on an axis), to undo.
   - The plot is not stored in plan files (the game keeps plots per station).
@@ -84,7 +84,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
   - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
 - **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load.
-- **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt). Right drag pans. **W/S** move forward/back where you look (kept level), **A/D** left/right, **Q/E** straight down/up.
+- **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt). Right drag pans. Keys follow the game: **W/S** move forward/back where you look (kept level), **A/D** left/right, **Z/X** straight down/up, **Q/E** turn the camera left/right (like the arrow keys).
 - **Middle click** a placed module to place more of that type (like a palette click). On empty space it takes the selected module's type. Middle drag still zooms. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
 - **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.
 - **Textures** (toolbar, on by default): the game's diffuse textures on the models. Without them, models are tinted by module class. The status bar reports how many loaded and their GPU memory, typically about 10 MB in 0.2 s. Turn them off on weak graphics hardware. The choice is remembered.

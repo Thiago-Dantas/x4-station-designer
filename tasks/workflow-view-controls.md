@@ -43,3 +43,17 @@ User, 2026-10-14:
     - R keeps the tilt (twist 30 to 60);
     - *Straighten* removes it, keeping the twist;
     - the new help text and "Station equipment" heading show.
+
+## Follow-up 2 (user, 2026-10-14)
+"we should allow free placement of the first module of a station, currently it always centers on the plot" / "also start plots with a 2x2x2x2x2x2 size which is the game default" / "the rotation gizmo currently centers on the connection point, make it center the module like in game"
+- [x] First module where you click (ground plane y = 0, rounded to 10 m; a drop too); *Place as first module* keeps the origin.
+- [x] New designs: 2 km on every side (4×4×4 km), the game's default.
+- [x] The rotate gizmo of an attached module at the module's origin; turning still keeps its joint (`rotate_attached`).
+- [x] User, same day: "lets change QE to follow the game default comands / QE is camera rotation / ZX is Z-axis": Q/E turn the camera (like the left/right arrows), Z/X move down/up (Z down, X up; tell the user, easy to swap). Ctrl+Z stays undo.
+- 2026-10-14, checks (scratch CDP):
+  - a new design shows "Plot 4×4×4 km";
+  - clicking left of the view centre with a solar module armed placed it at (-500, 0, -2010) (ground plane, 10 m steps);
+  - the rotate gizmo of an attached solar module shows on the module (screenshot);
+  - on an asymmetric scene (average snap-cone position), X raises the view (y 539 to 776), Z lowers it back, and E/Q turn the camera and back;
+  - game-data test `plots` passes with the 2 km default;
+  - ui_smoke's vertical-key check now uses X.

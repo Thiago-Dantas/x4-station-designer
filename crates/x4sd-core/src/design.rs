@@ -38,7 +38,7 @@ pub struct FreeSnap {
 }
 
 impl Design {
-    /// An empty design on a 2×2×2 km plot.
+    /// An empty design on a plot reaching 2 km on every side (4×4×4 km), the game's default.
     pub fn new(name: &str) -> Design {
         let mut design = Design::from_plan(Plan {
             id: new_plan_id(),
@@ -50,7 +50,7 @@ impl Design {
             patches: Vec::new(),
             entries: Vec::new(),
         });
-        design.plot = Some(Plot::around(1));
+        design.plot = Some(Plot::around(2));
         design
     }
 

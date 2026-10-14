@@ -213,15 +213,15 @@ try:
     centre = ((vp[0] + vp[2]) / 2, (vp[1] + vp[3]) / 2)
     spread = lambda p: ((p[0] - centre[0]) ** 2 + (p[1] - centre[1]) ** 2) ** 0.5
     assert spread(after_w) > spread(after_d) + 10, "W should move forward"
-    # Q/E move straight down/up (E: the scene shifts down on screen); arrows orbit the camera.
-    cdp.hold_key("KeyE", "e", 0.4)
+    # Z/X move straight down/up (X: the scene shifts down on screen); Q/E and the arrows orbit the camera.
+    cdp.hold_key("KeyX", "x", 0.4)
     time.sleep(0.3)
     after_e = find_color(cdp.screenshot(None), (0x37, 0xD0, 0xC0), vp)
     cdp.hold_key("ArrowRight", "ArrowRight", 0.5)
     time.sleep(0.3)
     after_arrow = find_color(cdp.screenshot(os.path.join(out, "ui-6-rotated.png")), (0x37, 0xD0, 0xC0), vp)
     print("6. after E", after_e, "-> after ArrowRight", after_arrow)
-    assert after_e[1] > after_w[1] + 20, "E should shift the scene down"
+    assert after_e[1] > after_w[1] + 20, "X should shift the scene down"
     assert after_arrow != after_e, "an arrow key should rotate the view"
 
     # Planner tab: Hull Parts x1 (any race), generate, place from a row, buy a chain ware.

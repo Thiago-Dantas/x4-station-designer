@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
-import { api, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape } from "./api";
+import { api, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type Vec3 } from "./api";
 import { CLASS_COLORS, type DiffuseTexture, modelGeometry, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -189,8 +189,8 @@ function redraw() {
   // one rotates about its joint (where its snap meets the other's), staying attached.
   const root = entry(selected);
   const editable = root && !armed && moving === null && buildStep === null;
-  const joint = root?.attached?.joint;
-  const gizmoAt = !editable ? null : !root.attached ? root.position : gizmoMode === "rotate" ? joint : null;
+  // On the module itself, as in the game (an attached one still turns about its joint).
+  const gizmoAt = !editable ? null : !root.attached || gizmoMode === "rotate" ? root.position : null;
   view.setGizmo(
     gizmoAt ? { position: gizmoAt, rotation: root!.rotation } : null,
     root
@@ -963,7 +963,7 @@ async function arm(m: ModuleInfo | null) {
     $<HTMLSelectElement>("armed-snap").replaceChildren(
       ...shape.snaps.map((s) => new Option(s.name, s.name)),
     );
-    status(scene?.entries.length ? "Click or drop onto a free snap (cone) to attach." : "Place it as the first module.");
+    status(scene?.entries.length ? "Click or drop onto a free snap (cone) to attach." : "Click in the view to place it there, or Place as first module (at the origin).");
   }
   renderPalette();
   redraw();
@@ -1201,6 +1201,12 @@ $("btn-fit-plot").onclick = () => apply(api.fitPlot(false), "Plot fitted to the 
 $("btn-place-root").onclick = () => armed && apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
 $<HTMLInputElement>("design-name").onchange = (ev) => apply(api.renameDesign((ev.target as HTMLInputElement).value));
 
+/** Where a first module goes: the ground-plane point under the cursor, in 10 m steps (else the origin). */
+function firstAt(ev: MouseEvent): Vec3 {
+  const p = view.groundPoint(ev.clientX, ev.clientY);
+  return p ? (p.map((v) => Math.round(v / 10) * 10 + 0) as Vec3) : [0, 0, 0];
+}
+
 // Click (not drag) in the view: attach to a snap, or select a module. A middle
 // click picks a module type to place, like the palette: the one under the cursor,
 // else the selected one (middle drag still zooms).
@@ -1223,7 +1229,7 @@ viewport.addEventListener("pointerup", async (ev) => {
   if (pick?.kind === "snap" && moving !== null) await moveOnto(pick.index, pick.snap);
   else if (pick?.kind === "snap" && armed) await attachArmed(pick.index, pick.snap);
   else if (pick?.kind === "module") select(pick.index);
-  else if (armed && scene?.entries.length === 0) await apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
+  else if (armed && scene?.entries.length === 0) await apply(api.addModule(armed.macro, firstAt(ev)), `Placed ${armed.name}`, true, true);
   else select(null);
 });
 viewport.addEventListener("pointermove", (ev) => {
@@ -1243,7 +1249,7 @@ viewport.addEventListener("drop", async (ev) => {
   const macro = ev.dataTransfer?.getData("text/x4sd-macro");
   if (!macro) return;
   const snap = view.hoverSnap(ev.clientX, ev.clientY);
-  if (scene?.entries.length === 0) await apply(api.addModule(macro, [0, 0, 0]), `Placed ${moduleName(macro)}`, true, true);
+  if (scene?.entries.length === 0) await apply(api.addModule(macro, firstAt(ev)), `Placed ${moduleName(macro)}`, true, true);
   else if (snap) await attachArmed(snap.index, snap.snap, macro);
   else status("Drop the module onto a free snap (cone).", "error");
 });

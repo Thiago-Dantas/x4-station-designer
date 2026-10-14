@@ -451,7 +451,7 @@ fn auto_place_planned_stations() {
     assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
     assert!(r.connectors.iter().all(|(_, m)| m.starts_with("struct_ter_")), "{:?}", r.connectors);
 
-    // Without growing, a 2x2x2 km plot holds only some of the solar station.
+    // Without growing, the default plot (2 km per side) holds only some of the solar station.
     let mut d = Design::new("small plot");
     let modules = planned(&d, &req(&[("energycells", 100)], None));
     let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: false, race: None });
@@ -638,7 +638,7 @@ fn plots() {
 
     // A design grows its plot only when asked.
     let mut d = Design::new("plot test");
-    assert_eq!(d.plot(), Some(Plot::around(1)));
+    assert_eq!(d.plot(), Some(Plot::around(2)));
     let hub = d.add_root(c, "struct_ter_cross_01_macro", Transform::IDENTITY).unwrap();
     let beam = c.module("struct_ter_base_02_macro").unwrap();
     let mut end = (hub, d.free_snaps(c, hub).unwrap()[0].name.clone());
@@ -647,7 +647,7 @@ fn plots() {
         end = (next, d.free_snaps(c, next).unwrap()[0].name.clone());
     }
     let plot = d.plot().unwrap();
-    assert!(!validate_plot(d.plan(), c, &plot).is_empty(), "a 3 km arm does not fit 2x2x2");
+    assert!(!validate_plot(d.plan(), c, &plot).is_empty(), "a 3.6 km arm does not fit 2 km per side");
     let grown = d.fit_plot(c, true).unwrap();
     assert!(grown.contains(&plot) && validate_plot(d.plan(), c, &grown).is_empty(), "{grown}");
     eprintln!("grown to {grown}");

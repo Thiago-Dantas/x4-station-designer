@@ -44,7 +44,7 @@ list_equipment finds macros. build_cost includes equipment.
 Overlaps: validate_design reports modules whose collision shapes intersect (modules joined at a snap may \
 interlock); auto_place never creates any.
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
-New designs start on a 2x2x2 km plot, opened ones on the smallest that fits. validate_design reports modules \
+New designs start on a 4x4x4 km plot (2 km per side, the game's default), opened ones on the smallest that fits. validate_design reports modules \
 outside the plot and the size needed; set_plot / fit_plot change it (tell the user when the plot must grow).
 Build order: modules are built in index order, each after the module it attaches to. move_in_build_order, \
 build_first and build_last reorder (and renumber, so describe again); set_stage_end splits the build into stages.
