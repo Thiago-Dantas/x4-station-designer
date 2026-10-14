@@ -39,12 +39,18 @@ Status: **in progress** (2026-10-14): A (research) under way.
 - B done (2026-10-14): `Module::clearance`, `Catalog::exclusion_size`, `layout::zones`, `layout::blocked_zones`, `Issue::BlocksZone`. Game-data test `clearance_zones`: zone directions of the 3-Dock E Pier and the XL bay; the player's game-built plans block nothing; `megashipyard terran2` has 652 blocker/zone pairs ("entry 20: blocks the exit of bay 163").
 
 ### C. Placement and Optimize
-- [ ] `auto_place` / `optimize`:
+- [x] `auto_place` / `optimize`:
   - orient piers and bays so their clearance volume points out of the station;
   - protect those volumes like the dock corridors are protected now;
   - rework lifted piers and bays on each run, as docks are now.
-- [ ] Layers: treat fabrication bays (and other modules that need clearance) as an outer layer next to the docks, not as slotless core modules.
-- [ ] Find out why *Rebuild connection structures* makes the bays worse (connector choices around big modules?) and fix it, or document the reason.
+- [x] Layers: treat fabrication bays (and other modules that need clearance) as an outer layer next to the docks, not as slotless core modules.
+- [x] Find out why *Rebuild connection structures* makes the bays worse (connector choices around big modules?) and fix it, or document the reason.
+
+- C done (2026-10-14):
+  - `layout::outer`: dock areas, piers and every module with zones (bays, scrap processors, radar) form the outer layer (layer 2; last in biggest-first order), are lifted and re-placed on every run like docks, and need clear zones. Placed zones are protected: no later module may enter, unless joined to the zone's module.
+  - Dock areas and piers whose zones are all shorter than the 3 km corridor (M dock areas: 500 m up) also keep the radial corridor. Without it the "100 solar" dock area sat 840 m from the centre among the panels. Piers (100 km zones) don't need it; requiring it too left 6 of the megashipyard's outer modules without a spot.
+  - **Why rebuild was worse:** bays have no turret/shield slots, so they were in the slotless core layer. A rebuild lifts everything and places biggest-first within a layer; the XL bay is the biggest slotless module, so it went first, straight onto the hub (the user's screenshot: entry #3 on #1, 0 free snaps). With keep-shape, a bay carrying connection structures can't be lifted and stays where it is.
+  - Texts: MCP instructions and tool descriptions, the builder's status line ("docks or bays have no clear space"). JSON field names `docks_moved`/`docks_blocked` kept; they now count bays too.
 
 ### D. Checks (targeted, per the standing "test only new things" rule)
 - [ ] Game-data test: Optimize `megashipyard terran` (both modes) leaves every pier approach and bay exit clear, with no overlaps and nothing lost.

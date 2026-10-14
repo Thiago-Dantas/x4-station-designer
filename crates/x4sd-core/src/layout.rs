@@ -354,9 +354,10 @@ pub struct Placement {
     pub connectors: Vec<(u32, String)>,
     /// Modules that found no place: (macro, count).
     pub unplaced: Vec<(String, u32)>,
-    /// Dock areas and piers already on the station that were placed again, outside.
+    /// Dock areas, piers and bays (modules that need clear space, `outer`) already on
+    /// the station that were placed again, outside.
     pub docks_moved: u32,
-    /// Dock areas and piers (new or moved) left without a clear corridor: no such spot.
+    /// Of those (new or moved), how many were left without clear space: no such spot.
     pub docks_blocked: u32,
 }
 
@@ -368,8 +369,8 @@ pub struct Options {
     pub race: Option<String>,
     /// Place in layers, inside out (see `layer`): modules without turret/shield
     /// slots first, then defensible ones wrapping them (rather than filling gaps
-    /// inside), then dock areas and piers. Makes a larger station; `optimize` uses
-    /// it. Otherwise: biggest first, docks and piers last (compact).
+    /// inside), then dock areas, piers and bays. Makes a larger station; `optimize`
+    /// uses it. Otherwise: biggest first, docks, piers and bays last (compact).
     pub layered: bool,
 }
 
@@ -378,15 +379,17 @@ pub struct Options {
 ///
 /// Greedy: an empty design starts with a connection hub (the race's connection
 /// structure with the most snaps) at the origin. Modules go biggest first, dock
-/// areas and piers last (or in layers, see `Options::layered`). Each goes onto the
+/// areas, piers and bays last (or in layers, see `Options::layered`). Each goes onto the
 /// free snap nearest the station's centre where it fits, with whichever of its own snaps and twists keeps it most compact; or,
 /// when that is `HUB_PENALTY_M` nearer, onto a new hub (or a straight connection
 /// structure and a hub) on a free snap.
 ///
-/// Docks stay reachable: every run first lifts off the dock areas and piers that
-/// have nothing attached and places them again last, where their corridor (see
-/// `corridor`) is clear; no module may enter a placed dock's corridor. A lifted
-/// dock keeps its equipment, and goes back where it was if it fits nowhere.
+/// Docks and bays stay reachable: every run first lifts off the modules that need
+/// clear space (`outer`) and have nothing attached, and places them again last,
+/// where their exclusion zones (`zones`) and, for dock areas and piers, their
+/// corridor (`corridor`) are clear; no module may enter a placed module's zones or
+/// corridor. A lifted module
+/// keeps its equipment, and goes back where it was if it fits nowhere.
 pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u32)], options: &Options) -> Result<Placement> {
     let history = design.history_len();
     let mut order: Vec<ToPlace> = Vec::new();
@@ -411,7 +414,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
         order.push((m, s, Some((at, upgrades))));
         design.remove(catalog, index)?;
     }
-    let rank = |m: &Module| if options.layered { layer(m) } else { u8::from(docking(m)) * 2 };
+    let rank = |m: &Module| if options.layered { layer(m) } else { u8::from(outer(m)) * 2 };
     order.sort_by(|(a, sa, _), (b, sb, _)| rank(a).cmp(&rank(b)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
 
     let all = candidates(catalog)?;
@@ -462,13 +465,13 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
 /// A module to place: (module, size, for a lifted dock: where it was and its equipment).
 type ToPlace = (Arc<Module>, f64, Option<(Transform, Vec<Upgrade>)>);
 
-/// A dock area or pier with nothing attached to it, which a placement run lifts
-/// off to place again outside.
+/// A dock area, pier or bay (`outer`) with nothing attached to it, which a
+/// placement run lifts off to place again outside.
 fn lift_candidate(catalog: &Catalog, design: &Design) -> Option<u32> {
     let entries = &design.plan().entries;
     entries
         .iter()
-        .filter(|e| catalog.module(&e.macro_name).is_ok_and(|m| docking(&m)))
+        .filter(|e| catalog.module(&e.macro_name).is_ok_and(|m| outer(&m)))
         .find(|e| !entries.iter().any(|x| x.predecessor.as_ref().is_some_and(|p| p.index == e.index)))
         .map(|e| e.index)
 }
@@ -494,11 +497,17 @@ fn docking(m: &Module) -> bool {
     m.class == "dockarea" || m.class == "pier"
 }
 
+/// Modules that need clear space around them: dock areas, piers, and modules with
+/// exclusion zones (fabrication and maintenance bays, scrap processors, radar).
+fn outer(m: &Module) -> bool {
+    docking(m) || !m.clearance.is_empty()
+}
+
 /// Placement layer, inside out: 0 modules that can't carry turrets or shields
-/// (habitats, welfare, build modules…), 1 defensible ones (production, storage,
-/// defence), 2 dock areas and piers.
+/// (habitats, welfare…), 1 defensible ones (production, storage, defence), 2 those
+/// that need clear space (`outer`: docks, piers, bays).
 fn layer(m: &Module) -> u8 {
-    if docking(m) {
+    if outer(m) {
         2
     } else if m.equipment_slots.is_empty() {
         0
@@ -690,11 +699,15 @@ struct Placer<'a> {
     /// (entry, snap, macro, through a new hub, outward) that didn't fit. Placing
     /// only adds obstacles, so what failed once fails again.
     failed: HashSet<(u32, String, String, bool, bool)>,
-    /// Dock areas and piers now need a clear corridor (see `corridor`).
+    /// Modules that need clear space (`outer`) now need it: clear zones, and for
+    /// dock areas and piers a clear corridor too (see `corridor`).
     outward: bool,
     /// Corridors of docks on the station that have one: no module may enter them.
     corridors: Vec<Vec<Bounds>>,
-    /// Docks placed (or put back) without a clear corridor.
+    /// Exclusion zones on the station that are clear, with the body they belong to:
+    /// no module may enter them, unless it is joined to that body.
+    zones: Vec<(usize, WorldBox)>,
+    /// Outer modules placed (or put back) without clear space.
     blocked: u32,
     /// What "nearest" means: the centre of the station as it was (the origin for
     /// an empty design), so an off-centre station grows around itself.
@@ -719,6 +732,7 @@ impl<'a> Placer<'a> {
             failed: HashSet::new(),
             outward: false,
             corridors: Vec::new(),
+            zones: Vec::new(),
             blocked: 0,
             heart: [0.0; 3],
             layers: Vec::new(),
@@ -730,9 +744,9 @@ impl<'a> Placer<'a> {
             }
         }
         placer.heart = placer.centre();
-        // Docks that stay (something is attached to them) keep their corridor clear.
+        // Docks and bays that stay (something is attached to them) keep their space clear.
         for e in &design.plan().entries {
-            if catalog.module(&e.macro_name).is_ok_and(|m| docking(&m)) {
+            if catalog.module(&e.macro_name).is_ok_and(|m| outer(&m)) {
                 placer.protect(design, e.index)?;
             }
         }
@@ -755,16 +769,36 @@ impl<'a> Placer<'a> {
             .fold(0.0, f64::max)
     }
 
+    /// Whether a module needs a clear corridor (`corridor`), so it stays outermost
+    /// (workflow-docks-fps): dock areas and piers, unless an exclusion zone already
+    /// keeps open space that far out (a pier's 100 km; a dock area's runs 500 m).
+    fn needs_corridor(&self, module: &Module) -> bool {
+        docking(module) && !module.clearance.iter().any(|z| self.catalog.exclusion_size(&z.tag).is_some_and(|s| s[2] >= DOCK_CLEARANCE_M))
+    }
+
     /// The centre of the station's bounds.
     fn centre(&self) -> [f64; 3] {
         self.bounds.map_or([0.0; 3], |(lo, hi)| [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0))
     }
 
-    /// Keeps the corridor of dock `index` clear from now on, if it is clear now.
+    /// Keeps the exclusion zones of entry `index` and its corridor (if it needs one,
+    /// `needs_corridor`) clear from now on: those that are clear now.
     fn protect(&mut self, design: &Design, index: u32) -> Result<()> {
         let e = design.plan().entries.iter().find(|e| e.index == index).ok_or_else(|| Error(format!("no entry {index}")))?;
         let module = self.catalog.module(&e.macro_name)?;
-        let Some(bounds) = module_bounds(&module, &design.world(index)?) else { return Ok(()) };
+        let world = design.world(index)?;
+        if let Some(own) = self.owners.iter().position(|&o| o == index) {
+            for zone in zones(self.catalog, &module, &world) {
+                let clear = self.bodies.iter().enumerate().all(|(i, b)| i == own || b.joined(&self.bodies[own]) || !b.blocks(&zone));
+                if clear {
+                    self.zones.push((own, zone));
+                }
+            }
+        }
+        if !self.needs_corridor(&module) {
+            return Ok(());
+        }
+        let Some(bounds) = module_bounds(&module, &world) else { return Ok(()) };
         let Some(lane) = corridor(&bounds, self.centre()) else { return Ok(()) };
         let clear = self.bodies.iter().zip(&self.owners).all(|(b, &owner)| owner == index || !b.enters(&lane));
         if clear {
@@ -809,17 +843,28 @@ impl<'a> Placer<'a> {
         }
         let body = Body::new(boxes, &module.snaps, at);
         let clear = self.bodies.iter().chain(extra.iter().map(|f| &f.body)).all(|b| overlap(b, &body).is_none());
-        // Nothing enters a dock's corridor; a dock (while `outward`) needs a clear one.
-        let lanes_free = !self.corridors.iter().any(|lane| body.enters(lane));
-        let open = !self.outward || !docking(module) || self.exposed(&bounds, extra);
+        // Nothing enters a dock's corridor or a zone (unless joined to its module);
+        // an outer module (while `outward`) needs clear space itself.
+        let lanes_free = !self.corridors.iter().any(|lane| body.enters(lane))
+            && !self.zones.iter().any(|(owner, zone)| body.blocks(zone) && !body.joined(&self.bodies[*owner]));
+        let open = !self.outward || !outer(module) || self.exposed(module, at, &body, &bounds, extra);
         (clear && lanes_free && open).then_some(Fit { body, bounds })
     }
 
-    /// Whether the corridor of a dock at `bounds` is clear of everything placed
-    /// (and of `extra`).
-    fn exposed(&self, bounds: &Bounds, extra: &[&Fit]) -> bool {
+    /// Whether a module at `at` (body `body`, part-box bounds `bounds`) has clear
+    /// space: its exclusion zones clear of everything placed (and of `extra`) that
+    /// isn't joined to it, and its corridor if it needs one (`needs_corridor`).
+    fn exposed(&self, module: &Module, at: &Transform, body: &Body, bounds: &Bounds, extra: &[&Fit]) -> bool {
+        let others = || self.bodies.iter().chain(extra.iter().map(|f| &f.body));
+        let zones = zones(self.catalog, module, at);
+        if others().any(|b| !b.joined(body) && zones.iter().any(|z| b.blocks(z))) {
+            return false;
+        }
+        if !self.needs_corridor(module) {
+            return true;
+        }
         let Some(lane) = corridor(bounds, self.centre()) else { return false };
-        !self.bodies.iter().chain(extra.iter().map(|f| &f.body)).any(|b| b.enters(&lane))
+        !others().any(|b| b.enters(&lane))
     }
 
     /// The most compact way (module centre nearest the origin) to attach the
@@ -839,16 +884,16 @@ impl<'a> Placer<'a> {
     }
 
     /// Places one module; returns its index and the connection structures added for it.
-    /// Dock areas and piers go where they face open space if they can.
+    /// Docks, piers and bays (`outer`) go where they have clear space if they can.
     fn place(&mut self, design: &mut Design, conn: &Connectors, module: &Module) -> Result<Option<Placed>> {
-        for &outward in if docking(module) { &[true, false][..] } else { &[false] } {
+        for &outward in if outer(module) { &[true, false][..] } else { &[false] } {
             self.outward = outward;
             let placed = self.place_with(design, conn, module)?;
             self.outward = false;
             if let Some((index, _)) = &placed {
                 if outward {
                     self.protect(design, *index)?;
-                } else if docking(module) {
+                } else if outer(module) {
                     self.blocked += 1;
                 }
                 return Ok(placed);

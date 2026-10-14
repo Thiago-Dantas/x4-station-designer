@@ -917,3 +917,49 @@ fn clearance_zones() {
     eprintln!("megashipyard terran2: {} blocked, e.g. {:?}", issues.len(), &issues[..3.min(issues.len())]);
     assert!(issues.len() > 20 && issues.iter().any(|i| i.contains("approach of pier")) && issues.iter().any(|i| i.contains("exit of bay")));
 }
+
+/// Optimize keeps every pier approach and bay exit clear (D-12): the user's
+/// game-built megashipyard terran, with its shortfall fixes, both modes.
+#[test]
+fn optimize_keeps_zones_clear() {
+    use std::collections::BTreeMap;
+    use x4sd_core::layout::{blocked_zones, optimize, overlaps, OptimizeOptions};
+    use x4sd_core::planner::{module_counts, plan_production, Request};
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
+    let yard = plans.iter().find(|p| p.name == "megashipyard terran").unwrap();
+    let req = Request { targets: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
+    let fixes: Vec<(String, u32)> = plan_production(c, &module_counts(yard), &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
+    let counts = |p: &x4sd_core::plan::Plan| {
+        let mut n: BTreeMap<String, u32> = BTreeMap::new();
+        for e in p.entries.iter().filter(|e| c.module(&e.macro_name).unwrap().class != "connectionmodule") {
+            *n.entry(e.macro_name.clone()).or_default() += 1;
+        }
+        n
+    };
+    let mut expected = counts(yard);
+    for (m, n) in &fixes {
+        *expected.entry(m.clone()).or_default() += n;
+    }
+    for keep_shape in [true, false] {
+        let mut d = Design::from_plan(yard.clone());
+        let start = Instant::now();
+        let r = optimize(c, &mut d, &fixes, &OptimizeOptions { keep_shape, grow_plot: true, race: Some("terran".to_owned()) }).unwrap();
+        let plot = x4sd_core::plot::required_plot(d.plan(), c).unwrap();
+        let blocked = blocked_zones(d.plan(), c);
+        eprintln!(
+            "[keep shape: {keep_shape}] {:?}: {} entries, added {}, connectors -{} +{}, blocked {}; plot {plot}; zones blocked {:?}",
+            start.elapsed(),
+            d.plan().entries.len(),
+            fixes.iter().map(|f| f.1).sum::<u32>(),
+            r.connectors_removed,
+            r.placement.connectors.len(),
+            r.placement.docks_blocked,
+            &blocked[..blocked.len().min(10)]
+        );
+        assert_eq!(counts(d.plan()), expected, "nothing lost");
+        assert!(overlaps(d.plan(), c).is_empty());
+        assert!(plot.is_allowed(), "{plot}");
+        assert!(blocked.is_empty(), "{} blocked", blocked.len());
+        assert_eq!(r.placement.docks_blocked, 0);
+    }
+}

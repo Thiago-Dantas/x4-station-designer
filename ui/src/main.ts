@@ -778,8 +778,8 @@ async function placeAll() {
       note =
         `Placed ${p.placed.length} modules` +
         (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
-        (p.docks_moved ? `; moved ${p.docks_moved} docks outside` : "") +
-        (p.docks_blocked ? `. ${p.docks_blocked} docks have no clear approach` : "") +
+        (p.docks_moved ? `; moved ${p.docks_moved} docks and bays outside` : "") +
+        (p.docks_blocked ? `. ${p.docks_blocked} docks or bays have no clear space` : "") +
         (left ? `. No room for ${left}` : "");
       return s;
     }),
@@ -926,7 +926,7 @@ $("planner-optimize").onclick = async () => {
           `Optimized: re-placed ${o.moved} modules` +
           (added ? `, added ${added} to cover shortfalls` : ", no shortfalls to cover") +
           `; connection structures −${o.connectors_removed} +${o.connectors_added}` +
-          (o.docks_blocked ? `. ${o.docks_blocked} docks have no clear approach` : "");
+          (o.docks_blocked ? `. ${o.docks_blocked} docks or bays have no clear space` : "");
         return r.scene!;
       }),
     undefined,

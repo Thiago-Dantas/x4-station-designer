@@ -398,7 +398,7 @@ pub fn analyze_station(catalog: &Catalog, design: &Design, sunlight: f64) -> Res
 
 /// Optimize (x4ep_planner's, plus a re-layout): adds the modules that fix the
 /// station's shortfalls, then re-places its modules in layers (without slots in
-/// the middle, defensible ones around them, docks and piers outside), as one undo
+/// the middle, defensible ones around them, docks, piers and bays outside), as one undo
 /// step. Nothing changes if anything finds no place.
 pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeArgs) -> Result<Value, String> {
     let sunlight = args.plan.sunlight.unwrap_or(100.0);
