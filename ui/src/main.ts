@@ -1119,17 +1119,19 @@ const wareSearch = searchBox(
   () => $("planner-add").click(),
 );
 
-/** Other modules the planner can add: every station module but connection structures, by macro. */
+/** Classes the planner's Other modules box offers: end uses, not production (wares go in the ware box). */
+const EXTRA_CLASSES = ["defencemodule", "storage", "buildmodule"];
+/** Other modules the planner can add: defence, storage and ship-building modules, by macro. */
 const moduleSearch = searchBox(
   $<HTMLInputElement>("planner-module"),
   $("planner-module-list"),
-  () => offered().filter((m) => m.class !== "connectionmodule").map((m) => [m.macro, m.name]),
+  () => offered().filter((m) => EXTRA_CLASSES.includes(m.class)).map((m) => [m.macro, m.name]),
   (id) => addExtra(id),
   () => {
     const text = $<HTMLInputElement>("planner-module").value.trim().toLowerCase();
-    const found = offered().find((m) => m.name.toLowerCase() === text || m.macro.toLowerCase() === text);
+    const found = offered().find((m) => EXTRA_CLASSES.includes(m.class) && (m.name.toLowerCase() === text || m.macro.toLowerCase() === text));
     if (found) addExtra(found.macro);
-    else status(`No station module "${$<HTMLInputElement>("planner-module").value}"`);
+    else status(`No defence, storage or ship-building module "${$<HTMLInputElement>("planner-module").value}"`);
   },
 );
 $("planner-module-add").onclick = () => $<HTMLInputElement>("planner-module").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
