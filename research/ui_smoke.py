@@ -167,6 +167,9 @@ try:
     cdp.wait_for("[...document.querySelectorAll('#sel-position input')].every(i => i.value === '0')")
     print("   position fields moved the cross to", at, "| undo: back at the origin")
     assert at == [1200, -300, 450], at
+    # The first placement backs the view off 5 km, where the cross's cones merge into
+    # one blob for find_color: frame it tightly (Fit view) as the steps below expect.
+    cdp.js("document.getElementById('btn-frame').click()")
     time.sleep(1.0)
     # Arm a beam and click one of the cross's snap cones.
     cdp.js("{ const s = document.getElementById('search'); s.value = 'Terran Base Connection Structure 02'; s.dispatchEvent(new Event('input')) }")

@@ -902,16 +902,21 @@ fn validates_player_plans() {
 
 /// Library plans: of the 31 off-link entries in hand-made faction plans, the 17
 /// that are metres off (2.4 m to 400 m); 14 more are 1-3.5 cm off, within tolerance.
+/// The faction plans also put modules in 18 exclusion zones (D-12): 17 of fabrication
+/// bays, 1 of a pier. The game builds them; the validator still reports them.
 #[test]
 fn validates_library_plans() {
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/base/libraries/constructionplans.xml")) else { return };
     let issues: Vec<Issue> = plans.iter().flat_map(|p| validate(p, c)).collect();
     let gaps: Vec<f64> = issues.iter().filter_map(|i| match i { Issue::SnapGap { metres, .. } => Some(*metres), _ => None }).collect();
     let overlaps = issues.iter().filter(|i| matches!(i, Issue::Overlap { .. })).count();
-    let other: Vec<_> = issues.iter().filter(|i| !matches!(i, Issue::SnapGap { .. } | Issue::Overlap { .. })).collect();
-    eprintln!("library: {} gaps, {overlaps} overlaps, other {other:?}", gaps.len());
+    let zones: Vec<&str> = issues.iter().filter_map(|i| match i { Issue::BlocksZone { owner_class, .. } => Some(owner_class.as_str()), _ => None }).collect();
+    let other: Vec<_> = issues.iter().filter(|i| !matches!(i, Issue::SnapGap { .. } | Issue::Overlap { .. } | Issue::BlocksZone { .. })).collect();
+    eprintln!("library: {} gaps, {overlaps} overlaps, {} in exclusion zones, other {other:?}", gaps.len(), zones.len());
     assert_eq!(gaps.len(), 17);
     assert!(gaps.iter().all(|m| *m > 1.0), "{gaps:?}");
+    assert_eq!(zones.len(), 18, "{zones:?}");
+    assert_eq!(zones.iter().filter(|c| **c == "pier").count(), 1, "{zones:?}");
     assert!(other.is_empty(), "{other:?}");
 }
 
