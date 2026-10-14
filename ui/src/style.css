@@ -95,10 +95,19 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .planner-add { display: flex; gap: 4px; }
 .ware-search { position: relative; flex: 1; min-width: 0; }
 .ware-search #planner-ware { width: 100%; box-sizing: border-box; }
-#planner-ware-list { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; max-height: 280px; overflow-y: auto; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; }
-#planner-ware-list div { padding: 3px 6px; cursor: pointer; }
-#planner-ware-list div.active { background: var(--line); }
-.planner-add #planner-count { width: 52px; }
+.search-list { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; max-height: 280px; overflow-y: auto; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; }
+.search-list div { padding: 3px 6px; cursor: pointer; }
+.search-list div.active { background: var(--line); }
+.ware-search #planner-module { width: 100%; box-sizing: border-box; }
+.planner-add #planner-count, .planner-add #planner-module-count { width: 52px; }
+#planner-extras { list-style: none; padding: 0; margin: 0; font-size: 12px; }
+#planner-extras li { padding: 2px 0; }
+#planner-extras li > div { display: flex; align-items: center; gap: 6px; }
+#planner-extras li > div span { flex: 1; }
+#planner-extras li input { width: 52px; }
+#planner-extras .chips { margin: 2px 0 0 8px; }
+.storage-min { display: inline-flex; gap: 4px; }
+.storage-min input { width: 64px; }
 #planner-targets { list-style: none; padding: 0; margin: 0; font-size: 12px; }
 #planner-targets li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 #planner-targets li span { flex: 1; }

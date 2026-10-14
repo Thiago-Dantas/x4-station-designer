@@ -50,15 +50,25 @@
           <div class="planner-add">
             <div class="ware-search">
               <input id="planner-ware" placeholder="Ware to make…" spellcheck="false" autocomplete="off" title="Type part of a name; arrow keys and Enter (or a click) add it" />
-              <div id="planner-ware-list" hidden></div>
+              <div id="planner-ware-list" class="search-list" hidden></div>
             </div>
             <input type="number" id="planner-count" min="1" value="1" title="Production modules for it" />
             <button id="planner-add">Add</button>
           </div>
           <ul id="planner-targets"></ul>
+          <div class="planner-add">
+            <div class="ware-search">
+              <input id="planner-module" placeholder="Other module (ship bay, defence…)" spellcheck="false" autocomplete="off" title="Modules to add as they are, e.g. ship fabrication or maintenance bays, defence platforms; their workforce is housed like the rest. Type part of a name; arrow keys and Enter (or a click) add it" />
+              <div id="planner-module-list" class="search-list" hidden></div>
+            </div>
+            <input type="number" id="planner-module-count" min="1" value="1" title="How many" />
+            <button id="planner-module-add">Add</button>
+          </div>
+          <ul id="planner-extras"></ul>
           <label>Race <select id="planner-race" title="Use this race's modules where it has them"><option value="">Any</option></select></label>
           <label><span>House the workforce</span> <input type="checkbox" id="planner-workforce" checked title="Add habitats and make their food and medicine" /></label>
           <label>Storage hours <input type="number" id="planner-hours" min="0" max="48" step="1" value="6" title="Storage for this many hours of everything the station makes and uses" /></label>
+          <label>Storage at least <span class="storage-min"><input id="planner-store-container" placeholder="container" spellcheck="false" title="Container storage the station has at least, in m³: e.g. 1M, 500k or 250000; empty for none" /><input id="planner-store-solid" placeholder="solid" spellcheck="false" title="Solid storage the station has at least, in m³: e.g. 1M, 500k; empty for none" /><input id="planner-store-liquid" placeholder="liquid/gas" spellcheck="false" title="Liquid storage (gases too) the station has at least, in m³: e.g. 200k; empty for none" /></span></label>
           <div id="planner-buy" class="chips"></div>
           <button id="planner-generate" class="primary">Generate plan</button>
           <button id="planner-optimize" title="Plan the modules that fix the open station's shortfalls (the settings above, no wares) for you to trim; Apply plan then adds them and re-places the station's modules in layers: those without turret/shield slots in the middle, defensible ones around them, docks and piers outside with a clear approach.">Optimize station</button>

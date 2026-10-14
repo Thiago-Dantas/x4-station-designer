@@ -633,9 +633,20 @@ $("btn-equip-all").onclick = () => {
 
 // ---------------------------------------------------------------- planner
 
-interface PlannerState { targets: { ware: string; modules: number }[]; race: string; workforce: boolean; hours: number; buy: string[]; fewerConnectors: boolean }
+/** `extras`: other modules to add, with the sides of the station to put them on
+ * (defence platforms); `storage`: m³ per cargo type the station has at least. */
+interface PlannerState {
+  targets: { ware: string; modules: number }[];
+  extras: { macro: string; count: number; sides: string[] }[];
+  race: string;
+  workforce: boolean;
+  hours: number;
+  storage: Record<string, number>;
+  buy: string[];
+  fewerConnectors: boolean;
+}
 let planner: PlannerState = (() => {
-  const fallback: PlannerState = { targets: [], race: "", workforce: true, hours: 6, buy: [], fewerConnectors: false };
+  const fallback: PlannerState = { targets: [], extras: [], race: "", workforce: true, hours: 6, storage: {}, buy: [], fewerConnectors: false };
   try {
     return { ...fallback, ...JSON.parse(localStorage.getItem("x4sd.planner") ?? "{}") };
   } catch {
@@ -674,6 +685,16 @@ function placedOf(m: PlannedModule, now: Map<string, number>) {
   return Math.min(m.count, Math.max(0, (now.get(key) ?? 0) - (plan?.baseline.get(key) ?? 0)));
 }
 
+/** Sides of the station (the game's axes): id, label, axis. */
+const SIDES: [string, string, string][] = [
+  ["front", "Front", "+Z"],
+  ["back", "Back", "−Z"],
+  ["left", "Left", "−X"],
+  ["right", "Right", "+X"],
+  ["top", "Top", "+Y"],
+  ["bottom", "Bottom", "−Y"],
+];
+
 function renderPlanner() {
   const n = (x: number) => Math.round(x).toLocaleString("en-US");
   $("planner-targets").replaceChildren(
@@ -692,6 +713,43 @@ function renderPlanner() {
         savePlanner();
         renderPlanner();
       };
+      return li;
+    }),
+  );
+  $("planner-extras").replaceChildren(
+    ...planner.extras.map((x, i) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<div><span></span><input type="number" min="1" /><button title="Remove">✕</button></div>`;
+      li.querySelector("span")!.textContent = moduleName(x.macro);
+      const count = li.querySelector("input")!;
+      count.value = String(x.count);
+      count.onchange = () => {
+        x.count = Math.max(1, Math.round(Number(count.value)) || 1);
+        savePlanner();
+      };
+      li.querySelector("button")!.onclick = () => {
+        planner.extras.splice(i, 1);
+        savePlanner();
+        renderPlanner();
+      };
+      if (modules.find((m) => m.macro.toLowerCase() === x.macro.toLowerCase())?.class === "defencemodule") {
+        const chips = document.createElement("div");
+        chips.className = "chips";
+        for (const [side, label, axis] of SIDES) {
+          const b = document.createElement("button");
+          b.textContent = label;
+          b.title = `On the outside of the station on its ${label.toLowerCase()} (${axis}) side, nothing in front of it. The count is spread evenly over the sides picked; none: anywhere`;
+          b.classList.toggle("on", x.sides.includes(side));
+          b.onclick = () => {
+            const on = x.sides.includes(side) ? x.sides.filter((s) => s !== side) : [...x.sides, side];
+            x.sides = SIDES.map((s) => s[0]).filter((s) => on.includes(s));
+            savePlanner();
+            renderPlanner();
+          };
+          chips.append(b);
+        }
+        li.append(chips);
+      }
       return li;
     }),
   );
@@ -716,7 +774,7 @@ function renderPlanner() {
   }
   $("planner-apply").hidden = true;
   const now = macroCounts();
-  const groups: [PlannedModule["role"], string][] = [["target", "Targets"], ["chain", "Production chain"], ["habitat", "Habitats"], ["storage", "Storage"], ["dock", "Docks"]];
+  const groups: [PlannedModule["role"], string][] = [["target", "Targets"], ["extra", "Other modules"], ["chain", "Production chain"], ["habitat", "Habitats"], ["storage", "Storage"], ["dock", "Docks"]];
   let left = 0;
   const rows: HTMLElement[] = [];
   for (const [role, title] of groups) {
@@ -838,9 +896,11 @@ async function generatePlan(fresh: boolean, optimize = false) {
     result = await api.planProduction(
       {
         targets: mode ? [] : planner.targets,
+        extra_modules: mode ? [] : planner.extras.map(({ macro, count }) => ({ macro, count })),
         race: planner.race || null,
         workforce: planner.workforce,
         storage_hours: planner.hours,
+        storage: planner.storage,
         buy: planner.buy,
         sunlight,
         method: buildMethod,
@@ -860,7 +920,9 @@ async function generatePlan(fresh: boolean, optimize = false) {
 async function placeAll() {
   if (!plan) return;
   const now = macroCounts();
-  const todo = plan.result.modules.map((m) => ({ macro: m.macro, count: m.count - placedOf(m, now) })).filter((m) => m.count > 0);
+  // Sides as picked now, so they can change without planning again.
+  const sides = (macro: string) => planner.extras.find((x) => x.macro.toLowerCase() === macro.toLowerCase())?.sides ?? [];
+  const todo = plan.result.modules.map((m) => ({ macro: m.macro, count: m.count - placedOf(m, now), sides: sides(m.macro) })).filter((m) => m.count > 0);
   if (!todo.length) return;
   status(`Placing ${todo.reduce((s, m) => s + m.count, 0)} modules…`);
   let note = "";
@@ -873,6 +935,7 @@ async function placeAll() {
         (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
         (p.docks_moved ? `; moved ${p.docks_moved} docks and bays outside` : "") +
         (p.docks_blocked ? `. ${p.docks_blocked} docks or bays have no clear space` : "") +
+        (p.sides_blocked ? `. ${p.sides_blocked} modules couldn't go on their side (no free snaps there with a clear view out): move them by hand` : "") +
         (left ? `. No room for ${left}` : "");
       return s;
     }),
@@ -881,7 +944,7 @@ async function placeAll() {
     true,
   );
   $("planner-placed").textContent = note;
-  if (note) status(note, note.includes("No room") || note.includes("no clear approach") ? "error" : "good");
+  if (note) status(note, note.includes("No room") || note.includes("no clear approach") || note.includes("by hand") ? "error" : "good");
 }
 
 async function loadPlanner() {
@@ -892,6 +955,7 @@ async function loadPlanner() {
   $<HTMLSelectElement>("planner-race").value = planner.race;
   $<HTMLInputElement>("planner-workforce").checked = planner.workforce;
   $<HTMLInputElement>("planner-hours").value = String(planner.hours);
+  for (const t of ["container", "solid", "liquid"]) $<HTMLInputElement>(`planner-store-${t}`).value = planner.storage[t] ? amountText(planner.storage[t]) : "";
   $<HTMLInputElement>("planner-fewer").checked = planner.fewerConnectors;
   renderPlanner();
 }
@@ -908,75 +972,131 @@ $("planner-add").onclick = () => {
   if (existing) existing.modules += modulesFor;
   else planner.targets.push({ ware, modules: modulesFor });
   $<HTMLInputElement>("planner-ware").value = "";
-  wareSearch.open = false;
-  renderWareList();
+  wareSearch.close();
   savePlanner();
   renderPlanner();
 };
 
-/** The ware search under the planner's ware box: matches as you type. */
-const wareSearch = { open: false, matches: [] as string[], active: 0 };
-
-function renderWareList() {
-  const words = $<HTMLInputElement>("planner-ware").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  const starts = (name: string) => (words.length && name.toLowerCase().startsWith(words[0]) ? 0 : 1);
-  wareSearch.matches = [...wareNames]
-    .filter(([id, name]) => words.every((w) => name.toLowerCase().includes(w) || id.includes(w)))
-    .sort(([, a], [, b]) => starts(a) - starts(b) || a.localeCompare(b))
-    .map(([id]) => id);
-  wareSearch.active = Math.min(wareSearch.active, Math.max(0, wareSearch.matches.length - 1));
-  const list = $("planner-ware-list");
-  list.replaceChildren(
-    ...wareSearch.matches.map((id, i) => {
-      const row = document.createElement("div");
-      row.textContent = wareNames.get(id) ?? id;
-      if (i === wareSearch.active) row.className = "active";
-      // mousedown, not click: the box loses focus (and closes the list) before a click lands.
-      row.onmousedown = (ev) => {
-        ev.preventDefault();
-        pickWare(id);
-      };
-      return row;
-    }),
-  );
-  list.hidden = !wareSearch.open || wareSearch.matches.length === 0;
-  list.children[wareSearch.active]?.scrollIntoView({ block: "nearest" });
+/** A search box with a list of matches under it: each typed word must be in the
+ * name or id, names starting with the first word first. Arrow keys and Enter, or a
+ * click, pick one; Enter with the list closed calls `enter`. */
+function searchBox(box: HTMLInputElement, list: HTMLElement, entries: () => [string, string][], pick: (id: string, name: string) => void, enter: () => void) {
+  const s = { open: false, matches: [] as [string, string][], active: 0 };
+  const render = () => {
+    const words = box.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const starts = (name: string) => (words.length && name.toLowerCase().startsWith(words[0]) ? 0 : 1);
+    s.matches = entries()
+      .filter(([id, name]) => words.every((w) => name.toLowerCase().includes(w) || id.includes(w)))
+      .sort(([, a], [, b]) => starts(a) - starts(b) || a.localeCompare(b));
+    s.active = Math.min(s.active, Math.max(0, s.matches.length - 1));
+    list.replaceChildren(
+      ...s.matches.map(([id, name], i) => {
+        const row = document.createElement("div");
+        row.textContent = name;
+        if (i === s.active) row.className = "active";
+        // mousedown, not click: the box loses focus (and closes the list) before a click lands.
+        row.onmousedown = (ev) => {
+          ev.preventDefault();
+          pick(id, name);
+        };
+        return row;
+      }),
+    );
+    list.hidden = !s.open || s.matches.length === 0;
+    list.children[s.active]?.scrollIntoView({ block: "nearest" });
+  };
+  box.oninput = () => {
+    s.open = true;
+    s.active = 0;
+    render();
+  };
+  box.onfocus = () => {
+    s.open = true;
+    render();
+  };
+  box.onblur = () => {
+    s.open = false;
+    render();
+  };
+  box.onkeydown = (ev) => {
+    const n = s.matches.length;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (n) s.active = (s.active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n;
+      s.open = true;
+      render();
+    } else if (ev.key === "Enter") {
+      if (s.open && n) pick(...s.matches[s.active]);
+      else enter();
+    } else if (ev.key === "Escape") {
+      s.open = false;
+      render();
+    }
+  };
+  return {
+    close() {
+      s.open = false;
+      render();
+    },
+  };
 }
 
-function pickWare(id: string) {
-  $<HTMLInputElement>("planner-ware").value = wareNames.get(id) ?? id;
-  $("planner-add").click();
+const wareSearch = searchBox(
+  $<HTMLInputElement>("planner-ware"),
+  $("planner-ware-list"),
+  () => [...wareNames],
+  (_, name) => {
+    $<HTMLInputElement>("planner-ware").value = name;
+    $("planner-add").click();
+  },
+  () => $("planner-add").click(),
+);
+
+/** Other modules the planner can add: every station module but connection structures, by macro. */
+const moduleSearch = searchBox(
+  $<HTMLInputElement>("planner-module"),
+  $("planner-module-list"),
+  () => modules.filter((m) => m.class !== "connectionmodule").map((m) => [m.macro, m.name]),
+  (id) => addExtra(id),
+  () => {
+    const text = $<HTMLInputElement>("planner-module").value.trim().toLowerCase();
+    const found = modules.find((m) => m.name.toLowerCase() === text || m.macro.toLowerCase() === text);
+    if (found) addExtra(found.macro);
+    else status(`No station module "${$<HTMLInputElement>("planner-module").value}"`);
+  },
+);
+$("planner-module-add").onclick = () => $<HTMLInputElement>("planner-module").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+
+function addExtra(macro: string) {
+  const count = Math.max(1, Math.round(Number($<HTMLInputElement>("planner-module-count").value)) || 1);
+  const existing = planner.extras.find((x) => x.macro.toLowerCase() === macro.toLowerCase());
+  if (existing) existing.count += count;
+  else planner.extras.push({ macro, count, sides: [] });
+  $<HTMLInputElement>("planner-module").value = "";
+  moduleSearch.close();
+  savePlanner();
+  renderPlanner();
 }
 
-const wareBox = $<HTMLInputElement>("planner-ware");
-wareBox.oninput = () => {
-  wareSearch.open = true;
-  wareSearch.active = 0;
-  renderWareList();
-};
-wareBox.onfocus = () => {
-  wareSearch.open = true;
-  renderWareList();
-};
-wareBox.onblur = () => {
-  wareSearch.open = false;
-  renderWareList();
-};
-wareBox.onkeydown = (ev) => {
-  const n = wareSearch.matches.length;
-  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
-    ev.preventDefault();
-    if (n) wareSearch.active = (wareSearch.active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n;
-    wareSearch.open = true;
-    renderWareList();
-  } else if (ev.key === "Enter") {
-    if (wareSearch.open && n) pickWare(wareSearch.matches[wareSearch.active]);
-    else $("planner-add").click();
-  } else if (ev.key === "Escape") {
-    wareSearch.open = false;
-    renderWareList();
-  }
-};
+/** "1M", "500k", "250,000" as m³; null if it isn't a number. */
+function parseAmount(text: string) {
+  const m = text.trim().toLowerCase().replace(/[, ]/g, "").match(/^(\d+(?:\.\d+)?)([km]?)$/);
+  return m ? Number(m[1]) * (m[2] === "m" ? 1e6 : m[2] === "k" ? 1e3 : 1) : null;
+}
+const amountText = (n: number) => (n >= 1e6 ? `${n / 1e6}M` : n >= 1e3 ? `${n / 1e3}k` : String(n));
+
+for (const t of ["container", "solid", "liquid"]) {
+  const box = $<HTMLInputElement>(`planner-store-${t}`);
+  box.onchange = () => {
+    const v = parseAmount(box.value);
+    if (box.value.trim() && !v) status(`Storage: give m³, e.g. 1M, 500k or 250000`, "error");
+    if (v) planner.storage[t] = v;
+    else delete planner.storage[t];
+    box.value = v ? amountText(v) : "";
+    savePlanner();
+  };
+}
+
 $<HTMLSelectElement>("planner-race").onchange = (ev) => {
   planner.race = (ev.target as HTMLSelectElement).value;
   savePlanner();

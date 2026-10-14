@@ -56,6 +56,8 @@ export interface Placement {
   docks_moved: number;
   /** Docks and piers left without a clear corridor (no such spot). */
   docks_blocked: number;
+  /** Modules with sides that found no spot on their side with a clear view out. */
+  sides_blocked: number;
 }
 export interface CostLine { ware: string; name: string; amount: number; value: number | null }
 export interface BuildCost { method: string; methods: { id: string; name: string }[]; lines: CostLine[]; value: number; unknown: string[] }
@@ -72,9 +74,12 @@ export interface StationAnalysis {
   unknown: string[];
   notes: string[];
 }
-export interface PlannedModule { macro: string; name: string; count: number; role: "target" | "chain" | "habitat" | "storage" | "dock"; ware: string | null }
+export interface PlannedModule { macro: string; name: string; count: number; role: "target" | "extra" | "chain" | "habitat" | "storage" | "dock"; ware: string | null }
 export interface PlanArgs {
   targets: { ware: string; modules: number }[];
+  extra_modules: { macro: string; count: number }[];
+  /** m³ per cargo type (container, solid, liquid) the station has at least. */
+  storage: Record<string, number>;
   race: string | null;
   workforce: boolean;
   storage_hours: number;
@@ -149,7 +154,7 @@ export const api = {
   planProduction: (args: PlanArgs, baseline: { macro: string; count: number }[] | null) =>
     serial<ProductionPlan>("plan_production", { args, baseline }),
   /** Places the modules at free snaps without overlaps (the plot may grow); one undo step. */
-  autoPlace: (modules: { macro: string; count: number }[], race: string | null, fewerConnectors: boolean) =>
+  autoPlace: (modules: { macro: string; count: number; sides?: string[] }[], race: string | null, fewerConnectors: boolean) =>
     serial<Scene>("auto_place", { modules, race, fewerConnectors }),
   /** A shared operation (`ops::Op` in Rust, as MCP agents use them): its result, and the scene if it may have changed. */
   runOp: <T>(op: { op: string } & Record<string, unknown>) => serial<{ result: T; scene?: Scene }>("run_op", { op }),

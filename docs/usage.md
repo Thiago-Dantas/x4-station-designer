@@ -31,12 +31,18 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - Reordering renumbers the modules; the selection follows the moved module.
 - **Planner (left, third tab):** our own take on the x4ep_planner mod. Name the wares to make and how many production modules of each (e.g. Hull Parts × 2), then *Generate plan*.
   - **Ware box:** type part of a name (e.g. "hull par", "cell"); matches list below it. Arrow keys and Enter, or a click, add the ware with the count next to it.
+  - **Other modules box** (below the targets): any station module to add as it is, with a count, e.g. ship fabrication or maintenance bays, defence platforms, extra docks. Same search as the ware box. Their workforce gets habitats, food and medicine like the rest.
+    - **Defence platforms** get side buttons: Front (+Z), Back (−Z), Left (−X), Right (+X), Top (+Y), Bottom (−Y). The count is spread evenly over the sides picked, extras to the first in that order: 6 with Front and Back is 3 + 3; 6 with all six sides is 1 each. No side picked: anywhere.
+    - *Place all* puts them last, each on the outside of the station on its side with nothing in front of it, starting from the middle of that face. The sides used are the ones picked when you click *Place all*, so you can change them without planning again.
+    - A station with no free snaps on a side (a small, tightly packed one) can't take a platform there. It then goes where nothing is in front of it on that side, else wherever it fits, and the status line says how many to move by hand.
+  - **Storage at least:** container, solid and liquid (gases are liquid) capacity the station must have, in m³: `1M`, `500k`, `250000`. Empty: no minimum. Each type gets the larger of this and *Storage hours*; set the hours to 0 to use only these. The largest storage module covers the bulk and the smallest one that covers the rest (200k liquid: one M module of 500k, not an L).
   - *Generate plan* always makes a **new** plan for the design as it is now. Its targets come on top of what the station already has, so generating again after placing adds them again.
   - It lists everything to add:
     - the targets;
     - the production chain for their inputs;
     - habitats for the workforce, and the food and medicine they eat;
-    - storage for *Storage hours* of everything the station makes and uses;
+    - storage for *Storage hours* of everything the station makes and uses, and at least *Storage at least*;
+    - the other modules;
     - a dock area and a pier if there are none.
   - It also shows the cost and what is left per hour, split into **raw materials to bring in** (mined ones such as ore and ice, and scrap metal; never made) and **to buy**.
   - **Self-sufficient** (shown when it applies) means every made ware is produced on the station; raw materials are always brought in.
@@ -140,8 +146,8 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `set_twist`, `move_module`, `remove_module` | Rotate around the snap axis, move unattached modules, remove a module with everything attached to it (renumbers 1..n) |
 | `undo`, `redo` | Every edit can be undone |
 | `builder_status` | Whether a builder window is open (then all tools act on it, live) |
-| `list_wares`, `plan_production` | Wares some module makes; the planner: targets (ware + production modules), race, workforce, storage hours, buy list, sunlight. Returns the modules to add with their roles, the analysis with them and the cost (it doesn't place them) |
-| `auto_place` | Auto-placement: attaches `modules` (macro + count), or what `from_plan` (plan_production settings) lists, at free snaps without overlaps, adding connection structures. `grow_plot` (default true) lets the station outgrow its plot up to 20 km per axis. `race` sets the connectors' race (default: the plan's, else the modules' most common). `fewer_connectors` (default false): about half the connection structures, a larger station. Returns the new modules and connectors (index, macro), what didn't fit, the plot and, with `from_plan`, the plan. One undo step. |
+| `list_wares`, `plan_production` | Wares some module makes; the planner: targets (ware + production modules), `extra_modules` (macro + count, optional `sides`; role `extra`), race, workforce, storage hours, `storage` (minimum m³ per type, e.g. `{"container": 1000000, "liquid": 200000}`), buy list, sunlight. Returns the modules to add with their roles, the analysis with them and the cost (it doesn't place them) |
+| `auto_place` | Auto-placement: attaches `modules` (macro + count), or what `from_plan` (plan_production settings) lists, at free snaps without overlaps, adding connection structures. `grow_plot` (default true) lets the station outgrow its plot up to 20 km per axis. `race` sets the connectors' race (default: the plan's, else the modules' most common). `fewer_connectors` (default false): about half the connection structures, a larger station. A module entry (or a `from_plan` `extra_modules` entry) may have `sides` (front, back, left, right, top, bottom): those modules go last, spread over the sides, each on the outside of the station on its side with nothing in front of it. Returns the new modules and connectors (index, macro), what didn't fit, `sides_blocked` (modules with sides that couldn't go on their side), the plot and, with `from_plan`, the plan. One undo step. |
 | `list_equipment` | Turrets and shields players can build (kind, size, race, text filters): macro, name, size, race, mark, average price |
 | `module_equipment` | A placed module's groups: for each group and kind the slot size and count, what is equipped, and the macros that fit |
 | `set_equipment` | Put a fitting macro on one kind of slot in a group (`count`, default all its slots), or remove it |

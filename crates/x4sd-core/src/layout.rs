@@ -56,6 +56,53 @@ const HUB_PENALTY_M: f64 = 2000.0;
 /// and no limit (hubs only where no free snap fits) a 20 km snake.
 const FEWER_HUBS_PENALTY_M: f64 = 4000.0;
 
+/// A module placed on a side of the station keeps its lane clear this far (metres)
+/// past the station's bounds (see `Placer::lane`).
+const SIDE_LANE_M: f64 = 3_000.0;
+
+/// A side of the station, for modules that face out that way (defence platforms):
+/// front +Z, back −Z, left −X, right +X, top +Y, bottom −Y.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Side {
+    Front,
+    Back,
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl Side {
+    pub const ALL: [Side; 6] = [Side::Front, Side::Back, Side::Left, Side::Right, Side::Top, Side::Bottom];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Side::Front => "front",
+            Side::Back => "back",
+            Side::Left => "left",
+            Side::Right => "right",
+            Side::Top => "top",
+            Side::Bottom => "bottom",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Side> {
+        Side::ALL.into_iter().find(|x| x.as_str().eq_ignore_ascii_case(s))
+    }
+
+    /// (axis 0..3, sign) of the side's outward direction.
+    fn axis(self) -> (usize, f64) {
+        match self {
+            Side::Front => (2, 1.0),
+            Side::Back => (2, -1.0),
+            Side::Left => (0, -1.0),
+            Side::Right => (0, 1.0),
+            Side::Top => (1, 1.0),
+            Side::Bottom => (1, -1.0),
+        }
+    }
+}
+
 /// Axis-aligned bounds: (min, max) corner.
 type Bounds = ([f64; 3], [f64; 3]);
 
@@ -365,6 +412,10 @@ pub struct Placement {
     pub docks_moved: u32,
     /// Of those (new or moved), how many were left without clear space: no such spot.
     pub docks_blocked: u32,
+    /// Modules placed on a side (`Options::sides`) that found no spot on that half
+    /// of the station with a clear lane out (a tightly packed station may have no
+    /// free snaps there): they went where their lane is clear, else wherever they fit.
+    pub sides_blocked: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -382,6 +433,11 @@ pub struct Options {
     /// centre (instead of `HUB_PENALTY_M`): fewer modules for the game to run, a
     /// larger station.
     pub fewer_connectors: bool,
+    /// Modules to place on sides of the station: (macro, sides). That macro's modules
+    /// are spread evenly over its sides, extras to the first ones; each goes on the
+    /// outside of the station on its side, with a clear lane out (`Placer::lane`),
+    /// after every other module.
+    pub sides: Vec<(String, Vec<Side>)>,
 }
 
 /// Attaches the modules (macro, count) to the open design at exact snap
@@ -410,7 +466,8 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
         match catalog.module(macro_name) {
             Ok(m) if !m.snaps.is_empty() => {
                 let s = size(&m);
-                order.extend(std::iter::repeat_n((m, s, None), *count as usize));
+                let sides: Vec<Side> = options.sides.iter().filter(|(x, _)| x.eq_ignore_ascii_case(macro_name)).flat_map(|(_, s)| s).copied().collect();
+                order.extend((0..*count as usize).map(|i| (m.clone(), s, None, (!sides.is_empty()).then(|| sides[i % sides.len()]))));
             }
             _ => out.unplaced.push((macro_name.clone(), *count)),
         }
@@ -422,11 +479,11 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
         let e = design.plan().entries.iter().find(|e| e.index == index).unwrap();
         let (m, at, upgrades) = (catalog.module(&e.macro_name)?, design.world(index)?, e.upgrades.clone());
         let s = size(&m);
-        order.push((m, s, Some((at, upgrades))));
+        order.push((m, s, Some((at, upgrades)), None));
         design.remove(catalog, index)?;
     }
-    let rank = |m: &Module| if options.layered { layer(m) } else { u8::from(outer(m)) * 2 };
-    order.sort_by(|(a, sa, _), (b, sb, _)| rank(a).cmp(&rank(b)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
+    let rank = |m: &Module, side: Option<Side>| if side.is_some() { 3 } else if options.layered { layer(m) } else { u8::from(outer(m)) * 2 };
+    order.sort_by(|(a, sa, _, da), (b, sb, _, db)| rank(a, *da).cmp(&rank(b, *db)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
 
     let all = candidates(catalog)?;
     let race = options.race.clone().or_else(|| common_race(&all, order.iter().map(|o| o.0.macro_name.as_str())));
@@ -441,13 +498,14 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
 
     let mut unplaced: BTreeMap<String, u32> = BTreeMap::new();
     let mut current = None;
-    for (module, _, lifted) in &order {
+    for (module, _, lifted, side) in &order {
         // In layers, defensible modules wrap the core of those without slots. Docks
         // go nearest the centre with a clear corridor, which puts them outside.
         if current != Some(layer(module)) {
             current = Some(layer(module));
             placer.shell = if options.layered && layer(module) == 1 { placer.core_radius() } else { 0.0 };
         }
+        placer.side = *side;
         match (placer.place(design, &connectors, module)?, lifted) {
             (Some((index, added)), None) => {
                 out.placed.push((index, module.macro_name.clone()));
@@ -470,12 +528,14 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     }
     out.unplaced.extend(unplaced);
     out.docks_blocked = placer.blocked;
+    out.sides_blocked = placer.sides_blocked;
     design.squash_history(history);
     Ok(out)
 }
 
-/// A module to place: (module, size, for a lifted dock: where it was and its equipment).
-type ToPlace = (Arc<Module>, f64, Option<(Transform, Vec<Upgrade>)>);
+/// A module to place: (module, size, for a lifted dock: where it was and its
+/// equipment, the side of the station it goes on).
+type ToPlace = (Arc<Module>, f64, Option<(Transform, Vec<Upgrade>)>, Option<Side>);
 
 /// A dock area, pier or bay (`outer`) with nothing attached to it, which a
 /// placement run lifts off to place again outside.
@@ -605,7 +665,12 @@ pub fn optimize(catalog: &Catalog, design: &mut Design, fixes: &[(String, u32)],
             None => modules.push((m.0.to_owned(), m.1)),
         }
     }
-    let placement = auto_place(catalog, design, &modules, &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true, fewer_connectors: options.fewer_connectors })?;
+    let placement = auto_place(
+        catalog,
+        design,
+        &modules,
+        &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true, fewer_connectors: options.fewer_connectors, sides: Vec::new() },
+    )?;
     if !placement.unplaced.is_empty() {
         if design.history_len() > history {
             design.squash_history(history);
@@ -710,12 +775,22 @@ struct Placer<'a> {
     free: Vec<FreeSnap>,
     /// The entry each body belongs to.
     owners: Vec<u32>,
-    /// (entry, snap, macro, through a new hub, outward) that didn't fit. Placing
-    /// only adds obstacles, so what failed once fails again.
-    failed: HashSet<(u32, String, String, bool, bool)>,
+    /// (entry, snap, macro, through a new hub, outward, half, side) that didn't
+    /// fit. Placing only adds obstacles, so what failed once fails again.
+    failed: HashSet<(u32, String, String, bool, bool, bool, Option<Side>)>,
     /// Modules that need clear space (`outer`) now need it: clear zones, and for
-    /// dock areas and piers a clear corridor too (see `corridor`).
+    /// dock areas and piers a clear corridor too (see `corridor`); a module with a
+    /// `side`, a clear lane (`lane`).
     outward: bool,
+    /// The side of the station the module being placed goes on.
+    side: Option<Side>,
+    /// While `outward`, a module with a `side` must also be on that half of the
+    /// station (all of it beyond the heart that way).
+    half: bool,
+    /// Lanes of modules placed on a side: no module may enter them.
+    lanes: Vec<Bounds>,
+    /// Modules with a side placed off their half of the station or without a clear lane.
+    sides_blocked: u32,
     /// Corridors of docks on the station that have one: no module may enter them.
     corridors: Vec<Vec<Bounds>>,
     /// Exclusion zones on the station that are clear, with the body they belong to:
@@ -747,6 +822,10 @@ impl<'a> Placer<'a> {
             owners: Vec::new(),
             failed: HashSet::new(),
             outward: false,
+            side: None,
+            half: false,
+            lanes: Vec::new(),
+            sides_blocked: 0,
             corridors: Vec::new(),
             zones: Vec::new(),
             blocked: 0,
@@ -770,10 +849,32 @@ impl<'a> Placer<'a> {
         Ok(placer)
     }
 
-    /// How far from where it should be a module at `distance` from the heart is:
-    /// the distance itself, or while hugging the core, the distance from its shell.
-    fn rank(&self, distance: f64) -> f64 {
+    /// How far from where it should be a module at `offset` from the heart is: its
+    /// distance, or while hugging the core, the distance from its shell. On a side:
+    /// its distance from the axis out through that side less how far out it is, so
+    /// the middle of that face comes first, and spots beside the station last.
+    fn rank(&self, offset: [f64; 3]) -> f64 {
+        if let Some(side) = self.side {
+            let (k, sign) = side.axis();
+            let across: f64 = (0..3).filter(|&i| i != k).map(|i| offset[i] * offset[i]).sum();
+            return across.sqrt() - offset[k] * sign;
+        }
+        let distance = dot(offset, offset).sqrt();
         if self.shell > 0.0 { (distance - self.shell).abs() } else { distance }
+    }
+
+    /// The lane of a module with bounds `bounds` on a side: its bounds extended out
+    /// that way from its face to `SIDE_LANE_M` past the station's bounds.
+    fn lane(&self, bounds: &Bounds, side: Side) -> Bounds {
+        let (k, sign) = side.axis();
+        let (mut lo, mut hi) = *bounds;
+        let station = self.bounds.unwrap_or(*bounds);
+        if sign > 0.0 {
+            (lo[k], hi[k]) = (bounds.1[k], bounds.1[k].max(station.1[k]) + SIDE_LANE_M);
+        } else {
+            (lo[k], hi[k]) = (bounds.0[k].min(station.0[k]) - SIDE_LANE_M, bounds.0[k]);
+        }
+        (lo, hi)
     }
 
     /// The core's radius: the farthest module without turret/shield slots from the heart.
@@ -863,8 +964,16 @@ impl<'a> Placer<'a> {
         // Nothing enters a dock's corridor or a zone (unless joined to its module);
         // an outer module (while `outward`) needs clear space itself.
         let lanes_free = !self.corridors.iter().any(|lane| body.enters(lane))
+            && !body.enters(&self.lanes)
             && !self.zones.iter().any(|(owner, zone)| body.blocks(zone) && !body.joined(&self.bodies[*owner]));
-        let open = !self.outward || !outer(module) || self.exposed(module, at, &body, &bounds, extra);
+        let lane_clear = |side: Side| {
+            let (k, sign) = side.axis();
+            let lane = [self.lane(&bounds, side)];
+            let near = if sign > 0.0 { bounds.0[k] } else { bounds.1[k] };
+            let on_half = (near - self.heart[k]) * sign > 0.0;
+            (!self.half || on_half) && !self.bodies.iter().chain(extra.iter().map(|f| &f.body)).any(|b| b.enters(&lane))
+        };
+        let open = !self.outward || ((!outer(module) || self.exposed(module, at, &body, &bounds, extra)) && self.side.is_none_or(lane_clear));
         (clear && lanes_free && open).then_some(Fit { body, bounds })
     }
 
@@ -893,7 +1002,7 @@ impl<'a> Placer<'a> {
                 let at = attach(snap, &Transform::IDENTITY, &s.transform, twist);
                 let Some((lo, hi)) = module_bounds(module, &at) else { continue };
                 let out = [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0 - self.heart[i]);
-                options.push((self.rank(dot(out, out).sqrt()), &s.name, twist, at));
+                options.push((self.rank(out), &s.name, twist, at));
             }
         }
         options.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -901,16 +1010,31 @@ impl<'a> Placer<'a> {
     }
 
     /// Places one module; returns its index and the connection structures added for it.
-    /// Docks, piers and bays (`outer`) go where they have clear space if they can.
+    /// Docks, piers and bays (`outer`) go where they have clear space if they can;
+    /// modules with a `side` on that half of the station with a clear lane, else
+    /// anywhere with a clear lane.
     fn place(&mut self, design: &mut Design, conn: &Connectors, module: &Module) -> Result<Option<Placed>> {
-        for &outward in if outer(module) { &[true, false][..] } else { &[false] } {
-            self.outward = outward;
+        let tries: &[(bool, bool)] = if self.side.is_some() {
+            &[(true, true), (true, false), (false, false)]
+        } else if outer(module) {
+            &[(true, false), (false, false)]
+        } else {
+            &[(false, false)]
+        };
+        for &(outward, half) in tries {
+            (self.outward, self.half) = (outward, half);
             let placed = self.place_with(design, conn, module)?;
-            self.outward = false;
+            (self.outward, self.half) = (false, false);
             if let Some((index, _)) = &placed {
+                if self.side.is_some() && !half {
+                    self.sides_blocked += 1;
+                }
                 if outward {
                     self.protect(design, *index)?;
-                } else if outer(module) {
+                    if let Some((side, bounds)) = self.side.zip(module_bounds(module, &design.world(*index)?)) {
+                        self.lanes.push(self.lane(&bounds, side));
+                    }
+                } else if self.side.is_none() && outer(module) {
                     self.blocked += 1;
                 }
                 return Ok(placed);
@@ -926,15 +1050,14 @@ impl<'a> Placer<'a> {
         // snap, or through a new hub there (counted `hub_penalty` further out).
         let mut options: Vec<(f64, &FreeSnap, bool)> = Vec::new();
         for f in &self.free {
-            let out = sub(f.world.position, self.heart);
-            let d = self.rank(dot(out, out).sqrt());
+            let d = self.rank(sub(f.world.position, self.heart));
             options.push((d, f, false));
             options.push((d + self.hub_penalty, f, true));
         }
         options.sort_by(|a, b| a.0.total_cmp(&b.0));
         let options: Vec<(FreeSnap, bool)> = options.into_iter().map(|(_, f, x)| (f.clone(), x)).collect();
         for (f, through_hub) in options {
-            let key = (f.entry, f.snap.clone(), name.clone(), through_hub, self.outward);
+            let key = (f.entry, f.snap.clone(), name.clone(), through_hub, self.outward, self.half, self.side);
             if self.failed.contains(&key) {
                 continue;
             }
@@ -990,7 +1113,7 @@ impl<'a> Placer<'a> {
                     .filter(|o| o.name != hs.name)
                     .filter_map(|o| self.best_at(module, boxes, &at.then(&o.transform), &extra).map(|c| (o.name.clone(), c)))
                     .min_by(|a, b| {
-                        let rank = |c: &Choice| self.rank(distance(&c.2.bounds, self.heart).sqrt());
+                        let rank = |c: &Choice| self.rank([0, 1, 2].map(|i| (c.2.bounds.0[i] + c.2.bounds.1[i]) / 2.0 - self.heart[i]));
                         rank(&a.1).total_cmp(&rank(&b.1))
                     });
                 if let Some((on, choice)) = best {

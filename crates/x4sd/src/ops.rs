@@ -2,7 +2,7 @@
 //! design, or sends them to a running builder (`link.rs`), which runs them on
 //! the design open there. Either way they end up here.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use rmcp::schemars;
@@ -14,7 +14,7 @@ use x4sd_core::economy::{analyze, Analysis};
 use x4sd_core::equipment::{module_groups, Fill, Level};
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, renew_id_if_renamed, write_import_file};
-use x4sd_core::layout::{self, OptimizeOptions, Options};
+use x4sd_core::layout::{self, OptimizeOptions, Options, Side};
 use x4sd_core::perf;
 use x4sd_core::plan::{parse_plans, write_plans};
 use x4sd_core::planner::{self, module_counts, producible_wares, ProductionPlan, Request};
@@ -36,12 +36,16 @@ pub struct PlanArgs {
     /// Wares to make and how many production modules each; empty: just fix the station's shortfalls
     #[serde(default)]
     pub targets: Vec<Target>,
+    /// Other modules to add, e.g. ship fabrication or maintenance bays, defence platforms (macros from list_modules); their workforce is housed like the rest. sides only matter to auto_place with from_plan
+    pub extra_modules: Option<Vec<ModuleCount>>,
     /// Preferred race of the modules: argon, boron, paranid, split, teladi, terran; omit for any
     pub race: Option<String>,
     /// Add habitats for the workforce and make their food and medicine (default true)
     pub workforce: Option<bool>,
     /// Storage for this many hours of everything the station makes and uses (default 6)
     pub storage_hours: Option<f64>,
+    /// At least this much storage in m³ per cargo type (container, solid, liquid; gases are liquid), e.g. {"container": 1000000, "liquid": 200000}; on top of storage_hours (each type gets the larger)
+    pub storage: Option<BTreeMap<String, f64>>,
     /// Ware ids to buy instead of making
     pub buy: Option<Vec<String>>,
     /// The sector's sunlight in percent (default 100)
@@ -57,6 +61,8 @@ pub struct ModuleCount {
     pub r#macro: String,
     /// How many to place
     pub count: u32,
+    /// For auto_place: sides of the station to put them on, spread evenly (extras to the first): front (+Z), back, left (-X), right, top (+Y), bottom. Each goes on the outside on its side with nothing in front of it; meant for defence platforms. Default: anywhere
+    pub sides: Option<Vec<String>>,
 }
 
 /// What auto_place places, and how.
@@ -430,6 +436,7 @@ pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeAr
     let sunlight = args.plan.sunlight.unwrap_or(100.0);
     let mut req = request(args.plan);
     req.targets.clear();
+    req.modules.clear();
     let fixes: Vec<(String, u32)> = match args.modules {
         Some(list) => list.into_iter().filter(|m| m.count > 0).map(|m| (m.r#macro, m.count)).collect(),
         None => {
@@ -547,14 +554,18 @@ pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs, exist
 /// Places modules (a list, or what a plan lists) with `layout::auto_place`: the new
 /// indices, the connection structures added, what didn't fit, and the plot.
 pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -> Result<Value, String> {
-    let (modules, race, plan) = match (args.modules, args.from_plan) {
-        (Some(list), None) => (list.into_iter().map(|m| (m.r#macro, m.count)).collect::<Vec<_>>(), args.race, None),
+    let (modules, race, plan, sides) = match (args.modules, args.from_plan) {
+        (Some(list), None) => {
+            let sides = sides(&list)?;
+            (list.into_iter().map(|m| (m.r#macro, m.count)).collect::<Vec<_>>(), args.race, None, sides)
+        }
         (None, Some(settings)) => {
+            let sides = sides(settings.extra_modules.as_deref().unwrap_or_default())?;
             let sunlight = settings.sunlight.unwrap_or(100.0);
             let req = request(settings);
             let p = planner::plan_production(catalog, &module_counts(design.plan()), &req).map_err(|e| e.to_string())?;
             let modules = p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
-            (modules, args.race.or(req.race), Some(plan_json(catalog, &p, sunlight)?))
+            (modules, args.race.or(req.race), Some(plan_json(catalog, &p, sunlight)?), sides)
         }
         _ => return Err("give either modules or from_plan".to_owned()),
     };
@@ -563,6 +574,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
         race: race.filter(|r| !r.is_empty() && r != "any"),
         layered: false,
         fewer_connectors: args.fewer_connectors.unwrap_or(false),
+        sides,
     };
     let r = layout::auto_place(catalog, design, &modules, &options).map_err(|e| e.to_string())?;
     let mut out = json!({
@@ -571,6 +583,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
         "unplaced": r.unplaced.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
         "docks_moved": r.docks_moved,
         "docks_blocked": r.docks_blocked,
+        "sides_blocked": r.sides_blocked,
         "plot": plot_status(design, catalog),
     });
     if !out["plot"]["fits"].as_bool().unwrap_or(true) {
@@ -582,9 +595,19 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
     Ok(out)
 }
 
+/// The sides asked for per module: (macro, sides).
+fn sides(list: &[ModuleCount]) -> Result<Vec<(String, Vec<Side>)>, String> {
+    let parse = |s: &String| Side::parse(s).ok_or_else(|| format!("unknown side {s}: use front, back, left, right, top or bottom"));
+    list.iter()
+        .filter_map(|m| m.sides.as_ref().filter(|s| !s.is_empty()).map(|s| Ok((m.r#macro.clone(), s.iter().map(parse).collect::<Result<_, _>>()?))))
+        .collect()
+}
+
 fn request(args: PlanArgs) -> Request {
     Request {
         targets: args.targets.into_iter().map(|t| (t.ware, t.modules)).collect(),
+        modules: args.extra_modules.unwrap_or_default().into_iter().map(|m| (m.r#macro, m.count)).collect(),
+        storage: args.storage.unwrap_or_default().into_iter().collect(),
         race: args.race.filter(|r| !r.is_empty() && r != "any"),
         workforce: args.workforce.unwrap_or(true),
         storage_hours: args.storage_hours.unwrap_or(6.0),

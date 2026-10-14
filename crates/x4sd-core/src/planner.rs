@@ -9,18 +9,22 @@ use crate::catalog::{Catalog, Module, ModuleInfo};
 use crate::economy::{analyze_modules, module_flows, Analysis};
 use crate::plan::Plan;
 use crate::wares::Cost;
-use crate::Result;
+use crate::{Error, Result};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Request {
     /// Wares to make: (ware, production modules to add).
     pub targets: Vec<(String, u32)>,
+    /// Other modules to add: (macro, count), e.g. ship fabrication bays or defence platforms.
+    pub modules: Vec<(String, u32)>,
     /// Preferred maker race of the modules; `None`: any.
     pub race: Option<String>,
     /// House the workforce: habitats, and the food and medicine they eat.
     pub workforce: bool,
     /// Storage for this many hours of everything the station makes and uses.
     pub storage_hours: f64,
+    /// At least this much storage per cargo type: (transport, m³), e.g. ("liquid", 200000.0).
+    pub storage: Vec<(String, f64)>,
     /// Wares to buy instead of making.
     pub buy: Vec<String>,
     /// Sector sunlight, 1.0 = 100%.
@@ -32,6 +36,7 @@ pub struct Request {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Role {
     Target,
+    Extra,
     Chain,
     Habitat,
     Storage,
@@ -42,6 +47,7 @@ impl Role {
     pub fn as_str(self) -> &'static str {
         match self {
             Role::Target => "target",
+            Role::Extra => "extra",
             Role::Chain => "chain",
             Role::Habitat => "habitat",
             Role::Storage => "storage",
@@ -117,13 +123,10 @@ pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Requ
     let habitat = best(candidates.iter().filter(|c| c.module.economy.housing.is_some()), race, |c| {
         c.module.economy.housing.as_ref().map_or(0.0, |h| f64::from(h.1))
     });
-    let storage = |transport: &str| {
-        best(
-            candidates.iter().filter(|c| matches!(c.module.economy.cargo.as_slice(), [(_, tags)] if tags.len() == 1 && tags[0] == transport)),
-            race,
-            |c| c.module.economy.cargo[0].0,
-        )
+    let stores = |transport: String| {
+        candidates.iter().filter(move |c| matches!(c.module.economy.cargo.as_slice(), [(_, tags)] if tags.len() == 1 && tags[0] == transport))
     };
+    let capacity = |c: &Candidate| c.module.economy.cargo[0].0;
     let dock = |class: &str| {
         best(
             candidates.iter().filter(|c| c.info.class == class && !["tradestation", "venturer"].iter().any(|k| c.info.macro_name.contains(k))),
@@ -138,6 +141,20 @@ pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Requ
         match producer(ware) {
             Some(c) => add(&mut added, c, *count, Role::Target),
             None => unknown_targets.push(ware.clone()),
+        }
+    }
+    for (macro_name, count) in &req.modules {
+        match candidates.iter().find(|c| c.info.macro_name.eq_ignore_ascii_case(macro_name)) {
+            Some(c) => add(&mut added, c, *count, Role::Extra),
+            None => {
+                let info = catalog
+                    .station_modules()?
+                    .into_iter()
+                    .find(|i| i.macro_name.eq_ignore_ascii_case(macro_name))
+                    .ok_or_else(|| Error(format!("not a station module: {macro_name}")))?;
+                let module = catalog.module(&info.macro_name)?;
+                add(&mut added, &Candidate { race: info.race.clone(), info, module }, *count, Role::Extra);
+            }
         }
     }
     let analyze = |added: &BTreeMap<String, Planned>| {
@@ -177,11 +194,29 @@ pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Requ
         }
     }
 
+    // Storage per type: the larger of the hours rule and the minimum asked for. The
+    // largest module covers the bulk, the smallest that covers it the rest.
     let a = analyze(&added)?;
-    for s in &a.storage {
-        let missing = s.volume_per_hour * req.storage_hours - s.capacity;
-        if let Some(st) = storage(&s.transport).filter(|_| missing > 0.0) {
-            add(&mut added, st, (missing / st.module.economy.cargo[0].0 - 1e-9).ceil() as u32, Role::Storage);
+    let mut needs: Vec<(String, f64, f64)> = a.storage.iter().map(|s| (s.transport.clone(), s.volume_per_hour * req.storage_hours, s.capacity)).collect();
+    for (transport, min) in &req.storage {
+        match needs.iter_mut().find(|n| n.0 == *transport) {
+            Some(n) => n.1 = n.1.max(*min),
+            None => needs.push((transport.clone(), *min, 0.0)),
+        }
+    }
+    for (transport, need, have) in needs {
+        let missing = need - have;
+        let Some(big) = best(stores(transport.clone()), race, capacity).filter(|_| missing > 0.5) else { continue };
+        let bulk = (missing / capacity(big)).floor();
+        if bulk > 0.0 {
+            add(&mut added, big, bulk as u32, Role::Storage);
+        }
+        let rest = missing - bulk * capacity(big);
+        let small = stores(transport)
+            .filter(|c| c.race == big.race && capacity(c) >= rest)
+            .min_by(|a, b| capacity(a).total_cmp(&capacity(b)).then(a.info.macro_name.cmp(&b.info.macro_name)));
+        if let Some(small) = small.filter(|_| rest > 0.5) {
+            add(&mut added, small, 1, Role::Storage);
         }
     }
     if !a.flows.is_empty() {

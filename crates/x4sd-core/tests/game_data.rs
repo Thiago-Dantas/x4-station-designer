@@ -268,9 +268,11 @@ fn production_planner() {
     assert!(producible.contains(&"hullparts".to_owned()) && !producible.contains(&"ore".to_owned()), "ore is mined");
     let req = |targets: &[(&str, u32)], race: Option<&str>, buy: &[&str]| Request {
         targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        modules: Vec::new(),
         race: race.map(str::to_owned),
         workforce: true,
         storage_hours: 6.0,
+        storage: Vec::new(),
         buy: buy.iter().map(|w| w.to_string()).collect(),
         sunlight: 1.0,
         method: "default".to_owned(),
@@ -412,9 +414,11 @@ fn auto_place_planned_stations() {
     let Some(c) = catalog() else { return };
     let req = |targets: &[(&str, u32)], race: Option<&str>| Request {
         targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        modules: Vec::new(),
         race: race.map(str::to_owned),
         workforce: true,
         storage_hours: 6.0,
+        storage: Vec::new(),
         buy: Vec::new(),
         sunlight: 1.0,
         method: "default".to_owned(),
@@ -476,9 +480,11 @@ fn fewer_connectors() {
     let Some(c) = catalog() else { return };
     let req = |targets: &[(&str, u32)], race: Option<&str>| Request {
         targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        modules: Vec::new(),
         race: race.map(str::to_owned),
         workforce: true,
         storage_hours: 6.0,
+        storage: Vec::new(),
         buy: Vec::new(),
         sunlight: 1.0,
         method: "default".to_owned(),
@@ -613,7 +619,7 @@ fn optimize_station() {
     use x4sd_core::planner::{module_counts, plan_production, Request};
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
     let yard = plans.iter().find(|p| p.name == "TerranScrapyard").unwrap();
-    let req = Request { targets: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
+    let req = Request { targets: Vec::new(), modules: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, storage: Vec::new(), buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
     let fixes: Vec<(String, u32)> = plan_production(c, &module_counts(yard), &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
     let class = |m: &str| c.module(m).unwrap().class.clone();
     let counts = |p: &x4sd_core::plan::Plan| {
@@ -987,7 +993,7 @@ fn optimize_keeps_zones_clear() {
     use x4sd_core::planner::{module_counts, plan_production, Request};
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
     let yard = plans.iter().find(|p| p.name == "megashipyard terran").unwrap();
-    let req = Request { targets: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
+    let req = Request { targets: Vec::new(), modules: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, storage: Vec::new(), buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
     let fixes: Vec<(String, u32)> = plan_production(c, &module_counts(yard), &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
     let counts = |p: &x4sd_core::plan::Plan| {
         let mut n: BTreeMap<String, u32> = BTreeMap::new();
@@ -1021,5 +1027,104 @@ fn optimize_keeps_zones_clear() {
         assert!(plot.is_allowed(), "{plot}");
         assert!(blocked.is_empty(), "{} blocked", blocked.len());
         assert_eq!(r.placement.docks_blocked, 0);
+    }
+}
+
+/// Planner extras (workflow-planner-extras): storage minimums (the largest module
+/// for the bulk, the smallest that covers the rest), extra modules (a ship bay and
+/// defence discs) planned with their workforce housed, and discs placed on their
+/// sides of the station with nothing in front of them.
+#[test]
+fn planner_extras() {
+    use x4sd_core::layout::{Body, Options, Side};
+    use x4sd_core::planner::{plan_production, Request, Role};
+    let Some(c) = catalog() else { return };
+    let req = |targets: &[(&str, u32)], modules: &[(&str, u32)], storage: &[(&str, f64)]| Request {
+        targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        modules: modules.iter().map(|(m, n)| (m.to_string(), *n)).collect(),
+        race: Some("argon".to_owned()),
+        workforce: true,
+        storage_hours: 6.0,
+        storage: storage.iter().map(|(t, v)| (t.to_string(), *v)).collect(),
+        buy: Vec::new(),
+        sunlight: 1.0,
+        method: "default".to_owned(),
+    };
+    let listed = |p: &x4sd_core::planner::ProductionPlan| -> Vec<(String, u32)> { p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect() };
+
+    // Storage alone: 1.2M container = L + M (250k), 500k solid = M, 200k liquid = M (500k).
+    let p = plan_production(c, &[], &req(&[], &[], &[("container", 1.2e6), ("solid", 5e5), ("liquid", 2e5)])).unwrap();
+    let mut got = listed(&p);
+    got.sort();
+    let want: Vec<(String, u32)> = [("storage_arg_l_container_01_macro", 1), ("storage_arg_m_container_01_macro", 1), ("storage_arg_m_liquid_01_macro", 1), ("storage_arg_m_solid_01_macro", 1)]
+        .iter()
+        .map(|(m, n)| (m.to_string(), *n))
+        .collect();
+    assert_eq!(got, want);
+
+    // With production: each type gets at least the minimum and at least 6 hours.
+    let p = plan_production(c, &[], &req(&[("hullparts", 2)], &[], &[("container", 1e6), ("solid", 5e5), ("liquid", 2e5)])).unwrap();
+    for s in &p.analysis.storage {
+        let min = [("container", 1e6), ("solid", 5e5), ("liquid", 2e5)].iter().find(|(t, _)| *t == s.transport).map_or(0.0, |x| x.1);
+        eprintln!("[storage] {}: {:.0} m³ for {:.0} m³/h, minimum {min:.0}", s.transport, s.capacity, s.volume_per_hour);
+        assert!(s.capacity >= min && s.capacity >= s.volume_per_hour * 6.0 - 1e-6, "{s:?}");
+    }
+
+    // Extras: an L fabrication bay and 6 discs, role extra, their workers housed.
+    let (bay, disc) = ("buildmodule_gen_ships_l_macro", "defence_arg_disc_01_macro");
+    let p = plan_production(c, &[], &req(&[("hullparts", 2)], &[(bay, 1), (disc, 6)], &[])).unwrap();
+    let role = |m: &str| p.modules.iter().find(|x| x.macro_name == m).map(|x| (x.role, x.count));
+    assert_eq!((role(bay), role(disc)), (Some((Role::Extra, 1)), Some((Role::Extra, 6))));
+    assert!(p.analysis.workforce_fill >= 1.0 - 1e-9, "{}", p.analysis.workforce_fill);
+
+    // Sides. Each disc has nothing in front of it. Off its half of the station only
+    // when counted in sides_blocked: on this small, tightly packed station some sides
+    // have no free snaps; on "100 solar" (many hubs) none is off, front/back too.
+    let solar = plan_production(c, &[], &req(&[("energycells", 100)], &[(bay, 1), (disc, 6)], &[])).unwrap();
+    let dir = |s: Side| match s {
+        Side::Front => [0.0, 0.0, 1.0],
+        Side::Back => [0.0, 0.0, -1.0],
+        Side::Left => [-1.0, 0.0, 0.0],
+        Side::Right => [1.0, 0.0, 0.0],
+        Side::Top => [0.0, 1.0, 0.0],
+        Side::Bottom => [0.0, -1.0, 0.0],
+    };
+    for (plan, sides) in [(&p, Side::ALL.to_vec()), (&solar, Side::ALL.to_vec()), (&solar, vec![Side::Front, Side::Back])] {
+        let mut d = Design::new(&format!("{} modules, 6 discs on {sides:?}", plan.modules.iter().map(|m| m.count).sum::<u32>()));
+        let options = Options { grow_plot: true, sides: vec![(disc.to_owned(), sides.clone())], ..Default::default() };
+        let r = place_and_check(c, &mut d, &listed(plan), &options);
+        assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+        let bodies: Vec<(u32, Body)> = d
+            .plan()
+            .entries
+            .iter()
+            .map(|e| (e.index, Body::new(&c.collision_boxes(&e.macro_name).unwrap(), &c.module(&e.macro_name).unwrap().snaps, &d.world(e.index).unwrap())))
+            .collect();
+        let discs: Vec<u32> = r.placed.iter().filter(|(_, m)| m == disc).map(|(i, _)| *i).collect();
+        assert_eq!(discs.len(), 6);
+        let mut off = 0;
+        for (k, index) in discs.iter().enumerate() {
+            let side = sides[k % sides.len()];
+            let v = dir(side);
+            let (l, h) = bodies.iter().find(|(i, _)| i == index).unwrap().1.bounds();
+            let mid: [f64; 3] = std::array::from_fn(|i| (l[i] + h[i]) / 2.0);
+            let out: f64 = (0..3).map(|i| mid[i] * v[i]).sum();
+            // Nothing in front: samples every 50 m from its face out to 3 km.
+            let face = (0..3).map(|i| if v[i] > 0.0 { h[i] } else { -l[i] }).sum::<f64>();
+            let in_front: Vec<u32> = bodies
+                .iter()
+                .filter(|(i, b)| i != index && (1..=60).any(|s| b.contains(std::array::from_fn(|j| if v[j] != 0.0 { v[j] * (face + s as f64 * 50.0) } else { mid[j] }))))
+                .map(|(i, _)| *i)
+                .collect();
+            eprintln!("disc #{index} {side:?}: centre {mid:.0?}, {out:.0} m out, in front: {in_front:?}");
+            assert!(in_front.is_empty());
+            // On its half: all of it beyond the centre plane (the origin here).
+            let near = (0..3).map(|i| if v[i] > 0.0 { l[i] } else if v[i] < 0.0 { -h[i] } else { 0.0 }).sum::<f64>();
+            off += u32::from(near <= 0.0);
+        }
+        assert_eq!(off, r.sides_blocked);
+        if plan == &solar {
+            assert_eq!(r.sides_blocked, 0);
+        }
     }
 }
