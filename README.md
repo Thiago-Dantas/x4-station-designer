@@ -1,8 +1,12 @@
+<p align="center"><img src="crates/x4sd/icons/icon.png" width="112" alt="X4 Station Designer icon"></p>
+
 # X4 Station Designer
 
 Design station construction plans for **X4: Foundations** outside the game, then import them in game like any other plan.
 
 `x4sd.exe` is one Windows program: a 3D station builder, a command line and an MCP server for AI agents. It reads the module catalogue, models and textures straight from your game install, including DLCs and enabled mods, so what you build uses the real modules and snap points.
+
+> **Vibe-coded, for fun.** This whole project was vibe-coded in a casual, just-for-fun way: an AI coding agent (Claude Code) wrote the code while I steered, tried things and said what I wanted next. It's tested against the game data and works for me, but it isn't a polished product. Expect rough edges, and treat the in-game results with the usual caution (see [Status](#status)).
 
 ![Building a station by attaching modules at their snaps](docs/media/build.gif)
 
@@ -86,3 +90,6 @@ cargo build -p x4sd --release   # target\release\x4sd.exe
 More in [docs/dev-setup.md](docs/dev-setup.md). How X4 stores construction plans, and what we found out about them, is in [docs/x4-construction-plans.md](docs/x4-construction-plans.md).
 
 X4: Foundations is a game by Egosoft. This is a fan-made tool, not affiliated with Egosoft. It reads the game's files and never changes them.
+
+## License
+[MIT](LICENSE): use, change and share the code as you like, keeping the copyright notice.

@@ -4,4 +4,4 @@ members = ["crates/*"]
 
 [workspace.package]
 edition = "2021"
-license = "UNLICENSED"
+license = "MIT"

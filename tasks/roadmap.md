@@ -83,7 +83,8 @@ Proposed order (each step usable on its own):
   - [x] GIFs of the main features in `docs/media/` (`research/record_gifs.py`; see [workflow-release-gifs.md](workflow-release-gifs.md))
   - [x] First placement backs the view off 5 km (user request during the recording)
   - [x] README.md with the GIFs, getting started, MCP and CLI
-  - [ ] Versioning, a license (none yet), the GitHub release with `x4sd.exe`
+  - [x] Version 1.0.0, MIT licence, social preview image (see [workflow-release.md](workflow-release.md))
+  - [ ] The GitHub release v1.0.0 with `x4sd.exe` (waiting for the user's `gh auth login`)
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 
 ## Later: live bridge (option D)
