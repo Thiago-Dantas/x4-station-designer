@@ -885,3 +885,35 @@ fn computes_patches_and_writes_import_file() {
     assert_eq!(&reread[0], plan);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn clearance_zones() {
+    use x4sd_core::layout::blocked_zones;
+    let Some(c) = catalog() else { return };
+    assert_eq!(c.exclusion_size("ship_xl"), Some([4000.0, 4000.0, 100_000.0]));
+    assert_eq!(c.exclusion_size("ship_m"), Some([180.0, 180.0, 500.0]));
+    let towards = |m: &str| -> Vec<(String, [f64; 3])> {
+        let m = c.module(m).unwrap();
+        m.clearance.iter().map(|z| (z.tag.clone(), z.transform.rotation.rotate([0.0, 0.0, 1.0]).map(|v| v.round()))).collect()
+    };
+    // The 3-Dock E Pier's three docks face away from its snaps (+X, ±Y).
+    assert_eq!(towards("pier_ter_harbor_03_macro"), vec![("ship_xl".to_owned(), [-1.0, 0.0, 0.0]); 3]);
+    // An XL bay opens at both ends, at right angles to its snaps (±X).
+    let bay = towards("buildmodule_ter_ships_xl_macro");
+    assert_eq!(bay.iter().map(|(_, d)| d[2]).collect::<Vec<_>>(), vec![1.0, -1.0], "{bay:?}");
+    assert!(towards("hab_ter_l_01_macro").is_empty());
+
+    // Calibration: the player's game-built plans block nothing (back-to-back piers
+    // are joined at a snap); our first Optimize of megashipyard terran blocked a lot.
+    let Some(plans) = sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml") else { return };
+    let start = Instant::now();
+    for plan in plans.iter().filter(|p| !p.name.starts_with("X4SD")) {
+        let blocked = blocked_zones(plan, c);
+        assert!(blocked.is_empty(), "[{}] {blocked:?}", plan.name);
+    }
+    eprintln!("player plans checked in {:?}", start.elapsed());
+    let Some(optimized) = sample("research/extracted/profile-samples/megashipyard terran2.xml") else { return };
+    let issues: Vec<String> = validate(&optimized[0], c).iter().filter(|i| matches!(i, Issue::BlocksZone { .. })).map(|i| i.to_string()).collect();
+    eprintln!("megashipyard terran2: {} blocked, e.g. {:?}", issues.len(), &issues[..3.min(issues.len())]);
+    assert!(issues.len() > 20 && issues.iter().any(|i| i.contains("approach of pier")) && issues.iter().any(|i| i.contains("exit of bay")));
+}

@@ -8,6 +8,10 @@
 //! diagonals), so `overlaps` (what `validate` reports) confirms each pair on the
 //! meshes themselves (`meshes_intersect`); auto-placement keeps the stricter box
 //! test. Calibration in docs/x4-construction-plans.md, "Overlaps".
+//!
+//! Exclusion zones (`zones`) are the space piers, bays and other modules keep free
+//! for ships (D-12): no other module may reach into them, unless it is joined at a
+//! snap to the zone's module. Calibration in the docs, "Clearance: exclusion zones".
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -133,6 +137,18 @@ impl Body {
         })
     }
 
+    /// Whether one of its boxes reaches more than the tolerance into `zone`.
+    pub fn blocks(&self, zone: &WorldBox) -> bool {
+        let tol = OVERLAP_TOLERANCE_M;
+        let (lo, hi) = self.bounds;
+        let whole = WorldBox {
+            centre: [0, 1, 2].map(|i| (lo[i] + hi[i]) / 2.0),
+            axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            half_extents: [0, 1, 2].map(|i| (hi[i] - lo[i]) / 2.0),
+        };
+        penetration(zone, &whole) > tol && self.boxes.iter().any(|b| penetration(zone, b) > tol)
+    }
+
     /// Whether one of its boxes reaches more than the tolerance into one of `area`'s boxes.
     fn enters(&self, area: &[Bounds]) -> bool {
         let tol = OVERLAP_TOLERANCE_M;
@@ -172,6 +188,50 @@ pub fn intersection_depth(a: &Body, b: &Body, min_depth: f64) -> Option<f64> {
         }
     }
     deepest
+}
+
+/// A module's exclusion zones at `at` (`Module::clearance`, sized by
+/// `Catalog::exclusion_size`): boxes `x` by `y` wide from each zone's connection
+/// along its +Z, `z` long. Zones of a class without a size are left out.
+pub fn zones(catalog: &Catalog, module: &Module, at: &Transform) -> Vec<WorldBox> {
+    module
+        .clearance
+        .iter()
+        .filter_map(|z| {
+            let [x, y, length] = catalog.exclusion_size(&z.tag)?;
+            let along = ShapeBox { transform: Transform { position: [0.0, 0.0, length / 2.0], rotation: Quat::IDENTITY }, half_extents: [x / 2.0, y / 2.0, length / 2.0] };
+            Some(WorldBox::new(&at.then(&z.transform), &along))
+        })
+        .collect()
+}
+
+/// Entries that block another's exclusion zone: (blocker, zone's entry), once per
+/// pair, in plan order of the zone's entry. A module never blocks its own zones, nor
+/// those of a module it is joined to at a snap. Unknown modules are left out.
+pub fn blocked_zones(plan: &Plan, catalog: &Catalog) -> Vec<(u32, u32)> {
+    let placed: Vec<(u32, Arc<Module>, Transform, Body)> = plan
+        .entries
+        .iter()
+        .filter_map(|e| {
+            let (module, boxes) = (catalog.module(&e.macro_name).ok()?, catalog.collision_boxes(&e.macro_name).ok()?);
+            let at = Transform::from_offset(e.offset.as_ref());
+            let body = Body::new(&boxes, &module.snaps, &at);
+            Some((e.index, module, at, body))
+        })
+        .collect();
+    let mut out = Vec::new();
+    for (owner, module, at, own) in &placed {
+        let zones = zones(catalog, module, at);
+        if zones.is_empty() {
+            continue;
+        }
+        for (other, _, _, body) in &placed {
+            if other != owner && !body.joined(own) && zones.iter().any(|z| body.blocks(z)) {
+                out.push((*other, *owner));
+            }
+        }
+    }
+    out
 }
 
 /// Pairs of entries whose modules overlap: their boxes intersect (`overlap`) and

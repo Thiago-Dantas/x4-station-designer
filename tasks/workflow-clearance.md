@@ -30,11 +30,13 @@ Status: **in progress** (2026-10-14): A (research) under way.
   - Shape not in the data; REA timed out on X4.exe. Calibration (`examples/zonecheck.rs`): a box, full widths, from the connection along +Z fits the user's game-built plans (4 intrusions in 144 zones, all back-to-back 1-dock piers joined at a snap) and the library (14 in 1538).
   - The build-menu status never checks zones; an import with blocked zones says "Everything is OK"; the engine's layout generator counts zone intersections as failures.
   - Largest-ship sizes not measured: the game's own zone sizes per class replace them.
-- [ ] Ask the user: shape, strictness (exempt joined modules?), severity in validate.
+- [x] Asked the user (2026-10-14), D-12: box as measured; modules joined at a snap to the zone's module are exempt; both ends of L/XL bays must be clear; validate reports a problem.
 
 ### B. Model
-- [ ] `catalog`: a clearance volume per module (pier approach, bay exit) in the module frame. Unit test on a few known macros.
-- [ ] `validate`: report modules that intrude into another module's clearance volume ("blocks the approach of pier #N" / "blocks the exit of bay #N"). Calibrate it on the user's saved, game-built plans (TerranScrapyard, megashipyard terran) before trusting it, the way the overlap rule was calibrated (D-9).
+- [x] `catalog`: a clearance volume per module (pier approach, bay exit) in the module frame. Unit test on a few known macros.
+- [x] `validate`: report modules that intrude into another module's clearance volume ("blocks the approach of pier #N" / "blocks the exit of bay #N"). Calibrate it on the user's saved, game-built plans (TerranScrapyard, megashipyard terran) before trusting it, the way the overlap rule was calibrated (D-9).
+
+- B done (2026-10-14): `Module::clearance`, `Catalog::exclusion_size`, `layout::zones`, `layout::blocked_zones`, `Issue::BlocksZone`. Game-data test `clearance_zones`: zone directions of the 3-Dock E Pier and the XL bay; the player's game-built plans block nothing; `megashipyard terran2` has 652 blocker/zone pairs ("entry 20: blocks the exit of bay 163").
 
 ### C. Placement and Optimize
 - [ ] `auto_place` / `optimize`:
