@@ -8,6 +8,7 @@
    preview math (`attachMatrix`) and the core's result go to <scratch dir>/snap-pick.json
 3. detach, Move…: the disc's own snaps show as orange cones; clicking one picks
    it; the move uses it
+4. the placed disc's *Connected by* (and C) changes its snap in place
 Screenshots go to <scratch dir>/snap-*.png.
 """
 import json
@@ -139,6 +140,24 @@ try:
     assert moved["attached"]["snap"] == picked
     time.sleep(0.5)
     cdp.screenshot(os.path.join(out, "snap-7-moved.png"))
+
+    # 4. Placed and selected: change its connecting snap in place (C, then the dropdown).
+    assert cdp.js("!document.getElementById('sel-snap-row').hidden && document.getElementById('sel-snap').value") == picked
+    key("c")
+    cdp.wait_for(STATUS + ".includes('now connects by')")
+    s = cdp.js("window.__TAURI_INTERNALS__.invoke('scene')")
+    after = next(e for e in s["entries"] if e["macro"] == disc["macro"])["attached"]
+    print("4. C:", after, "|", cdp.js(STATUS))
+    assert after["snap"] != picked and (after["to"], after["to_snap"]) == (moved["attached"]["to"], moved["attached"]["to_snap"])
+    cdp.js("{ const l = document.getElementById('sel-snap'); l.value = %r; l.dispatchEvent(new Event('change')) }" % top)
+    cdp.wait_for(STATUS + ".includes('now connects by top')")
+    s = cdp.js("window.__TAURI_INTERNALS__.invoke('scene')")
+    after = next(e for e in s["entries"] if e["macro"] == disc["macro"])["attached"]
+    print("   dropdown:", after)
+    assert after["snap"] == top and after["to_snap"] == moved["attached"]["to_snap"]
+    assert cdp.js("document.querySelector('#issues li').textContent") == "No problems found"
+    time.sleep(0.5)
+    cdp.screenshot(os.path.join(out, "snap-8-changed.png"))
     print("OK")
 finally:
     app.terminate()

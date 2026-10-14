@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
-import { api, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
+import { api, type Entry, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
 import { attachMatrix, CLASS_COLORS, type DiffuseTexture, modelGeometry, poseMatrix, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -251,6 +251,11 @@ function redraw() {
     $<HTMLButtonElement>("btn-twist-left").disabled = !a;
     $<HTMLButtonElement>("btn-twist-right").disabled = !a;
     $<HTMLButtonElement>("btn-detach").disabled = !a;
+    $("sel-snap-row").hidden = !a;
+    if (a) {
+      $<HTMLSelectElement>("sel-snap").replaceChildren(...connectableSnaps(sel).map(snapOption));
+      $<HTMLSelectElement>("sel-snap").value = a.snap;
+    }
     $<HTMLButtonElement>("btn-move").disabled = (scene.entries.length ?? 0) < 2;
     $<HTMLInputElement>("stage-end").checked = sel.stage_end;
   }
@@ -1197,6 +1202,27 @@ async function confirmDiscard(): Promise<boolean> {
   return ask(`"${scene.name}" has unsaved changes. Discard them?`, { title: "Unsaved changes", kind: "warning" });
 }
 
+/** Snaps a placed module can connect by: those not holding one of its own attached modules (its shape must be loaded). */
+function connectableSnaps(e: Entry): SnapInfo[] {
+  const held = new Set(scene!.entries.filter((x) => x.attached?.to === e.index).map((x) => x.attached!.to_snap.toLowerCase()));
+  return (shapes.get(e.macro.toLowerCase())?.snaps ?? []).filter((s) => !held.has(s.name.toLowerCase()));
+}
+
+/** Re-attaches the selected module by its snap `snap`, on the same spot with the same twist. */
+async function changeSnap(snap: string) {
+  const sel = entry(selected);
+  const a = sel?.attached;
+  if (!sel || !a || snap === a.snap) return;
+  const label = [...$<HTMLSelectElement>("sel-snap").options].find((o) => o.value === snap)?.text ?? snap;
+  await apply(api.reattachModule(sel.index, snap, a.to, a.to_snap, a.twist ?? 0), `${sel.name ?? sel.macro} now connects by ${label}`, false, true);
+}
+
+$<HTMLSelectElement>("sel-snap").addEventListener("change", (ev) => {
+  const list = ev.target as HTMLSelectElement;
+  list.blur(); // give the keys back
+  void changeSnap(list.value);
+});
+
 /** Move mode: the selected module (with everything on it) goes onto the next free snap clicked. */
 async function startMove() {
   const e = entry(selected);
@@ -1207,10 +1233,8 @@ async function startMove() {
   $("armed-title").textContent = "Moving";
   $("armed-name").textContent = e.name ?? e.macro;
   $("btn-place-root").hidden = true;
-  // Its snaps that don't hold one of its own attached modules.
-  const held = new Set(scene!.entries.filter((x) => x.attached?.to === e.index).map((x) => x.attached!.to_snap.toLowerCase()));
-  const snaps = (await shapeOf(e.macro)).snaps.filter((s) => !held.has(s.name.toLowerCase()));
-  $<HTMLSelectElement>("armed-snap").replaceChildren(...snaps.map(snapOption));
+  await shapeOf(e.macro);
+  $<HTMLSelectElement>("armed-snap").replaceChildren(...connectableSnaps(e).map(snapOption));
   if (e.attached) $<HTMLSelectElement>("armed-snap").value = e.attached.snap;
   status("Pick the snap it connects by (orange cones; C cycles, T twists), then click a free snap (cone) to move it there. Esc cancels.");
   renderPalette();
@@ -1619,6 +1643,11 @@ window.addEventListener("keydown", (ev) => {
   else if (key === "delete") void removeSelected();
   else if (key === "c" && (armed || moving !== null)) cycle("armed-snap", ev.shiftKey ? -1 : 1);
   else if (key === "t" && (armed || moving !== null)) cycle("armed-twist", ev.shiftKey ? -1 : 1);
+  else if (key === "c" && entry(selected)?.attached) {
+    const list = $<HTMLSelectElement>("sel-snap");
+    const n = list.options.length;
+    if (n > 1) void changeSnap(list.options[(list.selectedIndex + (ev.shiftKey ? -1 : 1) + n) % n].value);
+  }
   else if (key === "r") void twistSelected(ev.shiftKey ? -1 : 1);
   else if (key === "f") view.frame();
   else if (key === "escape") {

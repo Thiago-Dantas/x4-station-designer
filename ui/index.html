@@ -102,6 +102,7 @@
             <button id="btn-twist-right" title="Twist +90° (R)">⟳ 90°</button>
             <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
           </div>
+          <label id="sel-snap-row" hidden>Connected by <select id="sel-snap" title="Which of its snaps joins the module it is attached to; it stays on the same spot with the same twist (C / Shift+C)"></select></label>
           <label>Rotation step <select class="rot-step" title="Twist and rotation steps, in degrees"><option>90</option><option>45</option><option>30</option><option>15</option><option>5</option></select></label>
           <div class="row" id="gizmo-row" hidden>
             <button id="btn-gizmo-mode" title="Rotate gizmo: turn the module (and everything on it); an attached module turns about its joint and stays attached">Rotate</button>
@@ -178,7 +179,7 @@
           <ul id="issues"></ul>
         </section>
         <section class="help">
-          <p>Left drag, Q/E or arrow keys: rotate · Right drag: pan · W/S: forward/back · A/D: left/right · Z/X: down/up · Wheel: zoom<br />Click a module to select · Middle click: place more of that type · Del removes · R twists · While placing: C connecting snap, T twist</p>
+          <p>Left drag, Q/E or arrow keys: rotate · Right drag: pan · W/S: forward/back · A/D: left/right · Z/X: down/up · Wheel: zoom<br />Click a module to select · Middle click: place more of that type · Del removes · R twists · C connecting snap (T twist while placing)</p>
         </section>
       </aside>
     </main>
