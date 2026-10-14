@@ -84,7 +84,8 @@ Proposed order (each step usable on its own):
   - [x] First placement backs the view off 5 km (user request during the recording)
   - [x] README.md with the GIFs, getting started, MCP and CLI
   - [x] Version 1.0.0, MIT licence, social preview image (see [workflow-release.md](workflow-release.md))
-  - [ ] The GitHub release v1.0.0 with `x4sd.exe` (waiting for the user's `gh auth login`)
+  - [x] Draft GitHub release v1.0.0 with `x4sd.exe`
+  - [ ] The user publishes it and makes the repo public
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 
 ## Later: live bridge (option D)
