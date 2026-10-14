@@ -60,3 +60,6 @@ User, 2026-10-14:
 - 2026-10-14, user: the gizmo didn't show while a module was armed for placing. "clicking on the rotate gizmo should disarm the placement and enable rotation on the selected module, only if a module is selected".
   - The gizmo button now stays visible whenever a module is selected (not while moving, or with the build-order preview). Clicked while placing, it disarms and shows the rotate gizmo.
   - Its label follows whether the gizmo is showing: it said "Hide gizmo" while nothing showed.
+- 2026-10-14, user: "on the rotate gizmo, it only updates the view when i release the mouse click, i want the view to update as i drag".
+  - While a gizmo is dragged, the view moves the module and everything on it along (an attached one swings about its joint); the design still changes once, on release (one undo step).
+  - Checked by a real mouse drag over CDP on TerranScrapyard (rotation step 30°), for attached pier #2 and the root #1: mid-drag, before any edit was sent, the modules had turned; the screenshot after release showed the same pose.

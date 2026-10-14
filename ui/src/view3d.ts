@@ -90,6 +90,12 @@ export class View3D {
   private gizmo: TransformControls;
   private gizmoTarget = new THREE.Object3D();
   private onGizmoMoved: ((position: Vec3, rotation: Quat) => void) | null = null;
+  /** The joint an attached module turns about (Three.js frame); null: it turns about its origin. */
+  private gizmoPivot: THREE.Vector3 | null = null;
+  /** Modules that follow the gizmo while dragging: the selected one and everything on it. */
+  private gizmoCarries = new Set<number>();
+  /** While dragging: where the gizmo started, and the drawings it carries with their start matrices. */
+  private drag: { position: THREE.Vector3; quaternion: THREE.Quaternion; parts: { matrix: THREE.Matrix4; set: (m: THREE.Matrix4) => void }[] } | null = null;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -116,11 +122,14 @@ export class View3D {
     this.gizmo.setTranslationSnap(10);
     this.gizmo.addEventListener("dragging-changed", (ev) => {
       this.controls.enabled = !ev.value;
-      if (!ev.value && this.onGizmoMoved) {
+      this.drag = null;
+      if (ev.value) this.startDrag();
+      else if (this.onGizmoMoved) {
         const p = this.gizmoTarget.position;
         this.onGizmoMoved([p.x, p.y, -p.z], fromQuat(this.gizmoTarget.quaternion)); // back to the game's frame (mirror Z)
       }
     });
+    this.gizmo.addEventListener("objectChange", () => this.followGizmo());
     this.scene.add(this.gizmoTarget, this.gizmo.getHelper());
     this.bindPanKeys();
     this.fps.el.className = "fps";
@@ -302,9 +311,11 @@ export class View3D {
 
   /** Shows the gizmo on a module at `at` (game frame), or hides it with null:
    * `translate` moves it in 10 m steps, `rotate` turns it around its own axes in
-   * `stepDegrees` steps. `onMoved` gets the new position and rotation when a drag ends. */
+   * `stepDegrees` steps. While dragging, the modules in `carries` follow it (an
+   * attached module swings about its `joint`); `onMoved` gets the new position
+   * and rotation when the drag ends. */
   setGizmo(
-    at: { position: Vec3; rotation: Quat } | null,
+    at: { position: Vec3; rotation: Quat; joint: Vec3 | null; carries: Set<number> } | null,
     onMoved: ((position: Vec3, rotation: Quat) => void) | null = null,
     mode: "translate" | "rotate" = "translate",
     stepDegrees = 90,
@@ -314,6 +325,8 @@ export class View3D {
       this.gizmo.detach();
       return;
     }
+    this.gizmoPivot = at.joint ? toVec(at.joint) : null;
+    this.gizmoCarries = at.carries;
     this.gizmo.setMode(mode);
     this.gizmo.setSpace(mode === "rotate" ? "local" : "world");
     this.gizmo.setRotationSnap(THREE.MathUtils.degToRad(stepDegrees));
@@ -322,6 +335,44 @@ export class View3D {
       this.gizmoTarget.quaternion.copy(toQuat(at.rotation));
     }
     this.gizmo.attach(this.gizmoTarget);
+  }
+
+  /** Notes where the gizmo and the drawings it carries start a drag. */
+  private startDrag() {
+    const parts: NonNullable<typeof this.drag>["parts"] = [];
+    for (const o of this.station.children) {
+      if (o instanceof THREE.InstancedMesh) {
+        (o.userData.indices as number[]).forEach((index, i) => {
+          if (!this.gizmoCarries.has(index)) return;
+          const set = (m: THREE.Matrix4) => {
+            o.setMatrixAt(i, m);
+            o.instanceMatrix.needsUpdate = true;
+            o.boundingSphere = null; // recomputed when next needed (culling, picking)
+          };
+          parts.push({ matrix: o.getMatrixAt(i, new THREE.Matrix4()), set });
+        });
+      } else if (this.gizmoCarries.has(o.children[0]?.userData.index)) {
+        parts.push({ matrix: o.matrix.clone(), set: (m) => m.decompose(o.position, o.quaternion, o.scale) });
+      }
+    }
+    this.drag = { position: this.gizmoTarget.position.clone(), quaternion: this.gizmoTarget.quaternion.clone(), parts };
+  }
+
+  /** Moves the carried drawings with the gizmo while it is dragged; the design changes when the drag ends. */
+  private followGizmo() {
+    if (!this.drag) return;
+    const { position, quaternion, parts } = this.drag;
+    const one = new THREE.Vector3(1, 1, 1);
+    const turn = this.gizmoTarget.quaternion.clone().multiply(quaternion.clone().invert());
+    // An attached module swings about its joint, like the turn the design makes on release.
+    const at = this.gizmoPivot
+      ? position.clone().sub(this.gizmoPivot).applyQuaternion(turn).add(this.gizmoPivot)
+      : this.gizmoTarget.position;
+    const delta = new THREE.Matrix4()
+      .compose(at, this.gizmoTarget.quaternion, one)
+      .multiply(new THREE.Matrix4().compose(position, quaternion, one).invert());
+    const m = new THREE.Matrix4();
+    for (const p of parts) p.set(m.multiplyMatrices(delta, p.matrix));
   }
 
   /** Whether the pointer is on (or dragging) the gizmo: clicks there aren't picks. */

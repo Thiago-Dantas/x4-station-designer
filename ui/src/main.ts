@@ -194,7 +194,7 @@ function redraw() {
   // On the module itself, as in the game (an attached one still turns about its joint).
   const gizmoAt = !editable ? null : !root.attached || gizmoMode === "rotate" ? root.position : null;
   view.setGizmo(
-    gizmoAt ? { position: gizmoAt, rotation: root!.rotation } : null,
+    gizmoAt ? { position: gizmoAt, rotation: root!.rotation, joint: root!.attached?.joint ?? null, carries: subtree(root!.index) } : null,
     root
       ? (p, q) => {
           const name = root.name ?? root.macro;
