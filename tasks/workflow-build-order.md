@@ -22,4 +22,5 @@ See docs/x4-construction-plans.md, "Build order and stages":
 - [ ] In game: export a reordered plan and watch the build order (needs the user)
 
 ## Notes
+- 2026-10-14: user feedback: a pier at step 10 couldn't be built first, because it hung on a 9-module chain from the root. `build_first` now re-roots: it reverses that chain's links (offsets unchanged), so any module can be step 1. Unit test updated; checked on the user's 307-module plan (valid order, 0 issues).
 - 2026-10-13: the native drag path can't be automated, because CDP and synthetic events bypass the Windows OLE drop target that Tauri's handler occupied. The user needs to confirm it by hand.

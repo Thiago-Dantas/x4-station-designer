@@ -300,19 +300,31 @@ impl Design {
         Ok(position as u32)
     }
 
-    /// Builds entry `index` as early as possible: it and the chain of modules it
-    /// hangs on move to the front, in chain order; the rest keep their order.
-    /// Returns the module's new index.
+    /// Builds entry `index` first: the links from it to its root are reversed, so
+    /// it becomes the root and that chain hangs on it (offsets don't change). The
+    /// chain follows it in its new order; the rest keep theirs. Returns 1.
     pub fn build_first(&mut self, index: u32) -> Result<u32> {
         let mut chain = vec![index];
         while let Some(p) = &self.entry(*chain.last().unwrap())?.predecessor {
             chain.push(p.index);
         }
-        chain.reverse();
+        self.checkpoint();
+        let mut links = Vec::new();
+        for &i in &chain {
+            let e = self.entry_mut(i);
+            links.push((i, e.connection.take(), e.predecessor.take()));
+        }
+        for (child, connection, predecessor) in links {
+            if let Some(p) = predecessor {
+                let parent = self.entry_mut(p.index);
+                parent.connection = Some(p.connection);
+                parent.predecessor = connection.map(|c| Predecessor { index: child, connection: c });
+            }
+        }
         let rest = self.plan.entries.iter().map(|e| e.index).filter(|i| !chain.contains(i));
         let order: Vec<u32> = chain.iter().copied().chain(rest).collect();
-        self.apply_order(&order)?;
-        Ok(chain.len() as u32)
+        self.sort_and_renumber(&order);
+        Ok(1)
     }
 
     /// Builds entry `index` as late as possible: it and everything attached to
@@ -777,14 +789,20 @@ mod tests {
         assert_eq!(order(&d).iter().map(|o| o.0).collect::<Vec<_>>(), [1, 2, 3, 4]);
         assert_eq!(order(&d)[2].1, "cross");
         assert_eq!(order(&d)[3].2, Some(3), "the side beam still points at the cross");
-        // Build first: the side beam and the chain it hangs on (root, cross) come first.
-        assert_eq!(d.build_first(4).unwrap(), 3, "root, cross, then the side beam");
-        assert_eq!(order(&d).iter().map(|o| o.1.as_str()).collect::<Vec<_>>(), ["beam", "cross", "beam", "beam"]);
-        assert_eq!(order(&d)[2].2, Some(2), "the side beam right after its cross");
-        assert!(order(&d).iter().all(|(i, _, p)| p.is_none_or(|p| p < *i)), "every module after its predecessor");
+        // Build first: the side beam becomes the root; the cross hangs on it, the old
+        // root on the cross, and beam 2 still on the old root. Nothing moves.
+        let before: Vec<_> = d.plan().entries.iter().map(|e| e.offset.clone()).collect();
+        assert_eq!(d.build_first(4).unwrap(), 1);
+        assert_eq!(order(&d), [(1, "beam".to_owned(), None), (2, "cross".to_owned(), Some(1)), (3, "beam".to_owned(), Some(2)), (4, "beam".to_owned(), Some(3))]);
+        assert_eq!(d.plan().entries[0].connection, None);
+        let after: Vec<_> = d.plan().entries.iter().map(|e| e.offset.clone()).collect();
+        assert_eq!(after, [&before[3], &before[2], &before[0], &before[1]].map(Clone::clone));
         for i in 2..=4 {
             assert_attached(&d, &c, i);
         }
+        assert!(d.undo());
+        assert_eq!(order(&d)[0], (1, "beam".to_owned(), None), "undo puts the old root back");
+        assert!(d.redo());
         // Stages and undo.
         d.set_stage_end(2, true).unwrap();
         assert_eq!(d.plan().entries[1].bookmark.as_deref(), Some("1"));

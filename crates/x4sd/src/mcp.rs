@@ -376,7 +376,7 @@ impl Server {
         self.run(Op::MoveInBuildOrder { index: a.index, position: a.position })
     }
 
-    #[tool(description = "Build a module as early as possible: it and the chain of modules it hangs on move to the front. Modules are renumbered.")]
+    #[tool(description = "Build a module first: it becomes the root (the links from it to the old root are reversed, so that chain now hangs on it; nothing moves) and goes to the front, followed by that chain. Modules are renumbered.")]
     fn build_first(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
         self.run(Op::BuildFirst { index: a.index })
     }

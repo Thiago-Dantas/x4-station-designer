@@ -144,6 +144,8 @@ So:
   - **Unknown:** whether stages matter for a station the player builds through the build menu.
 - **Priorities** have no field in the format; a priority is a position in the order. Reordering is safe as long as every module stays after its predecessor (offsets are authoritative, so geometry doesn't change).
 - **Implemented:** `Design::move_in_build_order`, `build_first`, `build_last` and `set_stage_end` (core). They're in the builder's Build order tab and the MCP tools. Every reorder is checked so a module never comes before its predecessor, then the plan is renumbered.
+- **Re-rooting (2026-10-14).** `build_first` makes the module the root: each link on the path from it to the old root is reversed (the child's `connection` and the predecessor's snap swap roles), so that chain hangs on it, then it and the chain go to the front. Offsets don't change, so the geometry stays the same. Checked on a 307-module player plan: every module still comes after its predecessor, and validation finds no issues before or after.
+  - **Hypothesis:** the game accepts a root that isn't at the station origin and builds it first. Offsets are authoritative (test C), and 164 entries in real plans have no `connection`. Still to check in game.
 - **Still to check in game:** whether the builder follows the order, and whether stages matter for player builds.
 
 ## Plots (verified in the build menu Lua, 2026-10-13)
