@@ -407,10 +407,7 @@ pub struct Placement {
     pub connectors: Vec<(u32, String)>,
     /// Modules that found no place: (macro, count).
     pub unplaced: Vec<(String, u32)>,
-    /// Dock areas, piers and bays (modules that need clear space, `outer`) already on
-    /// the station that were placed again, outside.
-    pub docks_moved: u32,
-    /// Of those (new or moved), how many were left without clear space: no such spot.
+    /// Dock areas, piers and bays placed without clear space: no such spot.
     pub docks_blocked: u32,
     /// Modules placed on a side (`Options::sides`) that found no spot on that half
     /// of the station with a clear lane out (a tightly packed station may have no
@@ -454,12 +451,10 @@ pub struct Options {
 /// `FEWER_HUBS_PENALTY_M`), onto a new hub (or a straight connection structure and
 /// a hub) on a free snap.
 ///
-/// Docks and bays stay reachable: every run first lifts off the modules that need
-/// clear space (`outer`) and have nothing attached, and places them again last,
-/// where their exclusion zones (`zones`) and, for dock areas and piers, their
+/// Docks and bays stay reachable: the modules that need clear space (`outer`) go
+/// last, where their exclusion zones (`zones`) and, for dock areas and piers, their
 /// corridor (`corridor`) are clear; no module may enter a placed module's zones or
-/// corridor. A lifted module
-/// keeps its equipment, and goes back where it was if it fits nowhere.
+/// corridor. Modules already on the station stay where they are.
 pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u32)], options: &Options) -> Result<Placement> {
     let history = design.history_len();
     let mut order: Vec<ToPlace> = Vec::new();
@@ -470,7 +465,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
             Ok(m) if !m.snaps.is_empty() => {
                 let s = size(&m);
                 let sides: Vec<Side> = options.sides.iter().filter(|(x, _)| x.eq_ignore_ascii_case(macro_name)).flat_map(|(_, s)| s).copied().collect();
-                order.extend((0..*count as usize).map(|i| (m.clone(), s, None, (!sides.is_empty()).then(|| sides[i % sides.len()]))));
+                order.extend((0..*count as usize).map(|i| (m.clone(), s, (!sides.is_empty()).then(|| sides[i % sides.len()]))));
             }
             _ => out.unplaced.push((macro_name.clone(), *count)),
         }
@@ -478,15 +473,8 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     if order.is_empty() {
         return Ok(out);
     }
-    while let Some(index) = lift_candidate(catalog, design) {
-        let e = design.plan().entries.iter().find(|e| e.index == index).unwrap();
-        let (m, at, upgrades) = (catalog.module(&e.macro_name)?, design.world(index)?, e.upgrades.clone());
-        let s = size(&m);
-        order.push((m, s, Some((at, upgrades)), None));
-        design.remove(catalog, index)?;
-    }
     let rank = |m: &Module, side: Option<Side>| if side.is_some() { 3 } else if options.layered { layer(m) } else { u8::from(outer(m)) * 2 };
-    order.sort_by(|(a, sa, _, da), (b, sb, _, db)| rank(a, *da).cmp(&rank(b, *db)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
+    order.sort_by(|(a, sa, da), (b, sb, db)| rank(a, *da).cmp(&rank(b, *db)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
 
     let all = candidates(catalog)?;
     let race = options.race.clone().or_else(|| common_race(&all, order.iter().map(|o| o.0.macro_name.as_str())));
@@ -502,7 +490,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
 
     let mut unplaced: BTreeMap<String, u32> = BTreeMap::new();
     let mut current = None;
-    for (module, _, lifted, side) in &order {
+    for (module, _, side) in &order {
         // In layers, defensible modules wrap the core of those without slots. Docks
         // go nearest the centre with a clear corridor, which puts them outside.
         if current != Some(layer(module)) {
@@ -510,24 +498,12 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
             placer.shell = if options.layered && layer(module) == 1 { placer.core_radius() } else { 0.0 };
         }
         placer.side = *side;
-        match (placer.place(design, &connectors, module)?, lifted) {
-            (Some((index, added)), None) => {
+        match placer.place(design, &connectors, module)? {
+            Some((index, added)) => {
                 out.placed.push((index, module.macro_name.clone()));
                 out.connectors.extend(added);
             }
-            (Some((index, added)), Some((_, upgrades))) => {
-                design.restore_upgrades(index, upgrades.clone());
-                out.docks_moved += 1;
-                out.connectors.extend(added);
-            }
-            (None, None) => *unplaced.entry(module.macro_name.clone()).or_default() += 1,
-            (None, Some((at, upgrades))) => {
-                // Nowhere else: back where it was (no longer attached; the snap may be taken).
-                let index = design.add_root(catalog, &module.macro_name, *at)?;
-                design.restore_upgrades(index, upgrades.clone());
-                placer.add(design, index)?;
-                placer.blocked += 1;
-            }
+            None => *unplaced.entry(module.macro_name.clone()).or_default() += 1,
         }
     }
     out.unplaced.extend(unplaced);
@@ -537,20 +513,8 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     Ok(out)
 }
 
-/// A module to place: (module, size, for a lifted dock: where it was and its
-/// equipment, the side of the station it goes on).
-type ToPlace = (Arc<Module>, f64, Option<(Transform, Vec<Upgrade>)>, Option<Side>);
-
-/// A dock area, pier or bay (`outer`) with nothing attached to it, which a
-/// placement run lifts off to place again outside.
-fn lift_candidate(catalog: &Catalog, design: &Design) -> Option<u32> {
-    let entries = &design.plan().entries;
-    entries
-        .iter()
-        .filter(|e| catalog.module(&e.macro_name).is_ok_and(|m| outer(&m)))
-        .find(|e| !entries.iter().any(|x| x.predecessor.as_ref().is_some_and(|p| p.index == e.index)))
-        .map(|e| e.index)
-}
+/// A module to place: (module, size, the side of the station it goes on).
+type ToPlace = (Arc<Module>, f64, Option<Side>);
 
 /// A dock's clearance corridor: its box (`bounds`) swept `DOCK_CLEARANCE_M` straight
 /// out from the station's centre, as overlapping boxes. `None` at the centre.
@@ -802,7 +766,7 @@ struct Placer<'a> {
     /// Exclusion zones on the station that are clear, with the body they belong to:
     /// no module may enter them, unless it is joined to that body.
     zones: Vec<(usize, WorldBox)>,
-    /// Outer modules placed (or put back) without clear space.
+    /// Outer modules placed without clear space.
     blocked: u32,
     /// What "nearest" means: the centre of the station as it was (the origin for
     /// an empty design), so an off-centre station grows around itself.
@@ -846,7 +810,7 @@ impl<'a> Placer<'a> {
             }
         }
         placer.heart = placer.centre();
-        // Docks and bays that stay (something is attached to them) keep their space clear.
+        // Docks and bays on the station keep their space clear.
         for e in &design.plan().entries {
             if catalog.module(&e.macro_name).is_ok_and(|m| outer(&m)) {
                 placer.protect(design, e.index)?;

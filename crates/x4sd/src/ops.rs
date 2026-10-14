@@ -649,7 +649,6 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs, b
         "placed": r.placed.iter().map(|(i, m)| json!({"index": i, "macro": m})).collect::<Vec<_>>(),
         "connectors": r.connectors.iter().map(|(i, m)| json!({"index": i, "macro": m})).collect::<Vec<_>>(),
         "unplaced": r.unplaced.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
-        "docks_moved": r.docks_moved,
         "docks_blocked": r.docks_blocked,
         "sides_blocked": r.sides_blocked,
         "plot": plot_status(design, catalog),

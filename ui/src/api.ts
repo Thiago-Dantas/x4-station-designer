@@ -53,8 +53,6 @@ export interface Placement {
   placed: { index: number; macro: string }[];
   connectors: { index: number; macro: string }[];
   unplaced: { macro: string; count: number }[];
-  /** Docks and piers already there that were placed again, outside. */
-  docks_moved: number;
   /** Docks and piers left without a clear corridor (no such spot). */
   docks_blocked: number;
   /** Modules with sides that found no spot on their side with a clear view out. */

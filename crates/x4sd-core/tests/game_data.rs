@@ -343,20 +343,17 @@ fn place_and_check(c: &Catalog, d: &mut Design, modules: &[(String, u32)], optio
     let connector_cost = w.cost(r.connectors.iter().map(|(_, m)| (m.as_str(), 1.0)), "default").value;
     let plot = required_plot(d.plan(), c).unwrap();
     eprintln!(
-        "[{}] placed {} in {elapsed:?} with connectors {connectors:?} ({:.1}% of the {:.1} M Cr station); docks moved {}, blocked {}; unplaced {:?}; plot {plot}",
+        "[{}] placed {} in {elapsed:?} with connectors {connectors:?} ({:.1}% of the {:.1} M Cr station); docks blocked {}; unplaced {:?}; plot {plot}",
         d.plan().name,
         r.placed.len(),
         100.0 * connector_cost / total_cost,
         total_cost / 1e6,
-        r.docks_moved,
         r.docks_blocked,
         r.unplaced
     );
-    // Every module that was there stays where it was, except docks and piers (lifted
-    // off and placed again, so entries may be renumbered); nothing is lost.
-    let dock = |m: &str| ["pier", "dockarea"].contains(&c.module(m).unwrap().class.as_str());
-    let same = |a: &x4sd_core::plan::Entry, b: &x4sd_core::plan::Entry| a.macro_name == b.macro_name && a.offset == b.offset;
-    for b in before.entries.iter().filter(|b| !dock(&b.macro_name)) {
+    // Every module that was there, docks and piers too, stays where it was.
+    let same = |a: &x4sd_core::plan::Entry, b: &x4sd_core::plan::Entry| a.index == b.index && a.macro_name == b.macro_name && a.offset == b.offset;
+    for b in &before.entries {
         assert!(d.plan().entries.iter().any(|e| same(e, b)), "#{} {} moved", b.index, b.macro_name);
     }
     assert_eq!(d.plan().entries.len(), before.entries.len() + r.placed.len() + r.connectors.len());
@@ -378,19 +375,29 @@ fn place_and_check(c: &Catalog, d: &mut Design, modules: &[(String, u32)], optio
 /// The last two entries are a dock area and a pier, and the line from the station
 /// centre out through each, for 3 km, passes through no other module.
 fn assert_docks_outside(c: &Catalog, d: &Design) {
-    use x4sd_core::layout::Body;
     let class = |e: &x4sd_core::plan::Entry| c.module(&e.macro_name).unwrap().class.clone();
     assert!(d.plan().entries.iter().rev().take(2).all(|e| ["pier", "dockarea"].contains(&class(e).as_str())));
+    let docks: Vec<u32> = d.plan().entries.iter().rev().take(2).map(|e| e.index).collect();
+    assert_clear_out(c, d, &docks, station_centre(c, d));
+}
+
+/// The centre of the station's bounds.
+fn station_centre(c: &Catalog, d: &Design) -> [f64; 3] {
+    let parts: Vec<_> = d.plan().entries.iter().filter_map(|e| x4sd_core::plot::entry_bounds(d.plan(), c, e.index)).collect();
+    let (lo, hi) = parts.iter().fold(parts[0], |(l, h), (a, b)| (std::array::from_fn(|i| l[i].min(a[i])), std::array::from_fn(|i| h[i].max(b[i]))));
+    std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0)
+}
+
+/// The line from `station` out through each of `docks`, for 3 km, passes through no other module.
+fn assert_clear_out(c: &Catalog, d: &Design, docks: &[u32], station: [f64; 3]) {
+    use x4sd_core::layout::Body;
     let bodies: Vec<(u32, Body)> = d
         .plan()
         .entries
         .iter()
         .map(|e| (e.index, Body::new(&c.collision_boxes(&e.macro_name).unwrap(), &c.module(&e.macro_name).unwrap().snaps, &d.world(e.index).unwrap())))
         .collect();
-    let parts: Vec<_> = d.plan().entries.iter().filter_map(|e| x4sd_core::plot::entry_bounds(d.plan(), c, e.index)).collect();
-    let (lo, hi) = parts.iter().fold(parts[0], |(l, h), (a, b)| (std::array::from_fn(|i| l[i].min(a[i])), std::array::from_fn(|i| h[i].max(b[i]))));
-    let station: [f64; 3] = std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0);
-    for (index, body) in bodies.iter().rev().take(2) {
+    for (index, body) in bodies.iter().filter(|(i, _)| docks.contains(i)) {
         let (l, h) = body.bounds();
         let mid: [f64; 3] = std::array::from_fn(|i| (l[i] + h[i]) / 2.0);
         let out: [f64; 3] = std::array::from_fn(|i| mid[i] - station[i]);
@@ -438,14 +445,16 @@ fn auto_place_planned_stations() {
     // Docks are placed last, so they come last in the build order, with nothing in
     // their way out from the station centre.
     assert_docks_outside(c, &d);
-    // A second run (10 more solar modules) lifts the docks off and places them
-    // outside the grown station again.
-    let docks = |d: &Design| d.plan().entries.iter().filter(|e| ["pier", "dockarea"].contains(&c.module(&e.macro_name).unwrap().class.as_str())).count();
-    let before = docks(&d);
+    // A second run (10 more solar modules) leaves the docks where they are
+    // (place_and_check: nothing moves) and keeps their space clear: the pier's
+    // exclusion zones, and the dock area's corridor out from the station as it was.
+    let dock_areas: Vec<u32> = d.plan().entries.iter().filter(|e| c.module(&e.macro_name).unwrap().class == "dockarea").map(|e| e.index).collect();
+    let centre = station_centre(c, &d);
     let more = place_and_check(c, &mut d, &[("prod_gen_energycells_macro".to_owned(), 10)], &grow);
-    eprintln!("second run: {} placed, {} docks moved, {} without a clear corridor", more.placed.len(), more.docks_moved, more.docks_blocked);
-    assert_eq!((more.placed.len(), more.docks_moved, more.docks_blocked, docks(&d)), (10, 2, 0, before));
-    assert_docks_outside(c, &d);
+    eprintln!("second run: {} placed, {} without a clear corridor", more.placed.len(), more.docks_blocked);
+    assert_eq!((more.placed.len(), more.docks_blocked), (10, 0));
+    assert_eq!(x4sd_core::layout::blocked_zones(d.plan(), c), Vec::<(u32, u32)>::new());
+    assert_clear_out(c, &d, &dock_areas, centre);
     let path = std::env::temp_dir().join("x4sd-auto-place.xml");
     std::fs::write(&path, x4sd_core::plan::write_plans(std::slice::from_ref(d.plan()))).unwrap();
     eprintln!("saved to {}", path.display());

@@ -58,7 +58,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - **Place all (N)** attaches every module still to place at once (auto-placement).
     - Modules go onto free snaps at exact positions, clear of each other, with connection structures of the plan's race added where needed. The largest go first; dock areas, piers and bays go last, where they have clear space.
     - The station may outgrow the plot (up to 20 km per axis); the builder then offers to enlarge it.
-    - Every Place all also moves the dock areas, piers and bays that have nothing attached to the outside, where their exclusion zones are clear (the space ships use to dock or leave; see Checks). Dock areas also need a 3 km corridor out from the station. Modules carrying other modules stay. No module is ever placed in a zone or a dock's corridor. The status line says how many docks and bays moved, and warns if one has no clear space.
+    - The station's modules stay where they are, docks, piers and bays too (D-18). New dock areas, piers and bays go last, where their exclusion zones are clear (the space ships use to dock or leave; see Checks); dock areas also need a 3 km corridor out from the station. No module is ever placed in a zone or a dock's corridor, the station's own docks included. The status line warns if a dock or bay has no clear space.
     - What found no room is listed under the button. Ctrl+Z undoes the whole placement.
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
     - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
@@ -67,14 +67,15 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - First it only shows a **plan**: the modules that cover the station's shortfalls, by role. Nothing changes yet. Trim it:
       - *Buy* on a production-chain row buys that ware instead and plans again, so modules that only fed it drop out too (the chip above *Generate* makes it again);
       - ✕ on a habitat, storage or dock row leaves those modules out.
-    - **Apply plan** adds what is left, then re-places the station's modules **in layers**, as one undo step:
+    - **Apply plan** adds what is left, as one undo step. With **Rebuild connection structures** off (default), that is all: the new modules go onto free snaps like *Place all*, and the station's modules stay where they are (D-18). What finds no room is listed under the button.
+    - With **Rebuild connection structures** on, Apply plan also re-lays the whole station out **in layers**, rebuilding its connection structures from scratch (often more compact):
       - those that can't carry turrets or shields (habitats, welfare…) in the middle;
       - defensible ones (production, storage, defence) wrapped around them;
       - dock areas, piers and fabrication/maintenance bays outermost, with their approaches and exits clear (both ends of an L/XL bay).
-    - Equipment stays with each module type.
-    - **Rebuild connection structures** off (default) keeps the station's connection structures, and the modules carrying them, so the station keeps its shape; on, they are rebuilt from scratch.
-    - If anything finds no room, nothing changes and the status line says what didn't fit.
-    - Afterwards the plot is **fitted to the station** (the smallest that holds it), without asking. Like every plot change, undo doesn't restore the old plot.
+      - equipment stays with each module type;
+      - if anything finds no room, nothing changes and the status line says what didn't fit.
+      - (MCP `optimize_station` also has a middle mode, `keep_shape`: keep the connection structures and re-place what hangs on them. The builder doesn't use it.)
+    - Either way, afterwards the plot is **fitted to the station** (the smallest that holds it), without asking. Like every plot change, undo doesn't restore the old plot.
     - Layers make a larger station than *Place all*, which packs biggest first. TerranScrapyard plus its fixes: 9–11 km per axis.
   - **Fewer connection structures** (off by default, remembered) applies to *Place all* and *Optimize*. A new connection structure is added only when it brings a module 4 km nearer the centre, instead of 2 km. That means about half as many connection structures (less in-game load, see *In-game load*) but a larger station. "100 solar, staffed": 37 instead of 81 (11×12×13 km instead of 9×8×8). TerranScrapyard rebuilt by Optimize: 1 instead of 56 (288 modules instead of 343; 14×16×12 km instead of 10×10×10).
 - **Right pane sections** fold: click a section's title (▸/▾). Equipment, Build cost, Production, In-game load, Plot and Checks start folded on every start; the controls help at the bottom always shows. *Checks* shows the number of problems in its title. *Selected* and *Placing* open when they apply; the Equipment list inside *Selected* starts folded.

@@ -940,13 +940,15 @@ function renderOptimizePlan() {
   $("planner-place").hidden = true;
   $("planner-apply").hidden = false;
   const total = kept.reduce((s, m) => s + m.count, 0);
-  $("planner-apply").textContent = total ? `Apply plan (+${total})` : "Apply plan (re-layout only)";
+  const rebuild = $<HTMLInputElement>("optimize-rebuild").checked;
+  $<HTMLButtonElement>("planner-apply").disabled = !total && !rebuild;
+  $("planner-apply").textContent = total ? `Apply plan (+${total})` : rebuild ? "Apply plan (re-layout only)" : "Apply plan";
   const short = result.analysis.flows.filter((f) => f.net < -0.5 && !f.raw).map((f) => `${f.name} ${n(-f.net)}`).join(", ");
   $("planner-summary").textContent =
     `Optimize: ${total ? `${total} modules to add · ≈ ${n(result.cost.value)} Cr` : "nothing to add, the station covers its needs"}` +
     (short ? `\nTo buy per hour: ${short}` : "") +
     (optimize!.dropped.size ? "\nRemoved rows aren't counted in these figures" : "") +
-    "\nApply plan adds them and re-places the station's modules in layers.";
+    (rebuild ? "\nApply plan adds them and rebuilds the station in layers." : "\nApply plan adds them at free snaps; the station's modules stay where they are.");
 }
 
 /** Plans the targets. `fresh` (Generate plan): a new plan for the design as it is
@@ -990,7 +992,13 @@ async function placeAll() {
   // Sides as picked now, so they can change without planning again.
   const sides = (macro: string) => planner.extras.find((x) => x.macro.toLowerCase() === macro.toLowerCase())?.sides ?? [];
   const todo = plan.result.modules.map((m) => ({ macro: m.macro, count: m.count - placedOf(m, now), sides: sides(m.macro) })).filter((m) => m.count > 0);
-  if (!todo.length) return;
+  if (todo.length) await placeModules(todo, true);
+}
+
+/** Auto-places `todo` (one undo step; the station's modules stay where they are)
+ * and reports it. `offerPlot`: offer a bigger plot if the station outgrew its own.
+ * False if it failed. */
+async function placeModules(todo: { macro: string; count: number; sides?: string[] }[], offerPlot: boolean): Promise<boolean> {
   status(`Placing ${todo.reduce((s, m) => s + m.count, 0)} modules…`);
   let note = "";
   await apply(
@@ -1000,7 +1008,6 @@ async function placeAll() {
       note =
         `Placed ${p.placed.length} modules` +
         (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
-        (p.docks_moved ? `; moved ${p.docks_moved} docks and bays outside` : "") +
         (p.docks_blocked ? `. ${p.docks_blocked} docks or bays have no clear space` : "") +
         (p.sides_blocked ? `. ${p.sides_blocked} modules couldn't go on their side (no free snaps there with a clear view out): move them by hand` : "") +
         (left ? `. No room for ${left}` : "");
@@ -1008,10 +1015,11 @@ async function placeAll() {
     }),
     undefined,
     true,
-    true,
+    offerPlot,
   );
   $("planner-placed").textContent = note;
   if (note) status(note, note.includes("No room") || note.includes("no clear approach") || note.includes("by hand") ? "error" : "good");
+  return note !== "";
 }
 
 async function loadPlanner() {
@@ -1183,6 +1191,7 @@ $<HTMLInputElement>("planner-hours").onchange = (ev) => {
   savePlanner();
 };
 $("planner-generate").onclick = () => void generatePlan(true);
+$("optimize-rebuild").onchange = () => plan?.optimize && renderPlanner();
 
 interface Optimized { added: { macro: string; count: number }[]; moved: number; connectors_removed: number; connectors_added: number; docks_blocked: number; plot: { plot: { text: string } | null } }
 
@@ -1195,41 +1204,48 @@ $("planner-optimize").onclick = () => {
   void generatePlan(true, true);
 };
 
-/** Apply plan: add the Optimize plan's modules, re-lay the station out in layers, fit the plot. */
+/** Apply plan: add the Optimize plan's modules and fit the plot. With Rebuild
+ * connection structures, the station is re-laid out in layers too. */
 $("planner-apply").onclick = async () => {
   if (!plan?.optimize) return;
-  status("Optimizing…");
-  let note = "";
-  await apply(
-    api
-      .runOp<Optimized>({
-        op: "optimize_station",
-        race: planner.race || null,
-        workforce: planner.workforce,
-        storage_hours: planner.hours,
-        buy: planner.buy,
-        sunlight,
-        method: buildMethod,
-        keep_shape: !$<HTMLInputElement>("optimize-rebuild").checked,
-        fewer_connectors: planner.fewerConnectors,
-        modules: optimizeModules().map((m) => ({ macro: m.macro, count: m.count })),
-      })
-      .then((r) => {
-        const o = r.result;
-        const added = o.added.reduce((s, a) => s + a.count, 0);
-        note =
-          `Optimized: re-placed ${o.moved} modules` +
-          (added ? `, added ${added} to cover shortfalls` : ", no shortfalls to cover") +
-          `; connection structures −${o.connectors_removed} +${o.connectors_added}` +
-          (o.docks_blocked ? `. ${o.docks_blocked} docks or bays have no clear space` : "") +
-          (o.plot.plot ? `; plot fitted: ${o.plot.plot.text}` : "");
-        return r.scene!;
-      }),
-    undefined,
-    true,
-  );
-  if (!note) return;
-  status(note, note.includes("no clear approach") ? "error" : "good");
+  const modules = optimizeModules().map((m) => ({ macro: m.macro, count: m.count }));
+  if (!$<HTMLInputElement>("optimize-rebuild").checked) {
+    if (!modules.length || !(await placeModules(modules, false))) return;
+    await apply(api.fitPlot(false));
+  } else {
+    status("Optimizing…");
+    let note = "";
+    await apply(
+      api
+        .runOp<Optimized>({
+          op: "optimize_station",
+          race: planner.race || null,
+          workforce: planner.workforce,
+          storage_hours: planner.hours,
+          buy: planner.buy,
+          sunlight,
+          method: buildMethod,
+          keep_shape: false,
+          fewer_connectors: planner.fewerConnectors,
+          modules,
+        })
+        .then((r) => {
+          const o = r.result;
+          const added = o.added.reduce((s, a) => s + a.count, 0);
+          note =
+            `Optimized: re-placed ${o.moved} modules` +
+            (added ? `, added ${added} to cover shortfalls` : ", no shortfalls to cover") +
+            `; connection structures −${o.connectors_removed} +${o.connectors_added}` +
+            (o.docks_blocked ? `. ${o.docks_blocked} docks or bays have no clear space` : "") +
+            (o.plot.plot ? `; plot fitted: ${o.plot.plot.text}` : "");
+          return r.scene!;
+        }),
+      undefined,
+      true,
+    );
+    if (!note) return;
+    status(note, note.includes("no clear approach") ? "error" : "good");
+  }
   // The plan (if any) was for the station before: start over.
   plan = null;
   $("planner-result").replaceChildren();

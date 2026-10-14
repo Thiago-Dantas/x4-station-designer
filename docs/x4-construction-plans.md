@@ -282,12 +282,11 @@ The red volume the build menu draws in front of a pier while you move it is an *
   - **Docks stay reachable** (user request, 2026-10-14):
     - A dock area or pier needs a **clear corridor**: its own box swept 3 km straight out from the station's centre, clear of other modules' collision boxes.
     - No module (or connection structure) may enter the corridor of a dock already on the station.
-    - **Every run reworks docks.** It first lifts off the dock areas and piers with nothing attached and places them again last, at the nearest spot with a clear corridor. They keep their equipment.
-    - Docks that carry other modules stay where they are, and their corridors are protected.
-    - A lifted dock that fits nowhere goes back to its old position, free-standing.
-    - The run reports `docks_moved` and `docks_blocked` (placed without a clear corridor because there was no such spot).
+    - **Docks already on the station stay where they are** (D-18, 2026-10-14). Until then every run lifted off the dock areas, piers and bays with nothing attached and placed them again outside, so *Place all* moved the station's own docks. Now their corridors (from the station's centre before the run) and zones are protected instead, if they are clear at the start.
+    - New dock areas and piers go last, at the nearest spot with a clear corridor.
+    - The run reports `docks_blocked` (placed without a clear corridor because there was no such spot).
     - **Hypothesis:** a 3 km corridor straight out is enough room for ships to reach them. Not checked in game.
-  - **Clearance** (D-12, 2026-10-14; see "Clearance: exclusion zones"): modules that need clear space (`layout::outer`: dock areas, piers, and every module with exclusion zones, such as fabrication and maintenance bays) form the outer layer, go last, and are lifted and re-placed on every run like docks.
+  - **Clearance** (D-12, 2026-10-14; see "Clearance: exclusion zones"): modules that need clear space (`layout::outer`: dock areas, piers, and every module with exclusion zones, such as fabrication and maintenance bays) form the outer layer and go last; those already on the station stay, with their zones protected.
     - They are placed where all their zones are clear of modules not joined to them; their zones are then protected like corridors.
     - The 3 km corridor stays for dock areas and piers whose zones are all shorter than it (M dock areas: 500 m up). Without it a dock area sat among the "100 solar" panels with only a clear column above it. Piers don't need it (100 km zones); requiring it too left 6 modules of the megashipyard without a spot.
     - Game-data test `optimize_keeps_zones_clear`, the user's megashipyard terran plus its 147 fixes: keep shape 483 entries, 19×20×12 km, 6 s; rebuild 351 entries, 11×12×16 km, 7–11 s. Both: no zone blocked, nothing lost, no overlaps. The builder shows "No problems found" for both.
@@ -304,8 +303,8 @@ The red volume the build menu draws in front of a pier while you move it is an *
   |---|---|---|---|---|
   | "100 solar, staffed" | 137 | 81 (2.9% of the cost) | 8×8×8 km | 2.1 s |
   | Terran hull parts | 18 | 1 | 6×4×5 km | 0.4 s |
-  | TerranScrapyard's fix | 219, onto the existing station (its one free dock moved outside) | 21 | 10×10×11 km | 1.1 s |
-  | "100 solar" again, plus 10 solar | 10; both docks lifted and placed again, clear | 9 | 8×8×8 km | 0.9 s |
+  | TerranScrapyard's fix | 219, onto the existing station (nothing on it moves) | 37 | 10×8×10 km | 1.1 s |
+  | "100 solar" again, plus 10 solar | 10; both docks stay, the pier's zones and the dock area's corridor clear | 0 | 9×8×8 km | 0.1 s |
 
 - **Optimize** (`layout::optimize`, user request 2026-10-14):
   - It lifts the station's modules: keeping the shape, all but the connection structures and the modules carrying them; rebuilding, everything.
