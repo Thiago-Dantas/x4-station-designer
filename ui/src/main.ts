@@ -5,8 +5,8 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
-import { api, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type Vec3 } from "./api";
-import { CLASS_COLORS, type DiffuseTexture, modelGeometry, View3D } from "./view3d";
+import { api, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
+import { attachMatrix, CLASS_COLORS, type DiffuseTexture, modelGeometry, poseMatrix, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -40,6 +40,8 @@ let selected: number | null = null;
 let armed: ModuleInfo | null = null;
 /** Module being moved onto another snap (with everything attached to it), if any. */
 let moving: number | null = null;
+/** While placing or moving: the free snap under the cursor, previewed there. */
+let hoverTarget: { index: number; snap: string } | null = null;
 /** Build-order preview: show modules up to this step (null: all). */
 let buildStep: number | null = null;
 /** Races shown in the palette; empty means all. Modules without a race count as "generic". */
@@ -175,6 +177,8 @@ function redraw() {
   if (!scene) return;
   if (buildStep !== null && buildStep >= scene.entries.length) buildStep = null;
   view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null || moving !== null, buildStep, moving !== null ? subtree(moving) : null);
+  hoverTarget = null; // the cones were redrawn
+  refreshPlacing();
   renderOrder();
   void refreshCost();
   void refreshAnalysis();
@@ -1206,9 +1210,9 @@ async function startMove() {
   // Its snaps that don't hold one of its own attached modules.
   const held = new Set(scene!.entries.filter((x) => x.attached?.to === e.index).map((x) => x.attached!.to_snap.toLowerCase()));
   const snaps = (await shapeOf(e.macro)).snaps.filter((s) => !held.has(s.name.toLowerCase()));
-  $<HTMLSelectElement>("armed-snap").replaceChildren(...snaps.map((s) => new Option(s.name, s.name)));
+  $<HTMLSelectElement>("armed-snap").replaceChildren(...snaps.map(snapOption));
   if (e.attached) $<HTMLSelectElement>("armed-snap").value = e.attached.snap;
-  status("Click a free snap (cone) to move the module there. Esc cancels.");
+  status("Pick the snap it connects by (orange cones; C cycles, T twists), then click a free snap (cone) to move it there. Esc cancels.");
   renderPalette();
   redraw();
 }
@@ -1236,13 +1240,70 @@ async function arm(m: ModuleInfo | null) {
   if (m) {
     $("armed-name").textContent = m.name;
     const shape = await shapeOf(m.macro);
-    $<HTMLSelectElement>("armed-snap").replaceChildren(
-      ...shape.snaps.map((s) => new Option(s.name, s.name)),
-    );
-    status(scene?.entries.length ? "Click or drop onto a free snap (cone) to attach." : "Click in the view to place it there, or Place as first module (at the origin).");
+    $<HTMLSelectElement>("armed-snap").replaceChildren(...shape.snaps.map(snapOption));
+    void modelOf(m.macro).then(refreshPlacing); // for the preview
+    status(scene?.entries.length ? "Click or drop onto a free snap (cone) to attach. C cycles the connecting snap, T the twist." : "Click in the view to place it there, or Place as first module (at the origin).");
   }
   renderPalette();
   redraw();
+}
+
+/** Which way a snap faces in its module's own frame (game: +X right, +Y up, +Z front). */
+function snapDirection(s: SnapInfo) {
+  const size = s.facing.map(Math.abs);
+  const axis = size.indexOf(Math.max(...size));
+  return [["right", "left"], ["top", "bottom"], ["front", "back"]][axis][s.facing[axis] >= 0 ? 0 : 1];
+}
+
+const snapOption = (s: SnapInfo) => new Option(`${snapDirection(s)} · ${s.name}`, s.name);
+
+/** While placing or moving: the moving module's own snaps as cones (the chosen
+ * one brighter), and a see-through preview on the hovered free snap. */
+function refreshPlacing() {
+  const picker = $<HTMLSelectElement>("armed-snap");
+  const m = entry(moving);
+  const macro = m?.macro ?? armed?.macro;
+  const shape = macro ? shapes.get(macro.toLowerCase()) : undefined;
+  const offered = new Set([...picker.options].map((o) => o.value));
+  view.setOwnSnaps(m, shape?.snaps.filter((s) => offered.has(s.name)) ?? [], picker.value);
+  const target = hoverTarget && entry(hoverTarget.index);
+  const toSnap = target && shapes.get(target.macro.toLowerCase())?.snaps.find((s) => s.name.toLowerCase() === hoverTarget!.snap.toLowerCase());
+  const own = shape?.snaps.find((s) => s.name === picker.value);
+  if (!target || !toSnap || !own || !macro) return view.setGhost(null);
+  const at = attachMatrix(target, toSnap, own, Number($<HTMLSelectElement>("armed-twist").value));
+  if (!m) return view.setGhost([{ model: models.get(macro.toLowerCase()) ?? null, shape, matrix: at }]);
+  // Moving: everything on it goes along.
+  const delta = at.multiply(poseMatrix(m.position, m.rotation).invert());
+  view.setGhost(
+    [...subtree(m.index)].map((i) => {
+      const e = entry(i)!;
+      const key = e.macro.toLowerCase();
+      return { model: models.get(key) ?? null, shape: shapes.get(key), matrix: delta.clone().multiply(poseMatrix(e.position, e.rotation)) };
+    }),
+  );
+}
+
+function setHover(h: { index: number; snap: string } | null) {
+  if (h?.index === hoverTarget?.index && h?.snap === hoverTarget?.snap) return;
+  hoverTarget = h;
+  refreshPlacing();
+}
+
+/** Steps a placing dropdown (snap or twist) by `by` and updates the preview. */
+function cycle(id: string, by: 1 | -1) {
+  const list = $<HTMLSelectElement>(id);
+  const n = list.options.length;
+  if (n === 0) return;
+  list.selectedIndex = (list.selectedIndex + by + n) % n;
+  refreshPlacing();
+  status(id === "armed-snap" ? `Connects by ${list.selectedOptions[0].text}` : `Twist ${list.value}°`);
+}
+
+for (const id of ["armed-snap", "armed-twist"]) {
+  $<HTMLSelectElement>(id).addEventListener("change", (ev) => {
+    (ev.target as HTMLSelectElement).blur(); // give the keys back
+    refreshPlacing();
+  });
 }
 
 function select(index: number | null) {
@@ -1517,15 +1578,20 @@ viewport.addEventListener("pointerup", async (ev) => {
   if (ev.button !== 0) return;
   const pick = view.pick(ev.clientX, ev.clientY);
   if (view.gizmoBusy()) return;
-  if (pick?.kind === "snap" && moving !== null) await moveOnto(pick.index, pick.snap);
+  if (pick?.kind === "own") {
+    $<HTMLSelectElement>("armed-snap").value = pick.snap;
+    refreshPlacing();
+    status(`Connects by ${$<HTMLSelectElement>("armed-snap").selectedOptions[0]?.text}. Now click a free snap (cone).`);
+  } else if (pick?.kind === "snap" && moving !== null) await moveOnto(pick.index, pick.snap);
   else if (pick?.kind === "snap" && armed) await attachArmed(pick.index, pick.snap);
   else if (pick?.kind === "module") select(pick.index);
   else if (armed && scene?.entries.length === 0) await apply(api.addModule(armed.macro, firstAt(ev)), `Placed ${armed.name}`, true, true);
   else select(null);
 });
 viewport.addEventListener("pointermove", (ev) => {
-  if ((armed || moving !== null) && !ev.buttons) view.hoverSnap(ev.clientX, ev.clientY);
+  if ((armed || moving !== null) && !ev.buttons) setHover(view.hoverSnap(ev.clientX, ev.clientY));
 });
+viewport.addEventListener("pointerleave", () => setHover(null));
 
 // Drag from the palette onto a snap cone (or anywhere, for the first module).
 viewport.addEventListener("dragover", (ev) => {
@@ -1551,6 +1617,8 @@ window.addEventListener("keydown", (ev) => {
   if (ev.ctrlKey && key === "z") void apply(ev.shiftKey ? api.redo() : api.undo());
   else if (ev.ctrlKey && key === "y") void apply(api.redo());
   else if (key === "delete") void removeSelected();
+  else if (key === "c" && (armed || moving !== null)) cycle("armed-snap", ev.shiftKey ? -1 : 1);
+  else if (key === "t" && (armed || moving !== null)) cycle("armed-twist", ev.shiftKey ? -1 : 1);
   else if (key === "r") void twistSelected(ev.shiftKey ? -1 : 1);
   else if (key === "f") view.frame();
   else if (key === "escape") {

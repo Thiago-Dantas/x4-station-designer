@@ -9,7 +9,8 @@ export type Quality = "fast" | "normal" | "detailed";
 export type Quat = [number, number, number, number];
 
 export interface ModuleInfo { macro: string; class: string; race: string | null; source: string | null; name: string }
-export interface SnapInfo { name: string; position: Vec3; facing: Vec3 }
+/** `rotation`: the snap's frame (its axis is local +Z), for the attach math. */
+export interface SnapInfo { name: string; position: Vec3; facing: Vec3; rotation: Quat }
 export interface ShapeBox { position: Vec3; rotation: Quat; half: Vec3 }
 export interface Shape { macro: string; class: string; snaps: SnapInfo[]; boxes: ShapeBox[] }
 /** `tilt`: degrees off the snap axis (0 = straight); `joint`: where the snaps meet. */

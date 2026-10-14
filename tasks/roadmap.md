@@ -53,7 +53,8 @@ Proposed order (each step usable on its own):
 ## Phase 4: Polish and release (proposed, not yet agreed)
 - [ ] Try a full round trip in the game: design in the builder, Export, Import in the build menu, build it
 - [ ] Builder usability:
-  - [ ] preview of the armed module on the hovered snap
+  - [x] preview of the armed module on the hovered snap (on trial; see [workflow-snap-pick.md](workflow-snap-pick.md))
+  - [x] choose the connecting snap: direction labels, C/T keys, own-snap cones when moving (user request, 2026-10-14)
   - [ ] snap labels
   - [ ] better camera on small designs
   - [ ] move unattached modules in the UI

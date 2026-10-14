@@ -115,7 +115,7 @@ async fn load_catalog(state: State<'_, Shared>) -> CmdResult {
     Ok(json!({"modules": palette, "profile": app.profile_dir, "game": app.game_dir}))
 }
 
-/// Snaps (position, facing) and boxes of a module, in its own frame.
+/// Snaps (position, facing, rotation) and boxes of a module, in its own frame.
 #[tauri::command]
 fn module_shape(state: State<'_, Shared>, macro_name: String) -> CmdResult {
     let app = state.lock().unwrap();
@@ -615,5 +615,5 @@ fn quat_json(q: Quat) -> [f64; 4] {
 
 /// A snap as position + facing direction (its local +Z), in the frame of `t`.
 fn snap_json(name: &str, t: &Transform) -> Value {
-    json!({"name": name, "position": t.position, "facing": t.rotation.rotate([0.0, 0.0, 1.0])})
+    json!({"name": name, "position": t.position, "facing": t.rotation.rotate([0.0, 0.0, 1.0]), "rotation": quat_json(t.rotation)})
 }

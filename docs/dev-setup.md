@@ -30,6 +30,7 @@ python -I research\mcp_smoke.py target\release\x4sd.exe <scratch profile dir>   
 python -I research\ui_smoke.py  target\release\x4sd.exe <scratch dir>           # builder, through WebView2's DevTools protocol; saves screenshots
 python -I research\link_smoke.py target\release\x4sd.exe <scratch dir>           # live link: an agent edits the open builder (scratch profile)
 python -I research\texture_smoke.py target\release\x4sd.exe <scratch dir> [plan]  # textures off vs on: load time, GPU memory, fps
+python -I research\snap_pick_smoke.py target\release\x4sd.exe <scratch dir>     # choosing the connecting snap: labels, C/T keys, preview, own-snap cones when moving
 ```
 - **Native dialogs block CDP scripts** (user remark, 2026-10-14). The builder's prompts (enlarge the plot, unsaved changes, replace an export) are Windows dialogs that CDP can't click, so a script that triggers one waits forever. Avoid them: set the largest plot (10 km per side) before Place all or Optimize, start a fresh builder rather than opening a plan over unsaved changes, and end with `app.terminate()` (no close prompt).
 

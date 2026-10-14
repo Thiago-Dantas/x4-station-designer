@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
-import type { Entry, Quat, Scene, Shape, Vec3 } from "./api";
+import type { Entry, Quat, Scene, Shape, SnapInfo, Vec3 } from "./api";
 
 // The game is left-handed (Y up), Three.js right-handed: mirror Z. A rotation
 // q = (w, x, y, z) becomes S·R·S with S = diag(1, 1, -1), i.e. (w, -x, -y, z).
@@ -10,6 +10,20 @@ export const toVec = (v: Vec3) => new THREE.Vector3(v[0], v[1], -v[2]);
 export const toQuat = (q: Quat) => new THREE.Quaternion(-q[1], -q[2], q[3], q[0]);
 /** Back to the game's frame: the inverse of `toQuat`. */
 const fromQuat = (q: THREE.Quaternion): Quat => [q.w, -q.x, -q.y, q.z];
+/** A game-frame pose as a Three.js matrix. */
+export const poseMatrix = (position: Vec3, rotation: Quat) => new THREE.Matrix4().compose(toVec(position), toQuat(rotation), new THREE.Vector3(1, 1, 1));
+
+/** Where a module goes (Three.js frame) when its snap `own` attaches to snap
+ * `to` of the module at `pred`, twisted by `twist` degrees: the core's
+ * `geometry::attach`, pred · to · Ry(180°)·Rz(twist) · own⁻¹ (the mirror keeps products). */
+export function attachMatrix(pred: { position: Vec3; rotation: Quat }, to: SnapInfo, own: SnapInfo, twist: number): THREE.Matrix4 {
+  const half = THREE.MathUtils.degToRad(twist) / 2;
+  const face: Quat = [0, Math.sin(half), Math.cos(half), 0]; // Ry(180°)·Rz(twist), game frame
+  return poseMatrix(pred.position, pred.rotation)
+    .multiply(poseMatrix(to.position, to.rotation))
+    .multiply(poseMatrix([0, 0, 0], face))
+    .multiply(poseMatrix(own.position, own.rotation).invert());
+}
 
 export const CLASS_COLORS: Record<string, number> = {
   connectionmodule: 0x8a96aa,
@@ -63,10 +77,13 @@ export function modelGeometry(buffer: ArrayBuffer): THREE.BufferGeometry | null 
 /** A material's diffuse texture; `singleChannel` for BC4 (grey value in red). */
 export interface DiffuseTexture { texture: THREE.CompressedTexture; singleChannel: boolean; bytes: number }
 
-export type Pick = { kind: "module"; index: number } | { kind: "snap"; index: number; snap: string } | null;
+/** `own`: a snap of the module being moved (see `setOwnSnaps`). */
+export type Pick = { kind: "module"; index: number } | { kind: "snap"; index: number; snap: string } | { kind: "own"; snap: string } | null;
 
 const SNAP_COLOR = 0x37d0c0;
 const SNAP_HOVER = 0xffe066;
+const OWN_COLOR = 0x9a5a2a;
+const OWN_CHOSEN = 0xff9a3d;
 
 export class View3D {
   private renderer: THREE.WebGLRenderer;
@@ -77,6 +94,10 @@ export class View3D {
   /** The plot box (not part of `station`, so Fit view frames the modules). */
   private plotBox = new THREE.Group();
   private snaps = new THREE.Group();
+  /** Snaps of the module being moved, to pick which one connects. */
+  private ownSnaps = new THREE.Group();
+  /** See-through preview of the module(s) about to be attached. */
+  private ghost = new THREE.Group();
   private raycaster = new THREE.Raycaster();
   private hovered: THREE.Mesh | null = null;
   private snapGeometry = new THREE.ConeGeometry(55, 160, 16).translate(0, 80, 0);
@@ -115,7 +136,7 @@ export class View3D {
     const grid = new THREE.GridHelper(40000, 50, 0x2b3850, 0x1a2232);
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.6;
-    this.scene.add(grid, this.station, this.snaps, this.plotBox);
+    this.scene.add(grid, this.station, this.snaps, this.ownSnaps, this.ghost, this.plotBox);
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
     this.gizmo = new TransformControls(this.camera, this.renderer.domElement);
@@ -387,9 +408,49 @@ export class View3D {
     return hit ? [hit.x, 0, -hit.z] : null; // back to the game's frame (mirror Z)
   }
 
-  /** What is under the cursor: free snaps take priority over modules. */
+  /** Cones on the moving module's own snaps (`snaps` in its frame, the module
+   * at `at`); `chosen` is drawn brighter and larger. Null removes them. */
+  setOwnSnaps(at: { position: Vec3; rotation: Quat } | null, snaps: SnapInfo[], chosen: string) {
+    clear(this.ownSnaps);
+    if (!at) return;
+    const matrix = poseMatrix(at.position, at.rotation);
+    const turn = toQuat(at.rotation);
+    for (const s of snaps) {
+      const isChosen = s.name === chosen;
+      const cone = new THREE.Mesh(this.snapGeometry, new THREE.MeshBasicMaterial({ color: isChosen ? OWN_CHOSEN : OWN_COLOR }));
+      cone.position.copy(toVec(s.position).applyMatrix4(matrix));
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), toVec(s.facing).applyQuaternion(turn).normalize());
+      if (isChosen) cone.scale.setScalar(1.4);
+      cone.userData = { snap: s.name };
+      this.ownSnaps.add(cone);
+    }
+  }
+
+  /** Shows see-through modules at `matrix` (Three.js frame): real models, else
+   * their boxes. Null or an empty list removes the preview. */
+  setGhost(parts: { model: THREE.BufferGeometry | null; shape: Shape | undefined; matrix: THREE.Matrix4 }[] | null) {
+    clear(this.ghost);
+    const material = new THREE.MeshBasicMaterial({ color: 0x7fe8ff, transparent: true, opacity: 0.35, depthWrite: false });
+    for (const p of parts ?? []) {
+      const group = new THREE.Group();
+      p.matrix.decompose(group.position, group.quaternion, group.scale);
+      if (p.model) group.add(new THREE.Mesh(p.model, material));
+      for (const b of p.model ? [] : p.shape?.boxes ?? []) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(b.half[0] * 2, b.half[1] * 2, b.half[2] * 2), material);
+        mesh.position.copy(toVec(b.position));
+        mesh.quaternion.copy(toQuat(b.rotation));
+        group.add(mesh);
+      }
+      this.ghost.add(group);
+    }
+    if (!parts?.length) material.dispose();
+  }
+
+  /** What is under the cursor: free snaps (the moving module's own first) take priority over modules. */
   pick(clientX: number, clientY: number): Pick {
     this.setRay(clientX, clientY);
+    const own = this.raycaster.intersectObjects(this.ownSnaps.children, false)[0];
+    if (own) return { kind: "own", snap: own.object.userData.snap };
     const snap = this.raycaster.intersectObjects(this.snaps.children, false)[0];
     if (snap) return { kind: "snap", index: snap.object.userData.index, snap: snap.object.userData.snap };
     for (const hit of this.raycaster.intersectObjects(this.station.children, true)) {
