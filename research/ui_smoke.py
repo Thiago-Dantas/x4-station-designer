@@ -33,7 +33,8 @@ try:
     print("   window", size, "| collapsed sections:", collapsed)
     # Maximized: as wide as the screen and taller than the default 920 px (the title bar isn't counted).
     assert size[0] >= size[2] - 20 and size[1] > 920, size
-    assert len(collapsed) == 6 and all(any(c.startswith(n) for c in collapsed) for n in ["equipment", "build cost", "production", "plot", "checks", "controls"]), collapsed
+    assert len(collapsed) == 5 and all(any(c.startswith(n) for c in collapsed) for n in ["equipment", "build cost", "production", "plot", "checks"]), collapsed
+    assert cdp.js("document.querySelector('#inspector .help p').offsetParent !== null"), "the controls help stays in view"
     assert cdp.js("document.getElementById('issues').offsetParent") is None, "the checks list is hidden"
     cdp.js("document.querySelector('#checks-panel > h3').click()")
     assert not cdp.js("document.getElementById('checks-panel').classList.contains('collapsed')") and cdp.js("document.getElementById('issues').offsetParent !== null")

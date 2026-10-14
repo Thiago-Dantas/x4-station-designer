@@ -43,7 +43,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
     - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
   - Sunlight and build method come from the right pane. The settings are remembered.
-- **Right pane sections** fold: click a section's title (▸/▾). Equipment, Build cost, Production, Plot, Checks and Controls start folded on every start. *Checks* shows the number of problems in its title. *Selected* and *Placing* open when they apply; the Equipment list inside *Selected* starts folded.
+- **Right pane sections** fold: click a section's title (▸/▾). Equipment, Build cost, Production, Plot and Checks start folded on every start; the controls help at the bottom always shows. *Checks* shows the number of problems in its title. *Selected* and *Placing* open when they apply; the Equipment list inside *Selected* starts folded.
 - **Equipment (right):** the whole station; one undo step each.
   - Shows how many turret and shield groups are equipped.
   - *Loadout level* (None, Low, Medium, High) + *Apply* equips every group by our own rule: fitting equipment without missiles, the module's race first, cheapest (Low) to most expensive (High). The game's own loadout level may pick differently.

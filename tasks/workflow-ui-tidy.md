@@ -13,3 +13,4 @@ User, 2026-10-14: "can the program always start maximized? also the right pane i
 - [x] ui_smoke: sections start collapsed and expand on click; the rest still passes. Docs (usage.md).
 
 ## Notes
+- 2026-10-14, user: "controls doesnt need to be a section, leave it in plain view". The controls help lost its heading and always shows; five sections fold.
