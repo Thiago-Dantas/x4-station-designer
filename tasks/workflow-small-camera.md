@@ -1,6 +1,6 @@
 # Workflow: better camera on small designs
 
-Status: **done** (created and finished 2026-10-14)
+Status: **done, reverted** (created 2026-10-14; the zoom-limit change was reverted the same day at the user's request, see the last note)
 
 Roadmap item "Builder usability: better camera on small designs". I proposed it myself in Phase 4; it isn't a reported problem yet. The user wants it done (2026-10-14).
 
@@ -49,3 +49,5 @@ The camera is tuned for big stations, so with one or a few modules:
   - empty design: 60 notches out stop with the 4 km plot box still well in view (before: a speck);
   - TerranScrapyard: fit 11.9 %, wheel 20 in 80.7 %, then W 73.4 % (73.5 % before; identical otherwise); a double-click zoom to a module right after a hull stop frames it.
   - `ui_smoke.py` passes all steps (5–6: D/W/X/arrow). It needed two fixes for earlier changes unrelated to this task: the heading is now "Station equipment", and the remembered blueprint limit (D-16) is switched off during the run and restored afterwards.
+- **Reverted 2026-10-14 (user).** With the stop, the camera sat at the hull while the orbit target stayed deep inside the module. OrbitControls scales rotate and pan by the distance to the target, so left/right drags close up felt far too fast and erratic. Before this change you could zoom right onto the target, so drags got tame close up. The user chose to revert everything (zoom stop, zoom-out limit, near plane) over re-centring the target on the surface. `view3d.ts` and `docs/usage.md` are back to before 4aab505. `camera_smoke.py` and the `ui_smoke.py` fixes stay.
+- If this comes back: move the orbit target onto the surface the zoom reaches (not just clamp `minDistance`), so speeds follow what's in view.

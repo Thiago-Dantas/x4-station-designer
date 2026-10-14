@@ -84,9 +84,6 @@ const SNAP_COLOR = 0x37d0c0;
 const SNAP_HOVER = 0xffe066;
 const OWN_COLOR = 0x9a5a2a;
 const OWN_CHOSEN = 0xff9a3d;
-/** Closest the camera zooms to its orbit target, and how far it stays off a module's surface (m). */
-const MIN_DISTANCE = 10;
-const SURFACE_MARGIN = 10;
 
 export class View3D {
   private renderer: THREE.WebGLRenderer;
@@ -130,8 +127,6 @@ export class View3D {
     this.camera.position.set(4000, 3000, 4000);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.minDistance = MIN_DISTANCE;
-    this.controls.addEventListener("start", () => this.stopAtSurface());
     this.scene.add(new THREE.HemisphereLight(0xdde6ff, 0x202430, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, 2, 1.5);
@@ -164,9 +159,6 @@ export class View3D {
       const start = performance.now();
       this.keyNavigate(this.clock.getDelta());
       this.controls.update();
-      // Near plane follows the zoom: close-ups don't clip, far views keep their depth precision.
-      this.camera.near = Math.max(0.5, this.camera.position.distanceTo(this.controls.target) / 200);
-      this.camera.updateProjectionMatrix();
       this.renderer.render(this.scene, this.camera);
       this.countFrame(start);
     });
@@ -336,23 +328,6 @@ export class View3D {
       mesh.computeBoundingSphere();
       this.station.add(mesh);
     }
-    // Zooming out stops at twice the distance that fits the plot (or the station, if larger).
-    const bounds = new THREE.Box3().setFromObject(this.station).union(new THREE.Box3().setFromObject(this.plotBox));
-    if (bounds.isEmpty()) bounds.set(new THREE.Vector3(-2000, -2000, -2000), new THREE.Vector3(2000, 2000, 2000));
-    const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
-    this.controls.maxDistance = (2 * radius) / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2));
-  }
-
-  /** When a zoom starts: the camera stops short of the first module between it and
-   * the orbit target. (That surface stays put relative to the target while zooming.) */
-  private stopAtSurface() {
-    const distance = this.camera.position.distanceTo(this.controls.target);
-    this.raycaster.set(this.camera.position, this.controls.target.clone().sub(this.camera.position).normalize());
-    this.raycaster.far = distance;
-    const hit = this.raycaster.intersectObject(this.station, true)[0];
-    this.raycaster.far = Infinity;
-    // Never pushes the camera back out when it's already closer than the margin.
-    this.controls.minDistance = hit ? Math.max(MIN_DISTANCE, Math.min(distance, distance - hit.distance + SURFACE_MARGIN)) : MIN_DISTANCE;
   }
 
   /** Shows the gizmo on a module at `at` (game frame), or hides it with null:
@@ -505,7 +480,6 @@ export class View3D {
     const direction = new THREE.Vector3(1, 0.7, 1).normalize();
     this.controls.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
-    this.controls.minDistance = MIN_DISTANCE; // the last zoom's stop doesn't hold here
   }
 
   /** Points the camera at module `index` from the current viewing direction (nothing when it isn't drawn). */
@@ -527,7 +501,6 @@ export class View3D {
     const direction = this.camera.position.clone().sub(this.controls.target).normalize();
     this.controls.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
-    this.controls.minDistance = MIN_DISTANCE; // the last zoom's stop doesn't hold here
   }
 
   private setRay(clientX: number, clientY: number) {
