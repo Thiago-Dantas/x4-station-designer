@@ -31,7 +31,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - *Apply to all modules* uses its turrets and shields on every group where they fit.
 - **Build order (left, second tab):** every module in build order, top to bottom, with "End of stage N" dividers.
   - **Drag a row onto another** to move it to that step. A module can't come before the module it attaches to, so impossible moves are refused with a message.
-  - Click a row to select the module.
+  - Click a row to select the module; double-click it to also point the camera at it (same viewing angle, closer).
   - *Show up to step* previews the station built up to that step; later rows are dimmed.
   - Reordering renumbers the modules; the selection follows the moved module.
 - **Planner (left, third tab):** our own take on the x4ep_planner mod. Name the wares to make and how many production modules of each (e.g. Hull Parts × 2), then *Generate plan*.

@@ -482,6 +482,27 @@ export class View3D {
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
   }
 
+  /** Points the camera at module `index` from the current viewing direction (nothing when it isn't drawn). */
+  frameModule(index: number) {
+    const box = new THREE.Box3();
+    for (const o of this.station.children) {
+      if (o instanceof THREE.InstancedMesh) {
+        const i = (o.userData.indices as number[]).indexOf(index);
+        if (i < 0) continue;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        box.copy(o.geometry.boundingBox!).applyMatrix4(o.getMatrixAt(i, new THREE.Matrix4()));
+      } else if (o.children[0]?.userData.index === index) {
+        box.setFromObject(o);
+      }
+    }
+    if (box.isEmpty()) return;
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const distance = sphere.radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.5;
+    const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(sphere.center);
+    this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
+  }
+
   private setRay(clientX: number, clientY: number) {
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);

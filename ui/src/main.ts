@@ -345,7 +345,11 @@ function renderOrder() {
     row.querySelector(".num")!.textContent = `${e.index}.`;
     row.querySelector(".n")!.textContent = e.name ?? e.macro;
     row.title = e.attached ? `attaches to #${e.attached.to}` : "not attached (root)";
-    row.onclick = () => select(e.index);
+    // Double click zooms to the module. No dblclick event: the first click redraws the rows.
+    row.onclick = (ev) => {
+      select(e.index);
+      if (ev.detail === 2) view.frameModule(e.index);
+    };
     row.ondragstart = (ev) => ev.dataTransfer!.setData("text/x4sd-entry", String(e.index));
     row.ondragover = (ev) => {
       if (ev.dataTransfer?.types.includes("text/x4sd-entry")) {
