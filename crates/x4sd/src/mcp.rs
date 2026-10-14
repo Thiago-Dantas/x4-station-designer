@@ -35,6 +35,12 @@ raw=true) are always brought in (mined or salvaged), never planned, so a self-su
 them as short (self_sufficient=true).
 Coordinates are metres in the station frame, Y up. Module indices are 1..n and are renumbered after \
 remove_module. Every edit can be undone with undo.
+Equipment: turrets and shields go on a module's groups (most production, storage and defence modules have \
+some; a typical group is 2 M turret slots + 1 M shield slot). module_equipment shows a module's groups with \
+what fits; set_equipment fills one group; equip_modules fills many at once, from picks (e.g. one M turret, \
+one M shield, one L turret, one L shield: each group takes the first that fits) or a loadout level \
+(none/low/medium/high); copy_equipment copies one module's equipment to its type or, as picks, to all. \
+list_equipment finds macros. build_cost includes equipment.
 Overlaps: validate_design reports modules whose collision shapes intersect (modules joined at a snap may \
 interlock); auto_place never creates any.
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
@@ -218,6 +224,40 @@ pub struct StageArgs {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct ListEquipmentArgs {
+    /// turrets or shields
+    kind: Option<String>,
+    /// small, medium, large, extralarge (station modules use medium and large)
+    size: Option<String>,
+    /// Maker race, e.g. argon, terran, boron
+    race: Option<String>,
+    /// Text to look for in the name or macro
+    search: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct SetEquipmentArgs {
+    /// Module index
+    index: u32,
+    /// Group name from module_equipment, e.g. group01
+    group: String,
+    /// turrets or shields
+    kind: String,
+    /// Equipment macro that fits the group (see module_equipment); omit to remove the equipment
+    r#macro: Option<String>,
+    /// How many of the group's slots of that kind to fill; default all
+    count: Option<u32>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct CopyEquipmentArgs {
+    /// Module whose equipment to copy
+    from: u32,
+    /// same_type (default): an exact copy onto every module of the same type; all: its equipment macros as picks for every module
+    scope: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct NoArgs {}
 
 #[tool_router]
@@ -374,6 +414,31 @@ impl Server {
     #[tool(description = "Auto-placement: attach modules to the open design at exact snap positions, clear of each other and inside the plot, adding connection structures (hubs, straight pieces) where needed; one undo step. Give modules (macro and count), or from_plan (plan_production settings) to plan and place in one call (the result then has the plan too). Big modules go first, dock areas and piers last. Returns the new modules and connection structures (index, macro), what didn't fit, and the plot: with grow_plot (default true) the station may outgrow its plot, up to 20 km per axis; then tell the user and fit_plot with grow_only.")]
     fn auto_place(&self, Parameters(a): Parameters<ops::AutoPlaceArgs>) -> ToolResult {
         self.run(Op::AutoPlace(a))
+    }
+
+    #[tool(description = "Turrets and shields players can build: macro, name, kind, size, race, mark and average price.")]
+    fn list_equipment(&self, Parameters(a): Parameters<ListEquipmentArgs>) -> ToolResult {
+        self.run(Op::ListEquipment { kind: a.kind, size: a.size, race: a.race, search: a.search })
+    }
+
+    #[tool(description = "A placed module's equipment groups: for each group and kind (turrets, shields) the slot size and count, what is equipped, and the equipment macros that fit.")]
+    fn module_equipment(&self, Parameters(a): Parameters<IndexArgs>) -> ToolResult {
+        self.run(Op::ModuleEquipment { index: a.index })
+    }
+
+    #[tool(description = "Equip one kind of slot (turrets or shields) in a group of a module with a fitting macro (default: all its slots), or without macro remove it. Returns the module's groups.")]
+    fn set_equipment(&self, Parameters(a): Parameters<SetEquipmentArgs>) -> ToolResult {
+        self.run(Op::SetEquipment { index: a.index, group: a.group, kind: a.kind, r#macro: a.r#macro, count: a.count })
+    }
+
+    #[tool(description = "Equip many modules at once (one undo step): picks (equipment macros; each group takes, per kind, the first that fits all its slots) or a loadout level (none, low, medium, high). Default: every module with groups; modules or defence_only narrow it. Returns how many group slots were filled, cleared or skipped (nothing fitted).")]
+    fn equip_modules(&self, Parameters(a): Parameters<ops::EquipArgs>) -> ToolResult {
+        self.run(Op::EquipModules(a))
+    }
+
+    #[tool(description = "Copy a module's equipment: scope same_type (default) gives every module of its type the same equipment; all uses its equipment macros as picks for every module.")]
+    fn copy_equipment(&self, Parameters(a): Parameters<CopyEquipmentArgs>) -> ToolResult {
+        self.run(Op::CopyEquipment { from: a.from, scope: a.scope })
     }
 
     #[tool(description = "End a build stage after this module (or remove that stage end). Stages let the station be built in steps.")]

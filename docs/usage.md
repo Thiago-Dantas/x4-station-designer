@@ -12,6 +12,10 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *A build stage ends here* closes a build stage after it.
   - **Move…** lifts the module with everything attached to it; click any free snap cone (cones of the moving part are hidden) to re-attach it there. The panel picks which of its snaps connects and the twist; Esc cancels. If the new spot comes later in the build order, the moved part is re-sequenced after it.
   - **Detach** makes an attached module free-standing where it is.
+  - **Equipment** (modules with turret and shield slots: most production, storage and defence modules) lists each group, e.g. *2 × M turret* and *1 × M shield*.
+    - Pick what goes on it; only equipment that fits those slots is listed. The number box sets how many of the slots to fill.
+    - *Apply to all of this type* copies the module's equipment to every module of the same type.
+    - *Apply to all modules* uses its turrets and shields on every group where they fit.
   - A selected **free-standing module** (like the first one) shows a move gizmo: drag its arrows to move it and everything on it, in 10 m steps.
 - **Build order (left, second tab):** every module in build order, top to bottom, with "End of stage N" dividers.
   - **Drag a row onto another** to move it to that step. A module can't come before the module it attaches to, so impossible moves are refused with a message.
@@ -19,6 +23,8 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Show up to step* previews the station built up to that step; later rows are dimmed.
   - Reordering renumbers the modules; the selection follows the moved module.
 - **Planner (left, third tab):** our own take on the x4ep_planner mod. Name the wares to make and how many production modules of each (e.g. Hull Parts × 2), then *Generate plan*.
+  - **Ware box:** type part of a name (e.g. "hull par", "cell"); matches list below it. Arrow keys and Enter, or a click, add the ware with the count next to it.
+  - *Generate plan* always makes a **new** plan for the design as it is now. Its targets come on top of what the station already has, so generating again after placing adds them again.
   - It lists everything to add:
     - the targets;
     - the production chain for their inputs;
@@ -35,7 +41,14 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - The station may outgrow the plot (up to 20 km per axis); the builder then offers to enlarge it.
     - What found no room is listed under the button. Ctrl+Z undoes the whole placement.
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
+    - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
   - Sunlight and build method come from the right pane. The settings are remembered.
+- **Equipment (right):** the whole station; one undo step each.
+  - Shows how many turret and shield groups are equipped.
+  - *Loadout level* (None, Low, Medium, High) + *Apply* equips every group by our own rule: fitting equipment without missiles, the module's race first, cheapest (Low) to most expensive (High). The game's own loadout level may pick differently.
+  - *M turret*, *M shield*, *L turret*, *L shield* + *Equip station* puts those on every group where they fit. Groups none of them fit stay as they were.
+  - *Defence modules only* limits both to defence platforms.
+  - The equipment offered is every turret and shield players can build (216 with the installed DLCs and mods). The game offers only those you have blueprints for.
 - **Build cost (right):** the materials to build the **selected module** (with its turrets and shields), or the **whole station** when nothing is selected.
   - Shows resource amounts and an estimated value at the game's average prices.
   - *Build method* matches the game's Preferred Build Method (Universal, Terran, Boron, …). Most modules have one recipe; shared modules that also have a Terran or Boron recipe change with it, and the others fall back to Universal. The choice is remembered.
@@ -74,7 +87,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 | `x4sd list-modules [--class C] [--race R] [text]` | Buildable station modules (base, DLCs, enabled mods): macro, class, race, source, name. `text` matches the name or macro. |
 | `x4sd snaps <macro>` | A module's snap connections with position and facing direction (module frame, metres) |
 | `x4sd show <file>` | Plans in a plan file: id, name, module count, unattached modules, DLC patches, **plot needed** |
-| `x4sd validate <file> [--plan P] [--plot +X,-X,+Y,-Y,+Z,-Z]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, overlapping modules, missing DLC patches. With `--plot` (km per side) it also flags modules outside that plot. Exit code 1 if any. |
+| `x4sd validate <file> [--plan P] [--plot +X,-X,+Y,-Y,+Z,-Z]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, overlapping modules, equipment on a group the module lacks or that doesn't fit, missing DLC patches. With `--plot` (km per side) it also flags modules outside that plot. Exit code 1 if any. |
 | `x4sd export <file> --plan P [--new-id] [--overwrite]` | Writes the plan into `<profile>\constructionplan\` for in-game **Import** (build menu, Import button; the folder is rescanned when the menu opens). `--new-id` makes the import add a new plan instead of replacing one with the same id. |
 
 A plan file is either the profile's `constructionplans.xml` (all saved plans) or a single-plan file like the ones the game exports. Exit code 2 means an error (file not found, game not found, ambiguous plan, and so on).
@@ -101,12 +114,17 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `builder_status` | Whether a builder window is open (then all tools act on it, live) |
 | `list_wares`, `plan_production` | Wares some module makes; the planner: targets (ware + production modules), race, workforce, storage hours, buy list, sunlight. Returns the modules to add with their roles, the analysis with them and the cost (it doesn't place them) |
 | `auto_place` | Auto-placement: attaches `modules` (macro + count), or what `from_plan` (plan_production settings) lists, at free snaps without overlaps, adding connection structures. `grow_plot` (default true) lets the station outgrow its plot up to 20 km per axis. `race` sets the connectors' race (default: the plan's, else the modules' most common). Returns the new modules and connectors (index, macro), what didn't fit, the plot and, with `from_plan`, the plan. One undo step. |
+| `list_equipment` | Turrets and shields players can build (kind, size, race, text filters): macro, name, size, race, mark, average price |
+| `module_equipment` | A placed module's groups: for each group and kind the slot size and count, what is equipped, and the macros that fit |
+| `set_equipment` | Put a fitting macro on one kind of slot in a group (`count`, default all its slots), or remove it |
+| `equip_modules` | Equip many modules at once (one undo step): `picks` (each group takes, per kind, the first that fits) or `level` (none, low, medium, high); every module with groups by default, or `modules` / `defence_only`. Reports groups filled, cleared and skipped. |
+| `copy_equipment` | Copy a module's equipment: `same_type` (default) to every module of its type, or `all` (its macros as picks for every module) |
 | `analyze_station` | Production and use per hour (net per ware), workforce needed vs housed and the bonus, storage per cargo type in hours, dock areas and piers, notes on what is missing; `sunlight` in percent |
 | `build_cost` | Resources and estimated value to build one module (with its equipment) or the whole station, for a build method; lists the methods |
 | `reattach_module`, `detach_module` | Move a placed module (with everything on it) onto another free snap (`moved_to` gives its new index), or make it free-standing |
 | `move_in_build_order`, `build_first`, `build_last`, `set_stage_end` | Reorder the build (renumbers; the result includes `moved_to`) and set stage ends. `describe_design` lists modules in build order with `stage_end`. |
 | `set_plot`, `fit_plot` | Set the plot (km per side), or fit it to the station (optionally only growing it). `describe_design` shows the plot, the size needed and whether it fits; `validate_design` includes plot issues. |
-| `validate_design` | Same checks as `x4sd validate` (overlaps included), plus the plot |
+| `validate_design` | Same checks as `x4sd validate` (overlaps and equipment included), plus the plot |
 | `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import |
 
 **Live link (D-7):** if the builder window is open, every tool works on the design shown there. You watch the agent's changes appear ("Agent: …" in the status bar) and can drag, twist or undo alongside it. Without a builder, `x4sd mcp` keeps its own design (headless). `builder_status` tells the agent which mode it is in. The link is a local TCP socket on `127.0.0.1:47823`, one JSON line per message; only the first builder window opened listens.

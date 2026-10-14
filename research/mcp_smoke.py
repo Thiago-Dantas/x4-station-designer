@@ -97,6 +97,25 @@ try:
     call("auto_place")
 except SystemExit as e:
     print("expected error:", e)
+# Equipment on a Terran defence disc: its groups, one group by hand, a level, picks, a copy; then undo it all.
+disc = call("auto_place", modules=[{"macro": "defence_ter_disc_01_macro", "count": 1}])["placed"][0]["index"]
+groups = call("module_equipment", index=disc)["groups"]
+print("disc groups:", [(g["group"], g["kind"], g["slots"], g["size"], len(g["fits"])) for g in groups[:4]], "...", len(groups), "in all")
+turrets = next(g for g in groups if g["kind"] == "turrets")
+after = call("set_equipment", index=disc, group=turrets["group"], kind="turret", macro=turrets["fits"][0])
+print("set_equipment:", next(g for g in after["groups"] if g["group"] == turrets["group"] and g["kind"] == "turrets")["current"])
+print("equip_modules high:", call("equip_modules", level="high"))
+shields = call("list_equipment", kind="shields", size="large", race="terran")
+print("terran L shields:", [s["name"] for s in shields])
+print("equip_modules picks, defence only:", call("equip_modules", picks=[shields[-1]["macro"]], defence_only=True))
+print("copy_equipment same type:", call("copy_equipment", **{"from": disc}))
+print("disc cost with equipment:", round(call("build_cost", index=disc)["value"]))
+call("fit_plot", grow_only=True)
+issues = call("validate_design")["issues"]
+assert not issues, issues
+for _ in range(4):  # picks, level, the one group, the placement
+    call("undo")
+assert len(call("describe_design")["modules"]) == before
 d = call("describe_design")
 print("design:", d["name"], "patches", d["patches"], "modules", [(m["index"], m["name"], m["position"]) for m in d["modules"]])
 print("remove beam 3:", call("remove_module", index=3), "-> modules", len(call("describe_design")["modules"]))

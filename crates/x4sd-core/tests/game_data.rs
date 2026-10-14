@@ -267,7 +267,7 @@ fn production_planner() {
         sunlight: 1.0,
         method: "default".to_owned(),
     };
-    let empty = Design::new("plan").plan().clone();
+    let empty: Vec<(String, u32)> = Vec::new();
     let count = |p: &x4sd_core::planner::ProductionPlan, m: &str| p.modules.iter().find(|x| x.macro_name == m).map_or(0, |x| x.count);
 
     let start = Instant::now();
@@ -304,7 +304,7 @@ fn production_planner() {
     // An existing station with no targets: its shortfalls get producers.
     let Some(plans) = sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml") else { return };
     let yard = plans.iter().find(|p| p.name == "TerranScrapyard").unwrap();
-    let fix = plan_production(c, yard, &req(&[], Some("terran"), &[])).unwrap();
+    let fix = plan_production(c, &x4sd_core::planner::module_counts(yard), &req(&[], Some("terran"), &[])).unwrap();
     eprintln!("TerranScrapyard fix: {:?}", fix.modules.iter().map(|m| format!("{} x{}", m.macro_name, m.count)).collect::<Vec<_>>());
     assert!(count(&fix, "prod_ter_energycells_macro") > 0);
     // Scrap metal is raw (salvaged, brought in): the fixed scrapyard is self-sufficient.
@@ -373,7 +373,7 @@ fn auto_place_planned_stations() {
         method: "default".to_owned(),
     };
     let planned = |d: &Design, r: &Request| -> Vec<(String, u32)> {
-        plan_production(c, d.plan(), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
+        plan_production(c, &x4sd_core::planner::module_counts(d.plan()), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
     };
     let grow = Options { grow_plot: true, race: None };
 
@@ -430,6 +430,159 @@ fn auto_place_planned_stations() {
     let r = place_and_check(c, &mut d, &modules, &grow);
     eprintln!("scrapyard fix: {} modules to place", modules.iter().map(|m| m.1).sum::<u32>());
     assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+}
+
+/// Equipment: modules' turret and shield groups, the buildable turrets and shields,
+/// and the fit rule (equipment tags within the slot tags) against every equipped
+/// group in the player's and the library plans.
+#[test]
+fn equipment_groups_and_fit() {
+    use std::collections::BTreeMap;
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
+    let start = Instant::now();
+    let equipment = c.equipment().unwrap();
+    let mut kinds: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for e in equipment {
+        *kinds.entry((e.kind.clone(), e.size().unwrap_or("?").to_owned())).or_default() += 1;
+    }
+    eprintln!("{} buildable turrets and shields in {:?}: {kinds:?}", equipment.len(), start.elapsed());
+    assert!(equipment.iter().any(|e| e.macro_name == "turret_arg_m_laser_02_mk1_macro"));
+
+    // Which modules have groups, and what a group holds: (kind, size) -> slots.
+    let mut by_class: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    let mut shapes: BTreeMap<String, usize> = BTreeMap::new();
+    for m in c.station_modules().unwrap() {
+        let module = c.module(&m.macro_name).unwrap();
+        let groups = module.equipment_groups();
+        let entry = by_class.entry(m.class.clone()).or_default();
+        entry.0 += 1;
+        if groups.is_empty() {
+            continue;
+        }
+        entry.1 += 1;
+        for g in groups {
+            let mut slots: BTreeMap<String, usize> = BTreeMap::new();
+            for s in module.equipment_slots.iter().filter(|s| s.group == g) {
+                *slots.entry(format!("{} {}", x4sd_core::catalog::size_of(&s.tags).unwrap_or("?"), s.kind)).or_default() += 1;
+            }
+            *shapes.entry(format!("{slots:?}")).or_default() += 1;
+        }
+        // Every group can take some buildable equipment of each kind it has slots for.
+        for g in module.equipment_groups() {
+            for kind in ["turrets", "shields"] {
+                let slots: Vec<_> = module.group_slots(g, kind).collect();
+                let fitting: Vec<&str> = equipment.iter().filter(|e| slots.iter().all(|s| e.fits(s))).map(|e| e.macro_name.as_str()).collect();
+                if !slots.is_empty() && fitting.is_empty() {
+                    eprintln!("  nothing fits {} {g} {kind}: {:?}", m.macro_name, slots[0].tags);
+                }
+                // Xenon equipment (tagged `xenon`) fits no module players build.
+                if m.sets.iter().any(|s| s == "factory") {
+                    assert!(!slots.is_empty() || fitting.is_empty());
+                    assert!(fitting.iter().all(|f| !f.contains("_xen_")), "{} {g}: {fitting:?}", m.macro_name);
+                }
+            }
+        }
+    }
+    eprintln!("modules with groups, per class (modules, with groups): {by_class:?}");
+    eprintln!("group shapes: {shapes:?}");
+
+    let library = sample("research/extracted/base/libraries/constructionplans.xml").unwrap_or_default();
+    for (set, plans) in [("player plans", &plans), ("library plans", &library)] {
+        let (mut checked, mut misfits, mut counts) = (0, Vec::new(), BTreeMap::<String, usize>::new());
+        for plan in plans.iter() {
+            for e in &plan.entries {
+                let module = c.module(&e.macro_name).unwrap();
+                for u in &e.upgrades {
+                    let slots: Vec<_> = module.group_slots(&u.group, &u.kind).collect();
+                    let fits = c.equipment().unwrap().iter().find(|x| x.macro_name.eq_ignore_ascii_case(&u.macro_name)).map(|x| slots.iter().all(|s| x.fits(s)));
+                    *counts.entry(format!("{} exact {:?} of {} slots", u.kind, u.exact, slots.len())).or_default() += 1;
+                    checked += 1;
+                    if slots.is_empty() || fits != Some(true) {
+                        misfits.push(format!("[{}] {} {} {} {}: {} slots, fits {fits:?}", plan.name, e.index, e.macro_name, u.group, u.macro_name, slots.len()));
+                    }
+                }
+            }
+        }
+        eprintln!("{set}: {checked} equipped groups; {counts:?}; misfits: {misfits:?}");
+        assert!(misfits.is_empty(), "{set}");
+    }
+}
+
+/// Equipping a station: one group by hand, every group by picks and by level,
+/// copying to modules of the same type; each is one undo step, and the result
+/// validates, costs more and survives writing the plan.
+#[test]
+fn equip_station() {
+    use x4sd_core::equipment::{module_groups, Fill, Level};
+    use x4sd_core::layout::{auto_place, Options};
+    let Some(c) = catalog() else { return };
+    let mut d = Design::new("equipped");
+    let modules = [("defence_arg_disc_01_macro", 1), ("prod_arg_foodrations_macro", 2), ("storage_arg_l_container_01_macro", 1)];
+    let modules: Vec<(String, u32)> = modules.iter().map(|(m, n)| (m.to_string(), *n)).collect();
+    auto_place(c, &mut d, &modules, &Options { grow_plot: true, race: None }).unwrap();
+    let index_of = |d: &Design, m: &str| d.plan().entries.iter().filter(|e| e.macro_name == m).map(|e| e.index).collect::<Vec<_>>();
+    let disc = index_of(&d, "defence_arg_disc_01_macro")[0];
+    let food = index_of(&d, "prod_arg_foodrations_macro");
+    let equipment = c.equipment().unwrap();
+    let groups = |d: &Design, i: u32| {
+        let e = d.plan().entries.iter().find(|e| e.index == i).unwrap();
+        module_groups(equipment, &c.module(&e.macro_name).unwrap(), &e.upgrades)
+    };
+    for g in groups(&d, disc) {
+        eprintln!("disc {} {}: {} x {:?}, {} fit", g.group, g.kind, g.slots, g.size, g.fitting.len());
+    }
+    let cost = |d: &Design| c.wares().unwrap().plan_cost(d.plan(), None, "default").value;
+    let bare = cost(&d);
+
+    // One group by hand: a medium laser turret on the first food module's turret slots.
+    let g = groups(&d, food[0]).into_iter().find(|g| g.kind == "turrets").unwrap();
+    let laser = g.fitting.iter().find(|e| e.macro_name == "turret_arg_m_laser_02_mk1_macro").unwrap().macro_name.clone();
+    d.set_equipment(c, food[0], &g.group, "turrets", Some((&laser, g.slots))).unwrap();
+    assert_eq!(groups(&d, food[0]).iter().find(|x| x.group == g.group && x.kind == "turrets").unwrap().current, Some((laser.clone(), g.slots)));
+    assert!(d.set_equipment(c, food[0], &g.group, "turrets", Some(("shield_arg_m_standard_02_mk1_macro", 1))).is_err(), "a shield is no turret");
+    assert!(d.set_equipment(c, food[0], &g.group, "turrets", Some((&laser, g.slots + 1))).is_err(), "more than the slots");
+    assert!(d.set_equipment(c, food[0], "group99", "turrets", Some((&laser, 1))).is_err(), "no such group");
+    // Copy to the other food module.
+    assert_eq!(d.copy_equipment(food[0]).unwrap(), 1);
+    assert_eq!(d.plan().entries.iter().find(|e| e.index == food[1]).unwrap().upgrades, d.plan().entries.iter().find(|e| e.index == food[0]).unwrap().upgrades);
+    assert!(d.undo());
+    assert!(d.plan().entries.iter().find(|e| e.index == food[1]).unwrap().upgrades.is_empty(), "the copy is one undo step");
+
+    // Every group by picks: one M turret, one M shield, one L turret, one L shield.
+    let all: Vec<u32> = d.plan().entries.iter().map(|e| e.index).collect();
+    let picks = ["turret_arg_m_plasma_02_mk1_macro", "shield_arg_m_standard_02_mk1_macro", "turret_arg_l_plasma_01_mk1_macro", "shield_arg_l_standard_01_mk1_macro"];
+    let (filled, cleared, skipped) = d.equip_modules(c, &all, &Fill::Picks(picks.iter().map(|s| s.to_string()).collect())).unwrap();
+    eprintln!("picks: {filled} filled, {cleared} cleared, {skipped} skipped; cost {bare:.0} -> {:.0} Cr", cost(&d));
+    assert!(filled > 0 && skipped == 0 && cleared == 0);
+    assert!(groups(&d, disc).iter().all(|g| g.current.as_ref().is_some_and(|(_, n)| *n == g.slots)), "every disc group is full");
+    assert_eq!(validate(d.plan(), c), Vec::<Issue>::new());
+    assert!(cost(&d) > bare);
+    // The plan file keeps it, with `exact` as the game writes it.
+    let xml = x4sd_core::plan::write_plans(std::slice::from_ref(d.plan()));
+    assert!(xml.contains(r#"<turrets macro="turret_arg_m_plasma_02_mk1_macro" group="#) && xml.contains(r#" exact="2"/>"#));
+    assert!(xml.contains(r#"<shields macro="shield_arg_m_standard_02_mk1_macro" group="group01"/>"#), "one of one shield slot: no exact");
+    assert_eq!(&parse_plans(&xml).unwrap()[0], d.plan());
+
+    // Levels: high costs more than low; none removes everything; each is one undo step.
+    d.equip_modules(c, &all, &Fill::Level(Level::Low)).unwrap();
+    let low = cost(&d);
+    d.equip_modules(c, &all, &Fill::Level(Level::High)).unwrap();
+    let high = cost(&d);
+    eprintln!("levels: low {low:.0} Cr, high {high:.0} Cr; disc high: {:?}", groups(&d, disc).iter().map(|g| g.current.clone()).collect::<Vec<_>>());
+    assert!(high > low && low > bare);
+    assert_eq!(validate(d.plan(), c), Vec::<Issue>::new());
+    d.equip_modules(c, &all, &Fill::Level(Level::None)).unwrap();
+    assert!(d.plan().entries.iter().all(|e| e.upgrades.is_empty()));
+    assert!(d.undo());
+    assert!((cost(&d) - high).abs() < 1e-6);
+
+    // validate catches a turret on a shield slot (a hand-edited plan).
+    let mut plan = d.plan().clone();
+    let e = plan.entries.iter_mut().find(|e| e.index == disc).unwrap();
+    e.upgrades[0].macro_name = laser.clone();
+    e.upgrades[0].kind = "shields".to_owned();
+    let issues = validate(&plan, c);
+    assert!(issues.iter().any(|i| matches!(i, Issue::EquipmentMisfit { .. })), "{issues:?}");
 }
 
 /// Plots: the required plot holds the station; a smaller plot flags the modules outside.

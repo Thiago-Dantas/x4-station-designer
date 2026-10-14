@@ -13,6 +13,7 @@ use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
+use x4sd_core::equipment::KINDS;
 use x4sd_core::geometry::{fit, Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, write_plans, Plan};
@@ -77,6 +78,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             list_wares,
             plan_production,
             auto_place,
+            run_op,
             undo,
             redo,
         ])
@@ -356,12 +358,29 @@ fn list_wares(state: State<'_, Shared>) -> CmdResult {
     ops::list_wares(&catalog)
 }
 
-/// The modules to add for the planner's targets (see `ops::PlanArgs`).
+/// The modules to add for the planner's targets (see `ops::PlanArgs`), for the
+/// open design or, with `baseline`, for a station with those modules.
 #[tauri::command]
-fn plan_production(state: State<'_, Shared>, args: ops::PlanArgs) -> CmdResult {
+fn plan_production(state: State<'_, Shared>, args: ops::PlanArgs, baseline: Option<Vec<ops::ModuleCount>>) -> CmdResult {
     let app = state.lock().unwrap();
     let catalog = catalog(&app)?;
-    ops::plan_production(&catalog, &app.design, args)
+    ops::plan_production(&catalog, &app.design, args, baseline)
+}
+
+/// Runs a shared operation (`ops::Op`, as MCP agents do) on the open design: its
+/// `result`, plus the `scene` when the design may have changed.
+#[tauri::command]
+fn run_op(state: State<'_, Shared>, op: Op) -> CmdResult {
+    let mut app = state.lock().unwrap();
+    let catalog = catalog(&app)?;
+    let changes = op.changes_design();
+    let App { info, design, profile_dir, .. } = &mut *app;
+    let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref() })?;
+    let mut out = json!({"result": result});
+    if changes {
+        out["scene"] = scene_json(&app)?;
+    }
+    Ok(out)
 }
 
 /// Places modules (macro, count) with auto-placement (`ops::auto_place`, plot may
@@ -488,6 +507,10 @@ fn scene_json(app: &App) -> CmdResult {
             Some(c) => design.free_snaps(c, e.index).map(|v| v.iter().map(|s| snap_json(&s.name, &s.world)).collect()).unwrap_or_default(),
             None => Vec::new(),
         };
+        // Turret and shield groups (one per group and kind): [equipped, total].
+        let groups = catalog.as_ref().and_then(|c| c.module(&e.macro_name).ok()).map_or(0, |m| {
+            m.equipment_groups().iter().map(|g| KINDS.iter().filter(|k| m.group_slots(g, k).next().is_some()).count()).sum::<usize>()
+        });
         entries.push(json!({
             "index": e.index,
             "macro": e.macro_name,
@@ -498,6 +521,7 @@ fn scene_json(app: &App) -> CmdResult {
             "attached": attached,
             "stage_end": e.bookmark.is_some(),
             "free_snaps": free,
+            "equipment": [e.upgrades.len().min(groups), groups],
         }));
     }
     let issues: Vec<Value> = match &catalog {

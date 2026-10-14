@@ -12,9 +12,10 @@
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, Module, Snap};
+use crate::equipment::{choose, exact, module_groups, Choice, Fill};
 use crate::geometry::{attach as attach_transform, Transform};
 use crate::import::new_plan_id;
-use crate::plan::{Entry, Plan, Predecessor};
+use crate::plan::{Entry, Plan, Predecessor, Upgrade};
 use crate::plot::{required_plot, Plot};
 use crate::{Error, Result};
 
@@ -294,6 +295,91 @@ impl Design {
         Ok(())
     }
 
+    /// Equips one kind of slot (`turrets` or `shields`) in a group of entry `index`:
+    /// `Some((macro, count))` puts `count` of that equipment on its slots (it must fit
+    /// all of them), `None` removes what is there.
+    pub fn set_equipment(&mut self, catalog: &Catalog, index: u32, group: &str, kind: &str, equip: Option<(&str, u32)>) -> Result<()> {
+        let module = catalog.module(&self.entry(index)?.macro_name)?;
+        let slots: Vec<_> = module.group_slots(group, kind).collect();
+        if slots.is_empty() {
+            return Err(Error(format!("module {index} ({}) has no {kind} in group {group}", module.macro_name)));
+        }
+        let group = slots[0].group.clone();
+        let choice = match equip {
+            Some((macro_name, count)) => {
+                let e = catalog
+                    .equipment()?
+                    .iter()
+                    .find(|e| e.macro_name.eq_ignore_ascii_case(macro_name))
+                    .ok_or_else(|| Error(format!("{macro_name} is not buildable equipment")))?;
+                if !slots.iter().all(|s| e.fits(s)) {
+                    return Err(Error(format!("{macro_name} doesn't fit the {kind} of group {group}")));
+                }
+                if count == 0 || count as usize > slots.len() {
+                    return Err(Error(format!("group {group} has {} {kind} slots; {count} can't go there", slots.len())));
+                }
+                Some((e.macro_name.clone(), count, slots.len() as u32))
+            }
+            None => None,
+        };
+        self.checkpoint();
+        put_upgrade(&mut self.entry_mut(index).upgrades, &group, kind, choice);
+        Ok(())
+    }
+
+    /// Equips every group of the given entries as `fill` chooses, as one undo step.
+    /// Returns how many group slots of a kind were filled, cleared and skipped
+    /// (nothing fits).
+    pub fn equip_modules(&mut self, catalog: &Catalog, indices: &[u32], fill: &Fill) -> Result<(usize, usize, usize)> {
+        let equipment = catalog.equipment()?;
+        let mut changes = Vec::new();
+        let (mut filled, mut cleared, mut skipped) = (0, 0, 0);
+        for &index in indices {
+            let e = self.entry(index)?;
+            let module = catalog.module(&e.macro_name)?;
+            for slots in module_groups(equipment, &module, &e.upgrades) {
+                match choose(catalog, &module, &slots, fill)? {
+                    Choice::Fill(m) => {
+                        filled += 1;
+                        changes.push((index, slots.group, slots.kind, Some((m, slots.slots, slots.slots))));
+                    }
+                    Choice::Clear => {
+                        cleared += 1;
+                        changes.push((index, slots.group, slots.kind, None));
+                    }
+                    Choice::Skip => skipped += 1,
+                }
+            }
+        }
+        if !changes.is_empty() {
+            self.checkpoint();
+            for (index, group, kind, choice) in changes {
+                put_upgrade(&mut self.entry_mut(index).upgrades, &group, kind, choice);
+            }
+        }
+        Ok((filled, cleared, skipped))
+    }
+
+    /// Gives every other module of the same type the equipment of entry `index`, as
+    /// one undo step. Returns how many modules changed.
+    pub fn copy_equipment(&mut self, index: u32) -> Result<usize> {
+        let source = self.entry(index)?.clone();
+        let targets: Vec<u32> = self
+            .plan
+            .entries
+            .iter()
+            .filter(|e| e.index != index && e.macro_name.eq_ignore_ascii_case(&source.macro_name) && e.upgrades != source.upgrades)
+            .map(|e| e.index)
+            .collect();
+        if !targets.is_empty() {
+            self.checkpoint();
+            for t in &targets {
+                self.entry_mut(*t).upgrades = source.upgrades.clone();
+            }
+        }
+        Ok(targets.len())
+    }
+
     fn position_of(&self, index: u32) -> Result<usize> {
         self.plan.entries.iter().position(|e| e.index == index).ok_or_else(|| Error(format!("no entry {index}")))
     }
@@ -379,6 +465,11 @@ impl Design {
         self.plan.entries.iter().find(|e| e.index == index).ok_or_else(|| Error(format!("no entry {index}")))
     }
 
+    /// Entry `index`, which the caller has checked exists.
+    fn entry_mut(&mut self, index: u32) -> &mut Entry {
+        self.plan.entries.iter_mut().find(|e| e.index == index).unwrap()
+    }
+
     fn next_index(&self) -> u32 {
         self.plan.entries.iter().map(|e| e.index).max().unwrap_or(0) + 1
     }
@@ -430,6 +521,23 @@ fn find_snap(module: &Arc<Module>, name: &str) -> Result<Snap> {
     module.snap(name).cloned().ok_or_else(|| Error(format!("{} has no snap {name}", module.macro_name)))
 }
 
+/// Sets (or with `None` removes) the equipment of one kind in a group: (macro,
+/// count, slots). A replaced upgrade keeps its place and `path`.
+fn put_upgrade(upgrades: &mut Vec<Upgrade>, group: &str, kind: &str, choice: Option<(String, u32, u32)>) {
+    let at = upgrades.iter().position(|u| u.kind == kind && u.group.eq_ignore_ascii_case(group));
+    let old = at.map(|i| upgrades.remove(i));
+    if let Some((macro_name, count, slots)) = choice {
+        let new = Upgrade {
+            kind: kind.to_owned(),
+            macro_name,
+            path: old.and_then(|o| o.path),
+            group: group.to_owned(),
+            exact: exact(kind, count, slots),
+        };
+        upgrades.insert(at.unwrap_or(upgrades.len()), new);
+    }
+}
+
 fn new_entry(index: u32, module: &Arc<Module>, link: Option<(String, Predecessor)>, at: Transform) -> Entry {
     let (connection, predecessor) = link.map_or((None, None), |(c, p)| (Some(c), Some(p)));
     Entry {
@@ -464,6 +572,7 @@ mod tests {
             shape: Vec::new(),
             parts: Vec::new(),
             collision: Vec::new(),
+            equipment_slots: Vec::new(),
             economy: Default::default(),
         };
         Catalog::from_modules(vec![

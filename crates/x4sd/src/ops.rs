@@ -11,11 +11,12 @@ use serde_json::{json, Value};
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
 use x4sd_core::economy::{analyze, Analysis};
+use x4sd_core::equipment::{module_groups, Fill, Level};
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::layout::{self, Options};
 use x4sd_core::plan::{parse_plans, write_plans};
-use x4sd_core::planner::{self, producible_wares, ProductionPlan, Request};
+use x4sd_core::planner::{self, module_counts, producible_wares, ProductionPlan, Request};
 use x4sd_core::plot::{required_plot, Plot};
 use x4sd_core::validate::{validate, validate_plot};
 
@@ -70,6 +71,19 @@ pub struct AutoPlaceArgs {
     pub race: Option<String>,
 }
 
+/// How equip_modules chooses equipment, and for which modules.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct EquipArgs {
+    /// Equipment macros to use: each group gets, per kind, the first one that fits all its slots (e.g. one M turret, one M shield, one L turret, one L shield). Give this or level
+    pub picks: Option<Vec<String>>,
+    /// Loadout level instead of picks: none (remove), low, medium, high (cheapest, middle or most expensive fitting non-missile equipment, the module's race first)
+    pub level: Option<String>,
+    /// Module indices; default: every module (those without groups are left alone)
+    pub modules: Option<Vec<u32>>,
+    /// Only defence modules
+    pub defence_only: Option<bool>,
+}
+
 /// Lowercase macro -> (display name, class) of every station module.
 pub type ModuleNames = HashMap<String, (String, String)>;
 
@@ -115,6 +129,17 @@ pub enum Op {
     PlanProduction(PlanArgs),
     /// Attach modules (a list, or a plan's) at free snaps without overlaps.
     AutoPlace(AutoPlaceArgs),
+    /// Turrets and shields players can build.
+    ListEquipment { kind: Option<String>, size: Option<String>, race: Option<String>, search: Option<String> },
+    /// A module's equipment groups: slots, what is on them, what fits.
+    ModuleEquipment { index: u32 },
+    /// Equip (or with no macro, clear) one kind of slot in a group.
+    SetEquipment { index: u32, group: String, kind: String, r#macro: Option<String>, count: Option<u32> },
+    /// Equip many modules by picks or by loadout level.
+    EquipModules(EquipArgs),
+    /// Give modules the equipment of one: `same_type` (default) copies it to the
+    /// modules of its type, `all` uses its equipment as picks for every module.
+    CopyEquipment { from: u32, scope: Option<String> },
 }
 
 impl Op {
@@ -131,6 +156,8 @@ impl Op {
                 | Op::BuildCost { .. }
                 | Op::AnalyzeStation { .. }
                 | Op::ListWares
+                | Op::ListEquipment { .. }
+                | Op::ModuleEquipment { .. }
                 | Op::PlanProduction(_)
         )
     }
@@ -276,7 +303,31 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         Op::BuildCost { index, method } => build_cost(c, ctx.design, index, method.as_deref().unwrap_or("default")),
         Op::AnalyzeStation { sunlight } => analyze_station(c, ctx.design, sunlight.unwrap_or(100.0)),
         Op::ListWares => list_wares(c),
-        Op::PlanProduction(args) => plan_production(c, ctx.design, args),
+        Op::ListEquipment { kind, size, race, search } => list_equipment(c, kind, size, race, search),
+        Op::ModuleEquipment { index } => module_equipment(c, ctx.design, index),
+        Op::SetEquipment { index, group, kind, r#macro, count } => {
+            let kind = if kind.ends_with('s') { kind } else { format!("{kind}s") };
+            let slots = ctx.design.plan().entries.iter().find(|e| e.index == index).and_then(|e| c.module(&e.macro_name).ok());
+            let slots = slots.map_or(0, |m| m.group_slots(&group, &kind).count() as u32);
+            let equip = r#macro.as_deref().map(|m| (m, count.unwrap_or(slots)));
+            ctx.design.set_equipment(c, index, &group, &kind, equip).map_err(err)?;
+            module_equipment(c, ctx.design, index)
+        }
+        Op::EquipModules(args) => equip_modules(c, ctx.design, args),
+        Op::CopyEquipment { from, scope } => match scope.as_deref().unwrap_or("same_type") {
+            "same_type" => Ok(json!({"modules": ctx.design.copy_equipment(from).map_err(err)?})),
+            "all" => {
+                let e = ctx.design.plan().entries.iter().find(|e| e.index == from).ok_or(format!("no entry {from}"))?;
+                let mut picks: Vec<String> = e.upgrades.iter().map(|u| u.macro_name.clone()).collect();
+                picks.dedup();
+                if picks.is_empty() {
+                    return Err(format!("module {from} has no equipment to copy"));
+                }
+                equip_modules(c, ctx.design, EquipArgs { picks: Some(picks), ..Default::default() })
+            }
+            other => Err(format!("scope is same_type or all, not {other}")),
+        },
+        Op::PlanProduction(args) => plan_production(c, ctx.design, args, None),
         Op::AutoPlace(args) => auto_place(c, ctx.design, args),
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
@@ -330,6 +381,77 @@ pub fn analyze_station(catalog: &Catalog, design: &Design, sunlight: f64) -> Res
     analysis_json(catalog, &a, sunlight)
 }
 
+/// Turrets and shields players can build, filtered: [{macro, name, kind, size, race, mk, price}].
+pub fn list_equipment(catalog: &Catalog, kind: Option<String>, size: Option<String>, race: Option<String>, search: Option<String>) -> Result<Value, String> {
+    let wares = catalog.wares().map_err(|e| e.to_string())?;
+    let search = search.map(|s| s.to_lowercase());
+    let kind = kind.map(|k| if k.ends_with('s') { k } else { format!("{k}s") });
+    let list: Vec<Value> = catalog
+        .equipment()
+        .map_err(|e| e.to_string())?
+        .iter()
+        .filter(|e| kind.as_ref().is_none_or(|k| e.kind.eq_ignore_ascii_case(k)))
+        .filter(|e| size.as_ref().is_none_or(|s| e.size().is_some_and(|x| x.eq_ignore_ascii_case(s))))
+        .filter(|e| race.as_ref().is_none_or(|r| e.race.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(r))))
+        .filter(|e| search.as_ref().is_none_or(|s| e.name.to_lowercase().contains(s) || e.macro_name.contains(s)))
+        .map(|e| {
+            let price = wares.ware(&e.ware).and_then(|w| w.average_price);
+            json!({"macro": e.macro_name, "name": e.name, "kind": e.kind, "size": e.size(), "race": e.race, "mk": e.mk, "price": price})
+        })
+        .collect();
+    Ok(json!(list))
+}
+
+/// A module's equipment groups: per group and kind the slots, size, what is on
+/// them and the macros that fit.
+pub fn module_equipment(catalog: &Catalog, design: &Design, index: u32) -> Result<Value, String> {
+    let e = design.plan().entries.iter().find(|e| e.index == index).ok_or(format!("no entry {index}"))?;
+    let module = catalog.module(&e.macro_name).map_err(|e| e.to_string())?;
+    let equipment = catalog.equipment().map_err(|e| e.to_string())?;
+    let name = |m: &str| equipment.iter().find(|x| x.macro_name.eq_ignore_ascii_case(m)).map(|x| x.name.clone());
+    let groups: Vec<Value> = module_groups(equipment, &module, &e.upgrades)
+        .into_iter()
+        .map(|g| {
+            json!({
+                "group": g.group,
+                "kind": g.kind,
+                "size": g.size,
+                "slots": g.slots,
+                "current": g.current.map(|(m, n)| json!({"macro": m, "name": name(&m), "count": n})),
+                "fits": g.fitting.iter().map(|x| x.macro_name.as_str()).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    Ok(json!({"index": index, "macro": e.macro_name, "groups": groups}))
+}
+
+/// Equips modules (picks or a loadout level; all, given, or defence modules only),
+/// as one undo step: how many group slots were filled, cleared or skipped.
+pub fn equip_modules(catalog: &Catalog, design: &mut Design, args: EquipArgs) -> Result<Value, String> {
+    let fill = match (args.picks, args.level.as_deref()) {
+        (Some(picks), None) => Fill::Picks(picks),
+        (None, Some(level)) => Fill::Level(match level {
+            "none" => Level::None,
+            "low" => Level::Low,
+            "medium" => Level::Medium,
+            "high" => Level::High,
+            other => return Err(format!("level is none, low, medium or high, not {other}")),
+        }),
+        _ => return Err("give either picks or level".to_owned()),
+    };
+    let defence_only = args.defence_only.unwrap_or(false);
+    let indices: Vec<u32> = design
+        .plan()
+        .entries
+        .iter()
+        .filter(|e| args.modules.as_ref().is_none_or(|m| m.contains(&e.index)))
+        .filter(|e| !defence_only || catalog.module(&e.macro_name).is_ok_and(|m| m.class == "defencemodule"))
+        .map(|e| e.index)
+        .collect();
+    let (filled, cleared, skipped) = design.equip_modules(catalog, &indices, &fill).map_err(|e| e.to_string())?;
+    Ok(json!({"filled": filled, "cleared": cleared, "skipped": skipped, "modules": indices.len()}))
+}
+
 /// Wares some buildable module makes: [{ware, name}], by name.
 pub fn list_wares(catalog: &Catalog) -> Result<Value, String> {
     let wares = producible_wares(catalog).map_err(|e| e.to_string())?;
@@ -338,9 +460,12 @@ pub fn list_wares(catalog: &Catalog) -> Result<Value, String> {
 
 /// The modules to add to the design for the targets (production chain, habitats,
 /// storage, docks), the station's analysis with them, and their build cost.
-pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs) -> Result<Value, String> {
+/// `existing`: plan for a station with these modules instead of the design's
+/// (the builder re-plans against the station a plan was made for).
+pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs, existing: Option<Vec<ModuleCount>>) -> Result<Value, String> {
     let sunlight = args.sunlight.unwrap_or(100.0);
-    let p = planner::plan_production(catalog, design.plan(), &request(args)).map_err(|e| e.to_string())?;
+    let existing = existing.map_or_else(|| module_counts(design.plan()), |m| m.into_iter().map(|m| (m.r#macro, m.count)).collect());
+    let p = planner::plan_production(catalog, &existing, &request(args)).map_err(|e| e.to_string())?;
     plan_json(catalog, &p, sunlight)
 }
 
@@ -352,7 +477,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
         (None, Some(settings)) => {
             let sunlight = settings.sunlight.unwrap_or(100.0);
             let req = request(settings);
-            let p = planner::plan_production(catalog, design.plan(), &req).map_err(|e| e.to_string())?;
+            let p = planner::plan_production(catalog, &module_counts(design.plan()), &req).map_err(|e| e.to_string())?;
             let modules = p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
             (modules, args.race.or(req.race), Some(plan_json(catalog, &p, sunlight)?))
         }

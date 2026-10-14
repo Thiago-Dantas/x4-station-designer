@@ -213,16 +213,20 @@ try:
 
     # Planner tab: Hull Parts x1 (any race), generate, place from a row, buy a chain ware.
     cdp.js("document.getElementById('tab-planner').click()")
-    cdp.wait_for("document.querySelectorAll('#planner-wares option').length > 0")
     cdp.js("document.querySelectorAll('#planner-targets button').forEach(b => b.click())")
     cdp.js("{ const r = document.getElementById('planner-race'); r.value = ''; r.dispatchEvent(new Event('change')); }")
     cdp.js("document.getElementById('planner-buy').querySelectorAll('button').forEach(b => b.click())")
-    cdp.js("document.getElementById('planner-ware').value = 'Hull Parts'; document.getElementById('planner-add').click()")
-    assert cdp.js("document.querySelectorAll('#planner-targets li').length") == 1
+    # Ware search: typing filters the list; Enter adds the highlighted ware.
+    cdp.js("{ const i = document.getElementById('planner-ware'); i.value = 'hull par'; i.dispatchEvent(new Event('input')); }")
+    cdp.wait_for("!document.getElementById('planner-ware-list').hidden")
+    print("7. ware search 'hull par':", cdp.js("[...document.querySelectorAll('#planner-ware-list div')].map(d => d.textContent).join(', ')"))
+    cdp.js("document.getElementById('planner-ware').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'}))")
+    assert cdp.js("[...document.querySelectorAll('#planner-targets li span')].map(s => s.textContent).join()") == "Hull Parts"
+    assert cdp.js("document.getElementById('planner-ware-list').hidden")
     cdp.js("document.getElementById('planner-generate').click()")
     cdp.wait_for("/^\\d+ modules to add/.test(document.getElementById('planner-summary').textContent)")
     rows = "[...document.querySelectorAll('.planned-row')]"
-    print("7. planner:", cdp.js("document.getElementById('planner-summary').textContent").replace("\n", " | "))
+    print("   planner:", cdp.js("document.getElementById('planner-summary').textContent").replace("\n", " | "))
     print("   rows:", cdp.js(rows + ".map(r => r.querySelector('.name').textContent + ' ' + r.querySelector('.n').textContent).join(', ')"))
     cdp.screenshot(os.path.join(out, "ui-7-planner.png"))
     first = cdp.js(rows + "[0].querySelector('.name').textContent")
@@ -244,8 +248,12 @@ try:
     cdp.wait_for("document.querySelectorAll('#planner-buy button').length === 1 && !%s.some(r => r.querySelector('.name').textContent === 'Energy Cell Production')" % rows)
     print("   buying energy cells:", cdp.js("document.getElementById('planner-buy').textContent"), "|",
           cdp.js("document.getElementById('planner-summary').textContent").replace("\n", " | "))
+    # Buying re-plans for the same station: the placed hull part still counts, nothing is added twice.
+    assert cdp.js(hull_row + ".querySelector('.n').textContent") == "1/1"
     cdp.js("document.querySelector('#planner-buy button').click()")
     cdp.wait_for("%s.some(r => r.querySelector('.name').textContent === 'Energy Cell Production')" % rows)
+    summary = cdp.js("document.getElementById('planner-summary').textContent")
+    assert summary.startswith("18 modules to add, 17 still to place"), summary
     # Place all: everything still to place, on the largest plot so no enlarge prompt
     # (a native dialog) can block the test; then undo it in one step.
     cdp.js("document.querySelectorAll('.plot-grid input').forEach(i => { i.value = 10; i.dispatchEvent(new Event('change')); })")
@@ -260,6 +268,49 @@ try:
     print("8.", todo, "->", cdp.js("document.getElementById('planner-placed').textContent"), "|", before, "->", cdp.js(count), "modules | checks:", issues)
     assert cdp.js(rows + ".every(r => r.classList.contains('done'))") and cdp.js("document.getElementById('planner-place').hidden")
     assert issues == "No problems found", issues
+    # Buying a chain ware after placing doesn't bring the plan back to place again.
+    cdp.js(rows + ".find(r => r.querySelector('.name').textContent === 'Graphene Production').querySelector('button').click()")
+    cdp.wait_for("!%s.some(r => r.querySelector('.name').textContent === 'Graphene Production')" % rows)
+    left = cdp.js("document.getElementById('planner-place').hidden ? '' : document.getElementById('planner-place').textContent")
+    print("   buy graphene after placing ->", cdp.js("document.getElementById('planner-summary').textContent.split(String.fromCharCode(10))[0]"), "|", left or "nothing to place")
+    assert cdp.js(hull_row + ".querySelector('.n').textContent") == "1/1" and not left, left
+    cdp.js("document.querySelector('#planner-buy button').click()")
+    cdp.wait_for("%s.some(r => r.querySelector('.name').textContent === 'Graphene Production')" % rows)
+    assert cdp.js(rows + ".every(r => r.classList.contains('done'))") and cdp.js("document.getElementById('planner-place').hidden")
+
+    # Equipment: select a module with groups, equip one group, copy it to its type,
+    # then the whole station by level and by picks; undo those four steps.
+    summary = "document.getElementById('equip-summary').textContent"
+    print("9. equipment:", cdp.js(summary))
+    target = cdp.js("window.__TAURI_INTERNALS__.invoke('scene').then(s => s.entries.find(e => e.equipment[1] > 0 && s.entries.filter(x => x.macro === e.macro).length > 1).index)")
+    cdp.js("document.getElementById('tab-order').click()")
+    cdp.js("document.querySelectorAll('#order-list .order-row')[%d].click()" % (target - 1))
+    cdp.js("document.getElementById('tab-planner').click()")
+    cdp.wait_for("!document.getElementById('sel-equipment').hidden && document.querySelectorAll('#sel-equipment-groups select').length > 0")
+    groups = cdp.js("[...document.querySelectorAll('#sel-equipment-groups .equip-row span')].map(s => s.textContent).join(', ')")
+    first = cdp.js("{ const s = document.querySelector('#sel-equipment-groups select'); s.value = s.options[1].value; s.dispatchEvent(new Event('change')); s.options[1].textContent }")
+    cdp.wait_for("%s.startsWith('1 of')" % summary)
+    print("   #%d %s: %s; set the first to %s -> %s" % (target, cdp.js("document.getElementById('sel-name').textContent"), groups, first, cdp.js(summary)))
+    cdp.js("document.getElementById('btn-equip-same').click()")
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Copied to')")
+    print("   ", cdp.js("document.getElementById('status').textContent"), "->", cdp.js(summary))
+    cdp.js("{ const l = document.getElementById('equip-level'); l.value = 'high'; } document.getElementById('btn-equip-level').click()")
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Equipped')")
+    total = cdp.js("%s.split(' of ')[1].split(' ')[0]" % summary)
+    print("   level high:", cdp.js("document.getElementById('status').textContent"), "->", cdp.js(summary))
+    assert cdp.js(summary).startswith("%s of %s" % (total, total)), cdp.js(summary)
+    old_status = cdp.js("document.getElementById('status').textContent")
+    cdp.js("{ const s = document.getElementById('pick-turrets-medium'); s.value = s.options[1].value; } document.getElementById('btn-equip-picks').click()")
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Equipped') && document.getElementById('status').textContent !== %r" % old_status, timeout=30)
+    print("   picks (%s):" % cdp.js("document.getElementById('pick-turrets-medium').selectedOptions[0].textContent"), cdp.js("document.getElementById('status').textContent"))
+    assert cdp.js("[...document.querySelectorAll('#issues li')].map(l => l.textContent).join('; ')") == "No problems found"
+    time.sleep(0.5)
+    cdp.screenshot(os.path.join(out, "ui-9-equipment.png"))
+    for _ in range(4):
+        cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+        time.sleep(0.4)
+    cdp.wait_for("%s.startsWith('0 of')" % summary)
+    print("   after 4x Ctrl+Z:", cdp.js(summary))
     cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
     cdp.wait_for("%s.then(n => n === %d)" % (count, before))
     print("   after Ctrl+Z:", cdp.js(count), "modules,", cdp.js("document.getElementById('planner-place').textContent"))

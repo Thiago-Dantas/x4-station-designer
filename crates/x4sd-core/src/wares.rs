@@ -44,6 +44,10 @@ pub struct Ware {
     /// A raw material, brought in rather than made: mined (`tags="minable"`: ore, ice,
     /// hydrogen, ...) or salvaged scrap (`tags="recycling"`: scrap metal, raw scrap).
     pub raw: bool,
+    /// `tags` attribute, e.g. `equipment turret`, `equipment noplayerblueprint shield`.
+    pub tags: Vec<String>,
+    /// The macro it builds (`<component ref>`), for modules and equipment.
+    pub component: Option<String>,
 }
 
 /// A build method players can choose (the game's "Preferred Build Method").
@@ -124,9 +128,11 @@ impl Wares {
         for w in parent.children().filter(|c| c.has_tag_name("ware")) {
             let Some(id) = w.attribute("id") else { continue };
             let child = |tag: &str| w.children().find(|c| c.has_tag_name(tag));
-            if let Some(m) = child("component").and_then(|c| c.attribute("ref")) {
+            let component = child("component").and_then(|c| c.attribute("ref"));
+            if let Some(m) = component {
                 self.by_macro.insert(m.to_ascii_lowercase(), id.to_owned());
             }
+            let tags: Vec<String> = w.attribute("tags").unwrap_or_default().split_whitespace().map(str::to_owned).collect();
             let ware = Ware {
                 id: id.to_owned(),
                 name: w.attribute("name").map_or_else(|| id.to_owned(), |n| texts.resolve(n)),
@@ -134,7 +140,9 @@ impl Wares {
                 recipes: w.children().filter(|c| c.has_tag_name("production")).map(recipe).collect(),
                 transport: w.attribute("transport").unwrap_or_default().to_owned(),
                 volume: w.attribute("volume").and_then(|v| v.parse().ok()).unwrap_or(0.0),
-                raw: w.attribute("tags").is_some_and(|t| t.split_whitespace().any(|t| t == "minable" || t == "recycling")),
+                raw: tags.iter().any(|t| t == "minable" || t == "recycling"),
+                tags,
+                component: component.map(str::to_owned),
             };
             self.wares.insert(id.to_owned(), ware);
         }
@@ -157,6 +165,11 @@ impl Wares {
 
     pub fn ware(&self, id: &str) -> Option<&Ware> {
         self.wares.get(id)
+    }
+
+    /// Every ware.
+    pub fn all(&self) -> impl Iterator<Item = &Ware> {
+        self.wares.values()
     }
 
     /// The ware that builds this module or equipment macro.

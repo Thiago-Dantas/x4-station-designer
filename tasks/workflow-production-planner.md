@@ -202,3 +202,9 @@ Steps:
     - the game builds an auto-placed station;
     - ships reach its dock area and pier;
     - whether the game minds the overlaps `validate` reports on stations built in game.
+- 2026-10-13: user feedback on the Planner tab, fixed the same day:
+  - **Ware search:** the `<datalist>` gave no usable search. It is replaced by an in-page list that matches every typed word against the name or id, names starting with the first word first. Arrow keys and Enter, or a click, add the ware.
+  - **Plans were placed twice:** *Buy* (and un-buy) regenerated the plan for the current design, so after placing, the targets came back on top and the "placed" counts reset. Now a plan keeps the station it was made for (`baseline`: module counts), and Buy re-plans against it. Only *Generate plan* starts a new plan.
+    - `planner::plan_production` takes module counts (`module_counts(plan)`) instead of a plan.
+    - The Tauri `plan_production` command takes an optional `baseline`; MCP is unchanged.
+  - ui_smoke checks both: "hull par" + Enter adds Hull Parts; Buy after placing one module keeps it counted (17 to add, 16 to place); Buy after Place all leaves nothing to place.

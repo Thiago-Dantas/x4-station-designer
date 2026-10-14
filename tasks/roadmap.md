@@ -57,7 +57,7 @@ Proposed order (each step usable on its own):
   - [ ] snap labels
   - [ ] better camera on small designs
   - [ ] move unattached modules in the UI
-- [ ] Equipment (shields/turrets per module group) in the model, the builder and MCP
+- [x] **Equipment** (user request; shields and turrets per module group; see [workflow-equipment.md](workflow-equipment.md)): per-group editing, plus bulk by picks, loadout level or copying; MCP tools; validation. Still to check in game: an equipped plan builds.
 - [x] Real module meshes from `.xmf` instead of boxes (user request, done first; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [x] Textures on the models as an on/off setting (user request; on by default after measuring; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [x] **Race filter** in the palette (user request): chips for one or several races (e.g. Terran + Boron) or all; remembered; ui_smoke checks Terran + Boron = 83 modules

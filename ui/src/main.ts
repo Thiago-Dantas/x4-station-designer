@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
-import { api, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape } from "./api";
+import { api, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape } from "./api";
 import { CLASS_COLORS, type DiffuseTexture, modelGeometry, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -176,6 +176,8 @@ function redraw() {
   renderOrder();
   void refreshCost();
   void refreshAnalysis();
+  void refreshEquipment();
+  renderEquipmentSummary();
   renderPlanner();
   $("dirty").hidden = !scene.dirty;
   const title = `X4 Station Designer - ${scene.name}${scene.dirty ? " *" : ""}`;
@@ -461,6 +463,118 @@ async function refreshAnalysis() {
   );
 }
 
+// ---------------------------------------------------------------- equipment
+
+let equipmentList: EquipmentItem[] = [];
+let equipRequest = 0;
+const SIZE = (s: string | null) => (s === "medium" ? "M" : s === "large" ? "L" : (s ?? "?"));
+const KIND = { turrets: "turret", shields: "shield" } as const;
+const equipmentName = (m: string) => equipmentList.find((e) => e.macro.toLowerCase() === m.toLowerCase())?.name ?? m;
+
+/** Runs a shared operation that may change the design and redraws; returns its result (null after an error). */
+async function applyOp<T>(op: { op: string } & Record<string, unknown>, done?: (result: T) => string): Promise<T | null> {
+  let result: T | null = null;
+  await apply(
+    api.runOp<T>(op).then((r) => {
+      result = r.result;
+      return r.scene ?? scene!;
+    }),
+  );
+  if (result !== null && done) status(done(result), "good");
+  return result;
+}
+
+/** Selection panel: the selected module's groups, each kind with a choice of what fits and a count. */
+async function refreshEquipment() {
+  const sel = entry(selected);
+  const box = $("sel-equipment");
+  if (!sel || !sel.equipment[1]) {
+    box.hidden = true;
+    return;
+  }
+  const request = ++equipRequest;
+  let groups: EquipmentGroup[];
+  try {
+    groups = (await api.runOp<{ groups: EquipmentGroup[] }>({ op: "module_equipment", index: sel.index })).result.groups;
+  } catch {
+    return;
+  }
+  if (request !== equipRequest) return; // a newer request is on its way
+  box.hidden = false;
+  const rows: HTMLElement[] = [];
+  let last = "";
+  for (const g of groups) {
+    if (g.group !== last) {
+      last = g.group;
+      const title = document.createElement("div");
+      title.className = "equip-group";
+      const name = g.group.replace(/^group0*(\d+)$/, "Group $1").replace(/_/g, " ");
+      title.textContent = name[0].toUpperCase() + name.slice(1);
+      rows.push(title);
+    }
+    const row = document.createElement("div");
+    row.className = "equip-row";
+    const label = document.createElement("span");
+    label.textContent = `${g.slots} × ${SIZE(g.size)} ${KIND[g.kind]}`;
+    const choice = document.createElement("select");
+    choice.append(new Option("—", ""), ...g.fits.map((m) => new Option(equipmentName(m), m)));
+    choice.value = g.current?.macro ?? "";
+    const count = document.createElement("input");
+    count.type = "number";
+    count.min = "1";
+    count.max = String(g.slots);
+    count.value = String(g.current?.count ?? g.slots);
+    count.title = `How many of the ${g.slots} slots to fill`;
+    count.hidden = g.slots < 2;
+    const set = () =>
+      void applyOp({ op: "set_equipment", index: sel.index, group: g.group, kind: g.kind, macro: choice.value || null, count: choice.value ? Number(count.value) : null });
+    choice.onchange = set;
+    count.onchange = () => choice.value && set();
+    row.append(label, choice, count);
+    rows.push(row);
+  }
+  $("sel-equipment-groups").replaceChildren(...rows);
+}
+
+/** Right pane: how many groups of the station are equipped. */
+function renderEquipmentSummary() {
+  const [done, total] = (scene?.entries ?? []).reduce(([a, b], e) => [a + e.equipment[0], b + e.equipment[1]], [0, 0]);
+  $("equip-summary").textContent = total ? `${done} of ${total} turret and shield groups equipped` : "No module here has turret or shield slots";
+}
+
+/** What equip_modules reports, for the status bar. */
+const equipped = (r: { filled: number; cleared: number; skipped: number }) =>
+  [r.filled && `Equipped ${r.filled} groups`, r.cleared && `cleared ${r.cleared}`, r.skipped && `${r.skipped} left as they were (nothing fits)`].filter(Boolean).join(", ") ||
+  "Nothing to equip";
+
+async function loadEquipment() {
+  equipmentList = (await api.runOp<EquipmentItem[]>({ op: "list_equipment" })).result;
+  for (const [kind, size] of [["turrets", "medium"], ["shields", "medium"], ["turrets", "large"], ["shields", "large"]]) {
+    const items = equipmentList.filter((e) => e.kind === kind && e.size === size).sort((a, b) => (a.race ?? "").localeCompare(b.race ?? "") || a.name.localeCompare(b.name));
+    $(`pick-${kind}-${size}`).replaceChildren(new Option("—", ""), ...items.map((e) => new Option(e.name, e.macro)));
+  }
+}
+
+const defenceOnly = () => $<HTMLInputElement>("equip-defence-only").checked;
+$("btn-equip-level").onclick = () =>
+  void applyOp({ op: "equip_modules", level: $<HTMLSelectElement>("equip-level").value, defence_only: defenceOnly() }, equipped);
+$("btn-equip-picks").onclick = () => {
+  const picks = ["turrets-medium", "shields-medium", "turrets-large", "shields-large"].map((id) => $<HTMLSelectElement>(`pick-${id}`).value).filter(Boolean);
+  if (!picks.length) {
+    status("Pick at least one turret or shield", "error");
+    return;
+  }
+  void applyOp({ op: "equip_modules", picks, defence_only: defenceOnly() }, equipped);
+};
+$("btn-equip-same").onclick = () => {
+  const sel = entry(selected);
+  if (sel) void applyOp<{ modules: number }>({ op: "copy_equipment", from: sel.index, scope: "same_type" }, (r) => `Copied to ${r.modules} more ${sel.name ?? sel.macro}`);
+};
+$("btn-equip-all").onclick = () => {
+  const sel = entry(selected);
+  if (sel) void applyOp({ op: "copy_equipment", from: sel.index, scope: "all" }, equipped);
+};
+
 // ---------------------------------------------------------------- planner
 
 interface PlannerState { targets: { ware: string; modules: number }[]; race: string; workforce: boolean; hours: number; buy: string[] }
@@ -525,7 +639,7 @@ function renderPlanner() {
       b.onclick = () => {
         planner.buy = planner.buy.filter((x) => x !== w);
         savePlanner();
-        void generatePlan();
+        void generatePlan(false);
       };
       return b;
     }),
@@ -559,7 +673,7 @@ function renderPlanner() {
           ev.stopPropagation();
           planner.buy.push(m.ware!);
           savePlanner();
-          void generatePlan();
+          void generatePlan(false);
         };
         row.append(buy);
       }
@@ -587,25 +701,33 @@ function renderPlanner() {
     (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "");
 }
 
-async function generatePlan() {
+/** Plans the targets. `fresh` (Generate plan): a new plan for the design as it is
+ * now. Otherwise (buying a ware, or making it again) the current plan is redone
+ * for the station it was made for, so what is placed keeps counting and its
+ * modules are never added twice. */
+async function generatePlan(fresh: boolean) {
   if (!scene) return;
+  const baseline = fresh || !plan ? macroCounts() : plan.baseline;
   let result;
   try {
-    result = await api.planProduction({
-      targets: planner.targets,
-      race: planner.race || null,
-      workforce: planner.workforce,
-      storage_hours: planner.hours,
-      buy: planner.buy,
-      sunlight,
-      method: buildMethod,
-    });
+    result = await api.planProduction(
+      {
+        targets: planner.targets,
+        race: planner.race || null,
+        workforce: planner.workforce,
+        storage_hours: planner.hours,
+        buy: planner.buy,
+        sunlight,
+        method: buildMethod,
+      },
+      [...baseline].map(([macro, count]) => ({ macro, count })),
+    );
   } catch (e) {
     $("planner-summary").textContent = String(e);
     return;
   }
-  plan = { result, baseline: macroCounts() };
-  $("planner-placed").textContent = "";
+  if (fresh || !plan) $("planner-placed").textContent = "";
+  plan = { result, baseline };
   renderPlanner();
 }
 
@@ -638,7 +760,6 @@ async function placeAll() {
 async function loadPlanner() {
   const wares = await api.listWares();
   wareNames = new Map(wares.map((w) => [w.ware, w.name]));
-  $("planner-wares").replaceChildren(...wares.map((w) => new Option(w.name, w.name)));
   const races = [...new Set(modules.filter((m) => m.class === "habitation" && m.race).map((m) => m.race!))].sort();
   $("planner-race").replaceChildren(new Option("Any", ""), ...races.map((r) => new Option(r[0].toUpperCase() + r.slice(1), r)));
   $<HTMLSelectElement>("planner-race").value = planner.race;
@@ -659,10 +780,75 @@ $("planner-add").onclick = () => {
   if (existing) existing.modules += modulesFor;
   else planner.targets.push({ ware, modules: modulesFor });
   $<HTMLInputElement>("planner-ware").value = "";
+  wareSearch.open = false;
+  renderWareList();
   savePlanner();
   renderPlanner();
 };
-$<HTMLInputElement>("planner-ware").onkeydown = (ev) => ev.key === "Enter" && $("planner-add").click();
+
+/** The ware search under the planner's ware box: matches as you type. */
+const wareSearch = { open: false, matches: [] as string[], active: 0 };
+
+function renderWareList() {
+  const words = $<HTMLInputElement>("planner-ware").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const starts = (name: string) => (words.length && name.toLowerCase().startsWith(words[0]) ? 0 : 1);
+  wareSearch.matches = [...wareNames]
+    .filter(([id, name]) => words.every((w) => name.toLowerCase().includes(w) || id.includes(w)))
+    .sort(([, a], [, b]) => starts(a) - starts(b) || a.localeCompare(b))
+    .map(([id]) => id);
+  wareSearch.active = Math.min(wareSearch.active, Math.max(0, wareSearch.matches.length - 1));
+  const list = $("planner-ware-list");
+  list.replaceChildren(
+    ...wareSearch.matches.map((id, i) => {
+      const row = document.createElement("div");
+      row.textContent = wareNames.get(id) ?? id;
+      if (i === wareSearch.active) row.className = "active";
+      // mousedown, not click: the box loses focus (and closes the list) before a click lands.
+      row.onmousedown = (ev) => {
+        ev.preventDefault();
+        pickWare(id);
+      };
+      return row;
+    }),
+  );
+  list.hidden = !wareSearch.open || wareSearch.matches.length === 0;
+  list.children[wareSearch.active]?.scrollIntoView({ block: "nearest" });
+}
+
+function pickWare(id: string) {
+  $<HTMLInputElement>("planner-ware").value = wareNames.get(id) ?? id;
+  $("planner-add").click();
+}
+
+const wareBox = $<HTMLInputElement>("planner-ware");
+wareBox.oninput = () => {
+  wareSearch.open = true;
+  wareSearch.active = 0;
+  renderWareList();
+};
+wareBox.onfocus = () => {
+  wareSearch.open = true;
+  renderWareList();
+};
+wareBox.onblur = () => {
+  wareSearch.open = false;
+  renderWareList();
+};
+wareBox.onkeydown = (ev) => {
+  const n = wareSearch.matches.length;
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+    ev.preventDefault();
+    if (n) wareSearch.active = (wareSearch.active + (ev.key === "ArrowDown" ? 1 : n - 1)) % n;
+    wareSearch.open = true;
+    renderWareList();
+  } else if (ev.key === "Enter") {
+    if (wareSearch.open && n) pickWare(wareSearch.matches[wareSearch.active]);
+    else $("planner-add").click();
+  } else if (ev.key === "Escape") {
+    wareSearch.open = false;
+    renderWareList();
+  }
+};
 $<HTMLSelectElement>("planner-race").onchange = (ev) => {
   planner.race = (ev.target as HTMLSelectElement).value;
   savePlanner();
@@ -675,7 +861,7 @@ $<HTMLInputElement>("planner-hours").onchange = (ev) => {
   planner.hours = Math.max(0, Number((ev.target as HTMLInputElement).value) || 0);
   savePlanner();
 };
-$("planner-generate").onclick = () => void generatePlan();
+$("planner-generate").onclick = () => void generatePlan(true);
 $("planner-place").onclick = () => void placeAll();
 
 /** `index` and every module attached to it, directly or not. */
@@ -1012,6 +1198,7 @@ void listen<{ scene: Scene; op: string; replaced: boolean }>("scene-changed", (e
     const catalog = await api.loadCatalog();
     modules = catalog.modules;
     void loadPlanner().catch((e) => status(`Planner: ${e}`));
+    void loadEquipment().catch((e) => status(`Equipment: ${e}`));
     // Game order: by build-menu category, then by name.
     modules.sort((a, b) => categoryOf(a) - categoryOf(b) || a.name.localeCompare(b.name));
     const used = new Set(modules.map(categoryOf));

@@ -32,6 +32,54 @@ pub struct ShapeBox {
     pub half_extents: [f64; 3],
 }
 
+/// A turret or shield slot of a module: a component connection with a `group`.
+/// Plans equip slots by group (`<upgrades><groups>`), never one by one.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EquipmentSlot {
+    /// `turrets` or `shields`, as the plan's element names them.
+    pub kind: String,
+    /// Group name, e.g. `group01`.
+    pub group: String,
+    /// Connection tags, e.g. `turret medium standard missile hittable combat`.
+    pub tags: Vec<String>,
+    /// Placement in the module's frame.
+    pub transform: Transform,
+}
+
+/// Equipment players can build for station modules: a turret or shield.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Equipment {
+    pub macro_name: String,
+    pub ware: String,
+    /// Display name (English).
+    pub name: String,
+    /// `turrets` or `shields`.
+    pub kind: String,
+    /// Tags a slot needs for it to fit (its component's `component` connection,
+    /// without `component`), e.g. `turret medium standard hittable combat`.
+    pub tags: Vec<String>,
+    pub race: Option<String>,
+    /// Mark (1, 2, ...), if given.
+    pub mk: Option<u32>,
+}
+
+impl Equipment {
+    /// Whether it fits a slot: same kind, and the slot has every tag it needs.
+    pub fn fits(&self, slot: &EquipmentSlot) -> bool {
+        self.kind == slot.kind && self.tags.iter().all(|t| slot.tags.contains(t))
+    }
+
+    /// Slot size from the tags: `small`, `medium`, `large` or `extralarge`.
+    pub fn size(&self) -> Option<&str> {
+        size_of(&self.tags)
+    }
+}
+
+/// The size tag among `tags`.
+pub fn size_of(tags: &[String]) -> Option<&str> {
+    tags.iter().map(String::as_str).find(|t| ["small", "medium", "large", "extralarge"].contains(t))
+}
+
 /// A visible part of a module with its mesh files.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Part {
@@ -65,6 +113,8 @@ pub struct Module {
     /// Parts that collide: (collision mesh path without `-collision.xmf`, placement
     /// in the module's frame). See `Catalog::collision_boxes`.
     pub collision: Vec<(String, Transform)>,
+    /// Turret and shield slots, in component order.
+    pub equipment_slots: Vec<EquipmentSlot>,
     /// What it produces, needs and holds (see `economy`).
     pub economy: ModuleEconomy,
 }
@@ -85,6 +135,22 @@ pub struct ModuleEconomy {
 impl Module {
     pub fn snap(&self, name: &str) -> Option<&Snap> {
         self.snaps.iter().find(|s| s.name.eq_ignore_ascii_case(name))
+    }
+
+    /// Equipment group names, in the order they first appear.
+    pub fn equipment_groups(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for s in &self.equipment_slots {
+            if !out.contains(&s.group.as_str()) {
+                out.push(&s.group);
+            }
+        }
+        out
+    }
+
+    /// The slots of one kind (`turrets` or `shields`) in a group.
+    pub fn group_slots<'a>(&'a self, group: &'a str, kind: &'a str) -> impl Iterator<Item = &'a EquipmentSlot> {
+        self.equipment_slots.iter().filter(move |s| s.group.eq_ignore_ascii_case(group) && s.kind == kind)
     }
 }
 
@@ -135,6 +201,8 @@ pub struct Catalog {
     materials: OnceLock<HashMap<String, MaterialMaps>>,
     /// Wares and recipes (build costs); read on first use.
     wares: OnceLock<Result<Wares>>,
+    /// Buildable turrets and shields; read on first use.
+    equipment: OnceLock<Result<Vec<Equipment>>>,
 }
 
 impl Catalog {
@@ -153,6 +221,7 @@ impl Catalog {
             collision_cache: Mutex::new(HashMap::new()),
             materials: OnceLock::new(),
             wares: OnceLock::new(),
+            equipment: OnceLock::new(),
         };
         let text_files = std::iter::once("t/0001-l044.xml".to_owned())
             .chain(catalog.extensions.iter().map(|e| format!("extensions/{}/t/0001-l044.xml", e.folder)));
@@ -192,6 +261,7 @@ impl Catalog {
             collision_cache: Mutex::new(HashMap::new()),
             materials: OnceLock::new(),
             wares: OnceLock::new(),
+            equipment: OnceLock::new(),
         }
     }
 
@@ -251,6 +321,58 @@ impl Catalog {
     pub fn wares(&self) -> Result<&Wares> {
         let folders: Vec<String> = self.extensions.iter().map(|e| e.folder.clone()).collect();
         self.wares.get_or_init(|| Wares::load(&self.vfs, &folders, &self.texts)).as_ref().map_err(Clone::clone)
+    }
+
+    /// Turrets and shields players can build (a recipe, not `noplayerblueprint`;
+    /// NPC-only ones like Xenon equipment carry tags no player module has), by
+    /// kind, size, race, then name.
+    pub fn equipment(&self) -> Result<&[Equipment]> {
+        self.equipment.get_or_init(|| self.read_equipment()).as_deref().map_err(Clone::clone)
+    }
+
+    fn read_equipment(&self) -> Result<Vec<Equipment>> {
+        let mut out = Vec::new();
+        for w in self.wares()?.all() {
+            // By tags, not ware group: the Boron DLC files its turrets under `weapons`.
+            let has = |tag: &str| w.tags.iter().any(|t| t == tag);
+            let kind = match (has("equipment"), has("turret"), has("shield")) {
+                (true, true, _) => "turrets",
+                (true, _, true) => "shields",
+                _ => continue,
+            };
+            let Some(macro_name) = w.component.as_deref() else { continue };
+            if w.recipes.is_empty() || w.tags.iter().any(|t| t == "noplayerblueprint") {
+                continue;
+            }
+            let Some(entry) = self.macros.get(&macro_name.to_ascii_lowercase()) else { continue };
+            let xml = self.vfs.read_text(&format!("{}.xml", entry.path))?;
+            let doc = roxmltree::Document::parse(&xml).map_err(|e| Error(format!("{}: {e}", entry.path)))?;
+            let Some(m) = doc.descendants().find(|n| n.has_tag_name("macro")) else { continue };
+            let ident = child(child(Some(m), "properties"), "identification");
+            let Some(component) = m.children().find(|n| n.has_tag_name("component")).and_then(|c| c.attribute("ref")) else { continue };
+            let Some(centry) = self.components.get(&component.to_ascii_lowercase()) else { continue };
+            let cxml = self.vfs.read_text(&format!("{}.xml", centry.path))?;
+            let cdoc = roxmltree::Document::parse(&cxml).map_err(|e| Error(format!("{}: {e}", centry.path)))?;
+            let tags = cdoc
+                .descendants()
+                .filter(|n| n.has_tag_name("connection"))
+                .map(|n| n.attribute("tags").unwrap_or_default().split_whitespace().map(str::to_owned).collect::<Vec<String>>())
+                .find(|t| t.iter().any(|t| t == "component"));
+            let Some(mut tags) = tags else { continue };
+            tags.retain(|t| t != "component");
+            out.push(Equipment {
+                macro_name: m.attribute("name").unwrap_or(macro_name).to_owned(),
+                ware: w.id.clone(),
+                name: w.name.clone(),
+                kind: kind.to_owned(),
+                tags,
+                race: ident.and_then(|i| i.attribute("makerrace")).map(str::to_owned),
+                mk: ident.and_then(|i| i.attribute("mk")).and_then(|v| v.parse().ok()),
+            });
+        }
+        let size_rank = |e: &Equipment| ["small", "medium", "large", "extralarge"].iter().position(|s| Some(*s) == e.size()).unwrap_or(4);
+        out.sort_by(|a, b| (&a.kind, size_rank(a), &a.race, &a.name).cmp(&(&b.kind, size_rank(b), &b.race, &b.name)));
+        Ok(out)
     }
 
     /// Texture maps of a mesh material such as `generic.generic_p1_hulltexture`.
@@ -356,6 +478,23 @@ impl Catalog {
             .collect();
 
         let (parts, collision) = self.mesh_parts(comp, &centry.path);
+        let equipment_slots = comp
+            .descendants()
+            .filter(|n| n.has_tag_name("connection"))
+            .filter_map(|n| {
+                let group = n.attribute("group")?.trim().to_ascii_lowercase();
+                let tags: Vec<String> = n.attribute("tags").unwrap_or_default().split_whitespace().map(str::to_owned).collect();
+                let kind = if tags.iter().any(|t| t == "turret") {
+                    "turrets"
+                } else if tags.iter().any(|t| t == "shield") {
+                    "shields"
+                } else {
+                    return None;
+                };
+                let transform = n.children().find(|c| c.has_tag_name("offset")).map_or(Transform::IDENTITY, parse_offset);
+                Some(EquipmentSlot { kind: kind.to_owned(), group, tags, transform })
+            })
+            .collect();
         let mut shape = shape_boxes(comp);
         if shape.is_empty() {
             shape.extend(snap_bounds(&snaps));
@@ -369,6 +508,7 @@ impl Catalog {
             shape,
             parts,
             collision,
+            equipment_slots,
             economy: economy(macro_el.children().find(|n| n.has_tag_name("properties"))),
         })
     }

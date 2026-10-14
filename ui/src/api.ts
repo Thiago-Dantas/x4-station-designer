@@ -15,6 +15,8 @@ export interface Shape { macro: string; class: string; snaps: SnapInfo[]; boxes:
 export interface Attachment { to: number; to_snap: string; snap: string; twist: number | null }
 export interface Entry {
   index: number;
+  /** Turret and shield groups (one per group and kind): equipped, total. */
+  equipment: [number, number];
   macro: string;
   name: string | null;
   class: string | null;
@@ -76,6 +78,16 @@ export interface PlanArgs {
   method: string;
 }
 export interface ProductionPlan { modules: PlannedModule[]; analysis: StationAnalysis; cost: { lines: CostLine[]; value: number; unknown: string[] }; unknown_targets: string[] }
+export interface EquipmentItem { macro: string; name: string; kind: "turrets" | "shields"; size: string | null; race: string | null; mk: number | null; price: number | null }
+export interface EquipmentGroup {
+  group: string;
+  kind: "turrets" | "shields";
+  size: string | null;
+  slots: number;
+  current: { macro: string; name: string | null; count: number } | null;
+  /** Equipment macros that fit every slot. */
+  fits: string[];
+}
 export interface PlanRef { file: string; source?: string; id: string; name: string; modules: number }
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -123,9 +135,13 @@ export const api = {
   buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),
   analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
   listWares: () => serial<{ ware: string; name: string }[]>("list_wares"),
-  planProduction: (args: PlanArgs) => serial<ProductionPlan>("plan_production", { args }),
+  /** `baseline`: plan for a station with these modules instead of the open design. */
+  planProduction: (args: PlanArgs, baseline: { macro: string; count: number }[] | null) =>
+    serial<ProductionPlan>("plan_production", { args, baseline }),
   /** Places the modules at free snaps without overlaps (the plot may grow); one undo step. */
   autoPlace: (modules: { macro: string; count: number }[], race: string | null) => serial<Scene>("auto_place", { modules, race }),
+  /** A shared operation (`ops::Op` in Rust, as MCP agents use them): its result, and the scene if it may have changed. */
+  runOp: <T>(op: { op: string } & Record<string, unknown>) => serial<{ result: T; scene?: Scene }>("run_op", { op }),
   undo: () => serial<Scene>("undo"),
   redo: () => serial<Scene>("redo"),
 };

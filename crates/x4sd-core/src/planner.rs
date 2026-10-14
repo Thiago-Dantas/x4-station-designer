@@ -94,9 +94,22 @@ pub fn producible_wares(catalog: &Catalog) -> Result<Vec<(String, String)>> {
     Ok(out)
 }
 
-/// The modules to add to `existing` for the request. With no targets it fills the
-/// existing station's shortfalls.
-pub fn plan_production(catalog: &Catalog, existing: &Plan, req: &Request) -> Result<ProductionPlan> {
+/// The modules a plan has: (macro, count), in first-seen order.
+pub fn module_counts(plan: &Plan) -> Vec<(String, u32)> {
+    let mut out: Vec<(String, u32)> = Vec::new();
+    for e in &plan.entries {
+        match out.iter_mut().find(|(m, _)| m.eq_ignore_ascii_case(&e.macro_name)) {
+            Some((_, n)) => *n += 1,
+            None => out.push((e.macro_name.clone(), 1)),
+        }
+    }
+    out
+}
+
+/// The modules to add to a station that has `existing` modules (macro, count;
+/// see `module_counts`) for the request. With no targets it fills the existing
+/// station's shortfalls.
+pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Request) -> Result<ProductionPlan> {
     let wares = catalog.wares()?;
     let candidates = candidates(catalog)?;
     let race = req.race.as_deref();
@@ -128,7 +141,7 @@ pub fn plan_production(catalog: &Catalog, existing: &Plan, req: &Request) -> Res
         }
     }
     let analyze = |added: &BTreeMap<String, Planned>| {
-        let existing = existing.entries.iter().map(|e| (e.macro_name.as_str(), 1));
+        let existing = existing.iter().map(|(m, n)| (m.as_str(), *n));
         analyze_modules(catalog, existing.chain(added.values().map(|p| (p.macro_name.as_str(), p.count))), req.sunlight)
     };
 
@@ -235,7 +248,7 @@ pub(crate) fn best<'a>(candidates: impl Iterator<Item = &'a Candidate>, race: Op
 }
 
 /// Race code in a macro name such as `dockarea_arg_m_station_01_macro`.
-fn name_race(macro_name: &str) -> Option<String> {
+pub(crate) fn name_race(macro_name: &str) -> Option<String> {
     let race = match macro_name.split('_').nth(1)? {
         "arg" => "argon",
         "bor" => "boron",

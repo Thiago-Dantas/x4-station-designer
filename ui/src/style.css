@@ -86,12 +86,23 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #economy-notes li { padding: 3px 6px; border-radius: 3px; margin-bottom: 3px; background: #3a1d1d; }
 #sunlight { width: 64px; }
 .planner-add { display: flex; gap: 4px; }
-.planner-add #planner-ware { flex: 1; min-width: 0; }
+.ware-search { position: relative; flex: 1; min-width: 0; }
+.ware-search #planner-ware { width: 100%; box-sizing: border-box; }
+#planner-ware-list { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; max-height: 280px; overflow-y: auto; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; }
+#planner-ware-list div { padding: 3px 6px; cursor: pointer; }
+#planner-ware-list div.active { background: var(--line); }
 .planner-add #planner-count { width: 52px; }
 #planner-targets { list-style: none; padding: 0; margin: 0; font-size: 12px; }
 #planner-targets li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 #planner-targets li span { flex: 1; }
 #planner-targets li input { width: 52px; }
+#sel-equipment h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; color: var(--muted); }
+.equip-group { font-size: 11px; color: var(--muted); margin: 6px 0 2px; }
+.equip-row { display: flex; align-items: center; gap: 4px; font-size: 12px; margin: 2px 0; }
+.equip-row span { width: 72px; flex: none; }
+.equip-row select { flex: 1; min-width: 0; }
+.equip-row input { width: 40px; }
+#equipment-panel select { max-width: 170px; }
 #planner-summary, #planner-placed { color: var(--muted); font-size: 12px; white-space: pre-line; }
 #planner-result { overflow-y: auto; min-height: 0; flex: 1; font-size: 12px; }
 #planner-result h4 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; color: var(--muted); }

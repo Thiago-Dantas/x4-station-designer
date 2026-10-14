@@ -149,6 +149,29 @@ So:
   - For the player's plans it gives TerranScrapyard 8×5×9 km, the defense stations 4×4×(3–4), and the megashipyard 19×20×15. The megashipyard sits at the 20 km limit, and it was built in game, so our bounds aren't larger than the game's.
   - `validate_plot` reports modules outside, the plot needed, and stations too big for any plot.
 
+## Equipment: turrets and shields (verified 2026-10-13, game-data test `equipment_groups_and_fit`)
+```xml
+<upgrades><groups>
+  <shields macro="shield_ter_m_standard_02_mk3_macro" group="group02"/>
+  <turrets macro="turret_ter_m_laser_02_mk1_macro" group="group02" exact="2"/>
+</groups></upgrades>
+```
+- **Groups.** A module component declares slots as `<connection group="group02" tags="turret medium standard missile hittable combat">` (or `tags="medium shield hittable standard"`). Plans equip a whole group with one macro per kind; there is no per-slot form.
+  - Most production and storage modules have groups, as do defence and processing modules and one dock area. Habitats, connectors, piers and build modules have none.
+  - Typical group: 1 M shield + 2 M turrets. Defence modules have L groups, up to 4 shields and 10 turrets.
+- **Fit.** Equipment fits a slot when the slot has every tag of the equipment component's `component` connection, `component` itself excepted. For example `turret medium standard hittable combat` fits the slot above.
+  - Matches all 1,020 equipped groups in the player and library plans.
+- **Available equipment.** Wares tagged `equipment` plus `turret` or `shield`, with a recipe, not `noplayerblueprint`: 216 with DLCs and mods. Xenon equipment carries a `xenon` tag that no player slot has.
+- **`exact`** is the number of slots of that kind filled.
+  - Every sample fills all of them. Turrets always write it; shields only with 2 or more slots.
+  - **Hypothesis:** absent means 1, and partial counts are allowed (the build menu keeps a count per group).
+- **`path=".."`** appears only in the game's hand-made library plans; game-written plans have none.
+- **Our editing** (`equipment.rs`, `Design::set_equipment` / `equip_modules` / `copy_equipment`):
+  - Writes `exact` the way the game does: always for turrets, for shields unless one of one slot is filled. It keeps any `path` it read.
+  - `validate` reports equipment on a group the module lacks, equipment that doesn't fit, and more than the slots.
+  - The *loadout level* is our own rule, not the game's: fitting non-missile equipment, the module's race first, cheapest/middle/most expensive. **Hypothesis**: the game's `GenerateModuleLoadout(level)` may pick differently.
+  - **Not checked in game yet:** that an imported plan builds with this equipment, and what a partial count (fewer than the slots) does.
+
 ## Overlaps (calibrated 2026-10-13, game-data test `overlap_calibration`)
 The plan format doesn't stop modules from intersecting. The build menu has an **"Allow module overlap"** setting (`moduleoverlap`, off by default and off in the user's profile; it toggles `SetConstructionMapCollisionDetection`). We need our own overlap check for auto-placement and for `validate`.
 - **Collision boxes, not part boxes (verified on data).** The part boxes (`<size>`, used for the plot) are too loose for overlaps: in the player's 5 real plans, 29 unlinked pairs intersect by more than 1 m, up to 491 m. Example: the Terran medical-supplies box includes its thin 1.3 km spire, and a habitat stands next to the spire.

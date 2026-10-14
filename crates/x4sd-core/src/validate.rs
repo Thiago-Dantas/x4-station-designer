@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::catalog::Catalog;
+use crate::equipment::count;
 use crate::geometry::{fit, Transform};
 use crate::layout::overlaps;
 use crate::plan::{Entry, Plan};
@@ -23,6 +24,12 @@ pub enum Issue {
     DuplicateIndex { index: u32 },
     UnknownMacro { index: u32, macro_name: String },
     UnknownUpgradeMacro { index: u32, macro_name: String },
+    /// Equipment for a group (or kind of slot) the module doesn't have.
+    EquipmentNoSlots { index: u32, group: String, kind: String },
+    /// Equipment that doesn't fit its group's slots.
+    EquipmentMisfit { index: u32, group: String, macro_name: String },
+    /// More equipment than the group has slots of that kind.
+    EquipmentTooMany { index: u32, group: String, kind: String, count: u32, slots: u32 },
     UnknownSnap { index: u32, macro_name: String, snap: String },
     MissingPredecessor { index: u32, predecessor: u32 },
     SnapGap { index: u32, metres: f64 },
@@ -46,6 +53,9 @@ impl Issue {
             Issue::DuplicateIndex { index }
             | Issue::UnknownMacro { index, .. }
             | Issue::UnknownUpgradeMacro { index, .. }
+            | Issue::EquipmentNoSlots { index, .. }
+            | Issue::EquipmentMisfit { index, .. }
+            | Issue::EquipmentTooMany { index, .. }
             | Issue::UnknownSnap { index, .. }
             | Issue::MissingPredecessor { index, .. }
             | Issue::SnapGap { index, .. }
@@ -63,6 +73,9 @@ impl fmt::Display for Issue {
             Issue::DuplicateIndex { index } => write!(f, "entry {index}: index used more than once"),
             Issue::UnknownMacro { index, macro_name } => write!(f, "entry {index}: unknown module {macro_name}"),
             Issue::UnknownUpgradeMacro { index, macro_name } => write!(f, "entry {index}: unknown equipment {macro_name}"),
+            Issue::EquipmentNoSlots { index, group, kind } => write!(f, "entry {index}: equipment for {kind} in {group}, which the module doesn't have"),
+            Issue::EquipmentMisfit { index, group, macro_name } => write!(f, "entry {index}: {macro_name} doesn't fit {group}"),
+            Issue::EquipmentTooMany { index, group, kind, count, slots } => write!(f, "entry {index}: {count} {kind} in {group}, which has {slots} slots"),
             Issue::UnknownSnap { index, macro_name, snap } => write!(f, "entry {index}: {macro_name} has no snap {snap}"),
             Issue::MissingPredecessor { index, predecessor } => write!(f, "entry {index}: predecessor {predecessor} does not exist"),
             Issue::SnapGap { index, metres } => write!(f, "entry {index}: {metres:.3} m away from its linked snap"),
@@ -95,6 +108,24 @@ pub fn validate(plan: &Plan, catalog: &Catalog) -> Vec<Issue> {
         };
         for u in e.upgrades.iter().filter(|u| !catalog.has_macro(&u.macro_name)) {
             issues.push(Issue::UnknownUpgradeMacro { index: e.index, macro_name: u.macro_name.clone() });
+        }
+        let equipment = catalog.equipment().ok();
+        for u in &e.upgrades {
+            let slots: Vec<_> = module.group_slots(&u.group, &u.kind).collect();
+            let (index, group) = (e.index, u.group.clone());
+            if slots.is_empty() {
+                issues.push(Issue::EquipmentNoSlots { index, group, kind: u.kind.clone() });
+                continue;
+            }
+            // Only buildable equipment is checked: what it fits is known for that.
+            if let Some(eq) = equipment.and_then(|l| l.iter().find(|x| x.macro_name.eq_ignore_ascii_case(&u.macro_name))) {
+                if !slots.iter().all(|s| eq.fits(s)) {
+                    issues.push(Issue::EquipmentMisfit { index, group: group.clone(), macro_name: u.macro_name.clone() });
+                }
+            }
+            if count(u) as usize > slots.len() {
+                issues.push(Issue::EquipmentTooMany { index, group, kind: u.kind.clone(), count: count(u), slots: slots.len() as u32 });
+            }
         }
         let (Some(conn), Some(pred)) = (&e.connection, &e.predecessor) else { continue };
         let Some(child_snap) = module.snap(conn) else {
