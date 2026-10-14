@@ -2,7 +2,7 @@
 
 An external station designer and toolset for **X4: Foundations**. People and AI agents (through a CLI and/or an MCP server) can build station construction plans outside the game and then get them into the game.
 
-**Status:** Phase 3 (designer app) is done; version **1.0.0** (MIT licence) is being released. `x4sd.exe` is the visual builder, the CLI and the MCP server in one file, and agents edit the open builder live (D-7). Phase 4 (polish and release) is proposed. The roadmap is in [tasks/roadmap.md](tasks/roadmap.md). Stack: Rust + Tauri 2 + Three.js (D-6). Build steps are in [docs/dev-setup.md](docs/dev-setup.md).
+**Status:** Phase 3 (designer app) is done; version **1.0.0** (MIT licence) is released on GitHub. `x4sd.exe` is the visual builder, the CLI and the MCP server in one file, and agents edit the open builder live (D-7). Phase 4 (polish and release) is proposed. The roadmap is in [tasks/roadmap.md](tasks/roadmap.md). Stack: Rust + Tauri 2 + Three.js (D-6). Build steps are in [docs/dev-setup.md](docs/dev-setup.md).
 
 ## Start of every session
 1. Read [tasks/roadmap.md](tasks/roadmap.md), then any `tasks/workflow-*.md` or `tasks/subagent-*.md` not marked **done**.
@@ -31,7 +31,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `research/snapcheck.py` | Research script that checks plan offsets against snap geometry (base + DLC virtual file system). Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#snap-math-verified-2026-10-13-with-researchsnapcheckpy). |
 
 ## Repository
-- Private GitHub repo: `github.com/Thiago-Dantas/x4-station-designer`, branch `main`
+- Public GitHub repo: `github.com/Thiago-Dantas/x4-station-designer`, branch `main`
 - Commits use the repo-local `user.email` = dant12@gmail.com. The global git config holds a work email, so don't change the local setting.
 - `gh` CLI: `H:\dev\gh\bin\gh.exe` (not on PATH), for releases. Pushes go through Git Credential Manager (account `Thiago-Dantas`). If the push fails with an authentication error, ask the user to run `git push` once in their own terminal; that opens the GitHub sign-in.
 - Commit and push only when the user asks.

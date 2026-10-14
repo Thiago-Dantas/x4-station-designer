@@ -79,13 +79,13 @@ Proposed order (each step usable on its own):
 - [x] **Blueprint limit** (user request, 2026-10-14): an option to read a save and offer only the modules the player has blueprints for, in the palette, the planner and MCP; cached and remembered (D-16). See [workflow-save-blueprints.md](workflow-save-blueprints.md).
 - [x] Build cost in the right pane: selected module or whole station, build method (user request; see [workflow-build-cost.md](workflow-build-cost.md))
 - [x] Move placed modules (re-attach to another snap, detach, gizmo for free-standing ones) and warn about unsaved changes (user requests; see [workflow-move-and-unsaved.md](workflow-move-and-unsaved.md))
-- [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`
+- [x] Release build for players: README, versioning, a GitHub release with `x4sd.exe` (v1.0.0 published 2026-10-14)
   - [x] GIFs of the main features in `docs/media/` (`research/record_gifs.py`; see [workflow-release-gifs.md](workflow-release-gifs.md))
   - [x] First placement backs the view off 5 km (user request during the recording)
   - [x] README.md with the GIFs, getting started, MCP and CLI
   - [x] Version 1.0.0, MIT licence, social preview image (see [workflow-release.md](workflow-release.md))
   - [x] Draft GitHub release v1.0.0 with `x4sd.exe`
-  - [ ] The user publishes it and makes the repo public
+  - [x] The user published it and made the repo public
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 
 ## Later: live bridge (option D)
