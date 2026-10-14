@@ -156,6 +156,18 @@ try:
     cdp.js("document.querySelectorAll('.plot-grid input').forEach(i => { i.value = 5; i.dispatchEvent(new Event('change')); })")
     cdp.wait_for("document.getElementById('plot-summary').textContent.startsWith('Plot 10×10×10')")
     print("   plot after setting 5 km per side:", cdp.js("document.getElementById('plot-summary').textContent"))
+    # Position fields of the selected free-standing module: typing X/Y/Z moves it; undo puts it back.
+    cdp.js("document.getElementById('tab-order').click()")
+    cdp.js("document.querySelectorAll('#order-list .order-row')[0].click()")
+    cdp.js("document.getElementById('tab-modules').click()")
+    assert cdp.js("document.getElementById('sel-position').offsetParent !== null"), "position fields shown for a root"
+    cdp.js("{ const f = document.querySelectorAll('#sel-position input'); [1200, -300, 450].forEach((v, i) => f[i].value = v); f[2].dispatchEvent(new Event('change')); }")
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Moved')")
+    at = cdp.js("window.__TAURI_INTERNALS__.invoke('scene').then(s => s.entries[0].position.map(Math.round))")
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+    cdp.wait_for("[...document.querySelectorAll('#sel-position input')].every(i => i.value === '0')")
+    print("   position fields moved the cross to", at, "| undo: back at the origin")
+    assert at == [1200, -300, 450], at
     time.sleep(1.0)
     # Arm a beam and click one of the cross's snap cones.
     cdp.js("{ const s = document.getElementById('search'); s.value = 'Terran Base Connection Structure 02'; s.dispatchEvent(new Event('input')) }")

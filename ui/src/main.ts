@@ -264,6 +264,10 @@ function redraw() {
     $<HTMLButtonElement>("btn-twist-right").disabled = !a;
     $<HTMLButtonElement>("btn-detach").disabled = !a;
     $("sel-snap-row").hidden = !a;
+    $("sel-position").hidden = !!a;
+    document.querySelectorAll<HTMLInputElement>("#sel-position input").forEach((input) => {
+      if (document.activeElement !== input) input.value = String(Math.round(sel.position[Number(input.dataset.axis)] * 100) / 100);
+    });
     if (a) {
       $<HTMLSelectElement>("sel-snap").replaceChildren(...connectableSnaps(sel).map(snapOption));
       $<HTMLSelectElement>("sel-snap").value = a.snap;
@@ -1649,6 +1653,16 @@ for (const [tab, panel] of tabs) {
   };
 }
 document.querySelectorAll<HTMLInputElement>(".plot-grid input").forEach((input) => (input.onchange = () => apply(plotFromInputs())));
+// Typed position of a free-standing module (metres, game frame): it moves with everything on it.
+document.querySelectorAll<HTMLInputElement>("#sel-position input").forEach(
+  (input) =>
+    (input.onchange = () => {
+      const sel = entry(selected);
+      const pos = [...document.querySelectorAll<HTMLInputElement>("#sel-position input")].map((i) => i.valueAsNumber) as Vec3;
+      if (!sel || sel.attached || pos.some((v) => !Number.isFinite(v))) return;
+      void apply(api.moveRoot(sel.index, pos), `Moved ${sel.name ?? sel.macro} to ${pos.join(", ")} m`, false, true);
+    }),
+);
 $("btn-fit-plot").onclick = () => apply(api.fitPlot(false), "Plot fitted to the station");
 $("btn-place-root").onclick = () => armed && apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
 $<HTMLInputElement>("design-name").onchange = (ev) => apply(api.renameDesign((ev.target as HTMLInputElement).value));

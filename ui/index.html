@@ -105,6 +105,11 @@
             <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
           </div>
           <label id="sel-snap-row" hidden>Connected by <select id="sel-snap" title="Which of its snaps joins the module it is attached to; it stays on the same spot with the same twist (C / Shift+C)"></select></label>
+          <div id="sel-position" class="pos-grid" hidden title="Where the free-standing module sits, in metres from the station origin (game coordinates); everything attached to it moves along">
+            <label>X <input type="number" step="10" data-axis="0" /></label>
+            <label>Y <input type="number" step="10" data-axis="1" /></label>
+            <label>Z <input type="number" step="10" data-axis="2" /></label>
+          </div>
           <label>Rotation step <select class="rot-step" title="Twist and rotation steps, in degrees"><option>90</option><option>45</option><option>30</option><option>15</option><option>5</option></select></label>
           <div class="row" id="gizmo-row" hidden>
             <button id="btn-gizmo-mode" title="Rotate gizmo: turn the module (and everything on it); an attached module turns about its joint and stays attached">Rotate</button>

@@ -135,6 +135,9 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .plot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .plot-grid input { width: 64px; }
 #btn-fit-plot { width: 100%; margin-top: 6px; }
+.pos-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 8px; }
+.pos-grid[hidden] { display: none; }
+.pos-grid input { width: 100%; min-width: 0; }
 #plot-summary.bad { color: var(--bad); }
 #issues { list-style: none; padding: 0; margin: 0; }
 #issues li { padding: 4px 6px; border-radius: 3px; margin-bottom: 3px; background: #3a1d1d; cursor: pointer; }
