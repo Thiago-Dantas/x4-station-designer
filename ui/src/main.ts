@@ -1660,17 +1660,26 @@ document.querySelectorAll<HTMLInputElement>("#sel-position input").forEach(
       const sel = entry(selected);
       const pos = [...document.querySelectorAll<HTMLInputElement>("#sel-position input")].map((i) => i.valueAsNumber) as Vec3;
       if (!sel || sel.attached || pos.some((v) => !Number.isFinite(v))) return;
-      void apply(api.moveRoot(sel.index, pos), `Moved ${sel.name ?? sel.macro} to ${pos.join(", ")} m`, false, true);
+      void apply(api.moveRoot(sel.index, pos), `Moved ${sel.name ?? sel.macro} to ${pos.join(", ")} m`, false, true).then(() => view.framePlot());
     }),
 );
 $("btn-fit-plot").onclick = () => apply(api.fitPlot(false), "Plot fitted to the station");
-$("btn-place-root").onclick = () => armed && apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
+$("btn-place-root").onclick = () => armed && placeFirst(armed.macro, [0, 0, 0]);
 $<HTMLInputElement>("design-name").onchange = (ev) => apply(api.renameDesign((ev.target as HTMLInputElement).value));
 
 /** Where a first module goes: the ground-plane point under the cursor, in 10 m steps (else the origin). */
 function firstAt(ev: MouseEvent): Vec3 {
   const p = view.groundPoint(ev.clientX, ev.clientY);
   return p ? (p.map((v) => Math.round(v / 10) * 10 + 0) as Vec3) : [0, 0, 0];
+}
+
+/** Places the first module, then selects it and stops placing, so its position fields and gizmo show. */
+async function placeFirst(macro: string, at: Vec3) {
+  await apply(api.addModule(macro, at), `Placed ${moduleName(macro)}`, true, true);
+  const first = scene?.entries.length === 1 ? scene.entries[0].index : null;
+  if (first === null) return;
+  await arm(null);
+  select(first);
 }
 
 // Click (not drag) in the view: attach to a snap, or select a module. A middle
@@ -1699,7 +1708,7 @@ viewport.addEventListener("pointerup", async (ev) => {
   } else if (pick?.kind === "snap" && moving !== null) await moveOnto(pick.index, pick.snap);
   else if (pick?.kind === "snap" && armed) await attachArmed(pick.index, pick.snap);
   else if (pick?.kind === "module") select(pick.index);
-  else if (armed && scene?.entries.length === 0) await apply(api.addModule(armed.macro, firstAt(ev)), `Placed ${armed.name}`, true, true);
+  else if (armed && scene?.entries.length === 0) await placeFirst(armed.macro, firstAt(ev));
   else select(null);
 });
 viewport.addEventListener("pointermove", (ev) => {
@@ -1720,7 +1729,7 @@ viewport.addEventListener("drop", async (ev) => {
   const macro = ev.dataTransfer?.getData("text/x4sd-macro");
   if (!macro) return;
   const snap = view.hoverSnap(ev.clientX, ev.clientY);
-  if (scene?.entries.length === 0) await apply(api.addModule(macro, firstAt(ev)), `Placed ${moduleName(macro)}`, true, true);
+  if (scene?.entries.length === 0) await placeFirst(macro, firstAt(ev));
   else if (snap) await attachArmed(snap.index, snap.snap, macro);
   else status("Drop the module onto a free snap (cone).", "error");
 });

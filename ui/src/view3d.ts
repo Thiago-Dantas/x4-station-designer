@@ -482,6 +482,17 @@ export class View3D {
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
   }
 
+  /** Shows the whole plot box from the current viewing direction (the station when there is no plot). */
+  framePlot() {
+    const box = new THREE.Box3().setFromObject(this.plotBox);
+    if (box.isEmpty()) return this.frame();
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const distance = sphere.radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.1;
+    const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(sphere.center);
+    this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
+  }
+
   /** Points the camera at module `index` from the current viewing direction (nothing when it isn't drawn). */
   frameModule(index: number) {
     const box = new THREE.Box3();
