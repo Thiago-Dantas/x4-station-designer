@@ -56,7 +56,7 @@ Proposed order (each step usable on its own):
   - [x] preview of the armed module on the hovered snap (kept; see [workflow-snap-pick.md](workflow-snap-pick.md))
   - [x] choose the connecting snap: direction labels, C/T keys, own-snap cones when moving, and *Connected by* to change it in place on a placed module (user requests, 2026-10-14)
   - [x] ~~snap labels~~: not needed; the user is happy with the direction labels in *Connect by snap* and the hover preview (2026-10-14)
-  - [ ] better camera on small designs (see [workflow-small-camera.md](workflow-small-camera.md))
+  - [x] better camera on small designs: zoom stops at module surfaces and around the plot size; framing was already fine (see [workflow-small-camera.md](workflow-small-camera.md))
   - [ ] move unattached modules in the UI
 - [x] **Equipment** (user request; shields and turrets per module group; see [workflow-equipment.md](workflow-equipment.md)): per-group editing, plus bulk by picks, loadout level or copying; MCP tools; validation. Still to check in game: an equipped plan builds.
 - [x] Real module meshes from `.xmf` instead of boxes (user request, done first; see [workflow-module-meshes.md](workflow-module-meshes.md))

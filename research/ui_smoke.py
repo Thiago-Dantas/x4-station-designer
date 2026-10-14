@@ -23,9 +23,15 @@ exe, out = sys.argv[1], sys.argv[2]
 os.makedirs(out, exist_ok=True)
 
 app, cdp = start_builder(exe)
+blueprints_on = False
 try:
     cdp.wait_for("document.getElementById('status').textContent.includes('modules loaded')")
     print("1.", cdp.js("document.getElementById('status').textContent"))
+    # The blueprint limit (D-16) is remembered: run on the full palette, restore it at the end.
+    blueprints_on = cdp.js("document.getElementById('bp-on').checked")
+    if blueprints_on:
+        cdp.js("document.getElementById('bp-on').click()")
+        cdp.wait_for("!document.getElementById('module-count').textContent.includes('blueprints')")
     print("   palette:", cdp.js("document.getElementById('module-count').textContent"))
     # The window starts maximized; the right pane's sections start collapsed and open on a click.
     size = cdp.js("[window.outerWidth, window.outerHeight, screen.availWidth, screen.availHeight]")
@@ -33,7 +39,7 @@ try:
     print("   window", size, "| collapsed sections:", collapsed)
     # Maximized: as wide as the screen and taller than the default 920 px (the title bar isn't counted).
     assert size[0] >= size[2] - 20 and size[1] > 920, size
-    assert len(collapsed) == 6 and all(any(c.startswith(n) for c in collapsed) for n in ["equipment", "build cost", "production", "in-game load", "plot", "checks"]), collapsed
+    assert len(collapsed) == 6 and all(any(c.startswith(n) for c in collapsed) for n in ["station equipment", "build cost", "production", "in-game load", "plot", "checks"]), collapsed
     assert cdp.js("document.querySelector('#inspector .help p').offsetParent !== null"), "the controls help stays in view"
     assert cdp.js("document.getElementById('issues').offsetParent") is None, "the checks list is hidden"
     cdp.js("document.querySelector('#checks-panel > h3').click()")
@@ -334,4 +340,6 @@ try:
     print("   after Ctrl+Z:", cdp.js(count), "modules,", cdp.js("document.getElementById('planner-place').textContent"))
     cdp.js("document.querySelectorAll('#planner-targets button').forEach(b => b.click())")
 finally:
+    if blueprints_on:
+        cdp.js("document.getElementById('bp-on').click()")
     app.terminate()
