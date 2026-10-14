@@ -71,6 +71,17 @@ pub struct EquipmentSlot {
     pub transform: Transform,
 }
 
+/// Space a module keeps free for ships: a component connection tagged
+/// `exclusionzone <ship class>` (piers, fabrication bays, some dock areas). Its
+/// size per ship class is `Catalog::exclusion_size`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Clearance {
+    /// Ship class tag, e.g. `ship_xl`.
+    pub tag: String,
+    /// The zone's frame in the module's frame: ships come and go along its +Z.
+    pub transform: Transform,
+}
+
 /// Equipment players can build for station modules: a turret or shield.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Equipment {
@@ -140,6 +151,8 @@ pub struct Module {
     pub collision: Vec<(String, Transform)>,
     /// Turret and shield slots, in component order.
     pub equipment_slots: Vec<EquipmentSlot>,
+    /// Exclusion zones: space kept free for ships to dock or leave.
+    pub clearance: Vec<Clearance>,
     /// What it produces, needs and holds (see `economy`).
     pub economy: ModuleEconomy,
 }
@@ -230,6 +243,8 @@ pub struct Catalog {
     wares: OnceLock<Result<Wares>>,
     /// Buildable turrets and shields; read on first use.
     equipment: OnceLock<Result<Vec<Equipment>>>,
+    /// Ship class tag -> exclusion zone size (x, y, z) in metres; read on first use.
+    exclusion_sizes: OnceLock<HashMap<String, [f64; 3]>>,
 }
 
 impl Catalog {
@@ -250,6 +265,7 @@ impl Catalog {
             materials: OnceLock::new(),
             wares: OnceLock::new(),
             equipment: OnceLock::new(),
+            exclusion_sizes: OnceLock::new(),
         };
         let text_files = std::iter::once("t/0001-l044.xml".to_owned())
             .chain(catalog.extensions.iter().map(|e| format!("extensions/{}/t/0001-l044.xml", e.folder)));
@@ -291,6 +307,7 @@ impl Catalog {
             materials: OnceLock::new(),
             wares: OnceLock::new(),
             equipment: OnceLock::new(),
+            exclusion_sizes: OnceLock::new(),
         }
     }
 
@@ -408,6 +425,26 @@ impl Catalog {
         out.retain(|e| slots.iter().any(|s| e.fits(s)));
         out.sort_by(|a, b| (&a.kind, size_rank(a), &a.race, &a.name, &a.macro_name).cmp(&(&b.kind, size_rank(b), &b.race, &b.name, &b.macro_name)));
         Ok(out)
+    }
+
+    /// Size (x, y, z in metres) of an exclusion zone of a ship class tag such as
+    /// `ship_xl`, from `libraries/parameters.xml` (`<exclusionzones>`).
+    pub fn exclusion_size(&self, tag: &str) -> Option<[f64; 3]> {
+        self.exclusion_sizes.get_or_init(|| self.read_exclusion_sizes()).get(&tag.to_ascii_lowercase()).copied()
+    }
+
+    fn read_exclusion_sizes(&self) -> HashMap<String, [f64; 3]> {
+        let mut out = HashMap::new();
+        let Ok(xml) = self.vfs.read_text("libraries/parameters.xml") else { return out };
+        let Ok(doc) = roxmltree::Document::parse(&xml) else { return out };
+        let zones = doc.descendants().filter(|n| n.has_tag_name("exclusionzone") && n.parent().is_some_and(|p| p.has_tag_name("exclusionzones")));
+        for z in zones {
+            let num = |a: &str| z.attribute(a).and_then(|v| v.parse::<f64>().ok());
+            if let (Some(tag), Some(x), Some(y), Some(l)) = (z.attribute("tag"), num("x"), num("y"), num("z")) {
+                out.insert(tag.to_ascii_lowercase(), [x, y, l]);
+            }
+        }
+        out
     }
 
     /// Texture maps of a mesh material such as `generic.generic_p1_hulltexture`.
@@ -541,6 +578,17 @@ impl Catalog {
                 Some(EquipmentSlot { kind: kind.to_owned(), group, tags, transform })
             })
             .collect();
+        let clearance = comp
+            .descendants()
+            .filter(|n| n.has_tag_name("connection"))
+            .filter_map(|n| {
+                let mut tags = n.attribute("tags")?.split_whitespace();
+                tags.clone().any(|t| t == "exclusionzone").then_some(())?;
+                let tag = tags.find(|t| *t != "exclusionzone")?.to_ascii_lowercase();
+                let transform = n.children().find(|c| c.has_tag_name("offset")).map_or(Transform::IDENTITY, parse_offset);
+                Some(Clearance { tag, transform })
+            })
+            .collect();
         let mut shape = shape_boxes(comp);
         if shape.is_empty() {
             shape.extend(snap_bounds(&snaps));
@@ -555,6 +603,7 @@ impl Catalog {
             parts,
             collision,
             equipment_slots,
+            clearance,
             economy: economy(macro_el.children().find(|n| n.has_tag_name("properties"))),
         })
     }

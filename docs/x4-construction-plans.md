@@ -210,6 +210,48 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   - Checking takes 16 ms for the 5 player plans, and 5 ms for a 239-module station.
 - `validate` reports them as "entry N: overlaps entry M" on the later-built module.
 
+## Clearance: exclusion zones (research 2026-10-14)
+The red volume the build menu draws in front of a pier while you move it is an **exclusion zone**: space a module keeps free for ships to dock or leave. Research tool: `cargo run -p x4sd-core --release --example zonecheck -- <plans.xml>...` (or `-- --list`).
+- **Where they are (verified, component XML).** A zone is a component connection tagged `exclusionzone <class>`, with an offset (position + orientation) and nothing else, e.g. on the Terran 3-Dock E Pier (`pier_ter_harbor_03`):
+  `<connection name="Con_exclusionzone001" tags="exclusionzone ship_xl">` at (−700, 0, 3000), turned so its +Z points along −X.
+  - `Catalog`: `Module::clearance` (tag + frame), `Catalog::exclusion_size(tag)`.
+  - The engine checks the tags: X4.exe has the message `Macro '%s' connection '%s' has missing exclusion zone tag(s)` (verified, string in the exe).
+- **Size per class (verified, `libraries/parameters.xml`, `<exclusionzones>`; no DLC or installed mod changes it):**
+
+  | Tag | x | y | z (length) |
+  |---|---|---|---|
+  | `ship_xs`, `ship_s` | 70 | 70 | 400 |
+  | `ship_m` | 180 | 180 | 500 |
+  | `ship_l` | 1200 | 1200 | 100 000 |
+  | `ship_xl` | 4000 | 4000 | 100 000 |
+  | `radar_arg_dish_01` | 1600 | 1400 | 910 |
+
+  So L and XL zones run 100 km: in practice, out of the station and past any plot. The construction map draws them as an outline (`<construction><exclusionzone width="10" color="holomap_construction_exclusionzone">`).
+- **Which modules have them (verified, `--list` over the 287 station modules):**
+  - every **pier**: one `ship_xl` zone per dock, starting just past the dock and pointing away from the pier's snaps. 3-Dock E Piers: three zones 3 km apart along the spine, all towards −X (the snaps are at +X and ±Y). 1-Dock Piers: one, about 1.9 km out (Terran `pier_ter_harbor_05`: 0.3 km). T and 4-dock piers: one per arm.
+  - every **fabrication and maintenance bay**: L and XL bays have **two**, out of both open ends of the bay (±Z; XL at ±1200 m, the snaps at ±X). S/M bays have one to three `ship_m` zones; Boron bays one at −Z.
+  - most **M dock areas** (`ship_m`, 500 m straight up, +Y), the L/XL venture dock, the scrap processors, and the Argon radar dish. Habitats, production, storage and connection structures have none.
+- **Shape (hypothesis, strongly supported by calibration):** a **box `x` by `y` wide (full widths), starting at the connection and running `z` along its +Z.**
+  - The XML gives no shape. REA couldn't analyse the 55 MB X4.exe in time, and its strings don't say.
+  - Calibration with `zonecheck` (other modules' collision boxes reaching more than 1 m into a zone):
+
+    | Plans | Zones | Box, full widths | Box, twice as wide |
+    |---|---|---|---|
+    | User's game-built plans (TerranScrapyard, megashipyard terran, asd1, two defence stations) | 144 | **4**, all one case (below) | 81 |
+    | Game library plans (base + DLCs: 267 of 275; our reader rejects 8) | 1538 | 14, in 7 hand-made faction plans | 296 |
+    | Our Optimize output `megashipyard terran2` | 101 | 39 | 85 |
+
+  - The user's **megashipyard terran**, built in the build menu with 15 3-Dock E Piers stacked 400 m apart plus L/XL bays, has **no** intrusion. The game's own placement seems to keep these zones clear, and with exactly these sizes.
+  - The 4 game-built cases are TerranScrapyard's two pairs of 1-Dock Piers joined back to back at a snap: each one's arm reaches 117 m into the other's zone, where the zone starts. So modules **joined at a snap** to the zone's module seem exempt (as for overlaps).
+  - Library exceptions: `arg_equipmentdock`, `par_equipmentdock` (a pier and storage 1.3–6 km out in front of L/XL maintenance bays), `tel_shipyard`, `yak_wharf`, `xen_wharf`, and two radar dishes. These are hand-made stations spawned by script, like the library's overlaps and snap misfits.
+  - The user describes the in-game zone as a frustum, much wider than the pier, made of overlapping volumes, one per dock. A 4 km wide, 100 km long box seen in perspective looks like that, and XL zones 3 km apart and 4 km wide overlap by 1 km.
+- **What the game does about them:**
+  - **Build-menu status (verified, `menu_station_configuration.lua`):** the plan errors and warnings check builder, resources, blueprints, a pier and a dock, venture parts, illegal wares. Nothing checks zones.
+  - **Import (verified, user, 2026-10-14):** `megashipyard terran2` (39 blocked zones by this model) imports and builds with no errors, and the status says "Everything is OK".
+  - **Moving a module in the build menu (user's observation; not retested):** a module that blocks a zone turns red, like a collision.
+  - **The engine's layout generator (verified, string in X4.exe; x4ep_planner logs):** `ConstructionSequenceGenerator %s! After %u failed connection attempts, %u collisions, %u exclusion zone intersections`. It treats a zone intersection like a collision and gives up.
+- **Ships leaving a bay:** the space is the bay's two zones (L: 1.2 km square, XL: 4 km square, out of both ends). L bays also have a `launchpos` and a `todock` connection. We use the zone sizes instead of measuring the largest ship of each size: the game sizes the space itself.
+
 ## Auto-placement (2026-10-13)
 `layout::auto_place` attaches a module list (for example a production plan's) to a design at exact snap positions, without overlaps and inside the plot.
 - **Connectors:**

@@ -643,6 +643,7 @@ mod tests {
             parts: Vec::new(),
             collision: Vec::new(),
             equipment_slots: Vec::new(),
+            clearance: Vec::new(),
             economy: Default::default(),
         };
         Catalog::from_modules(vec![
