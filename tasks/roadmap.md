@@ -58,6 +58,7 @@ Proposed order (each step usable on its own):
   - [x] ~~snap labels~~: not needed; the user is happy with the direction labels in *Connect by snap* and the hover preview (2026-10-14)
   - [x] ~~better camera on small designs~~: framing was already fine; the zoom limits made close-up drags erratic, so the user had them reverted (2026-10-14; see [workflow-small-camera.md](workflow-small-camera.md))
   - [x] move unattached modules in the UI: X / Y / Z position fields for a selected free-standing module, to place the first module exactly in the plot (user request, 2026-10-14; see [workflow-position-fields.md](workflow-position-fields.md))
+  - [x] live checks while dragging the gizmo: plot box colour and *Checks* follow the drag (user request, 2026-10-14; see [workflow-live-checks.md](workflow-live-checks.md))
 - [x] **Equipment** (user request; shields and turrets per module group; see [workflow-equipment.md](workflow-equipment.md)): per-group editing, plus bulk by picks, loadout level or copying; MCP tools; validation. Still to check in game: an equipped plan builds.
 - [x] Real module meshes from `.xmf` instead of boxes (user request, done first; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [x] Textures on the models as an on/off setting (user request; on by default after measuring; see [workflow-module-meshes.md](workflow-module-meshes.md))

@@ -20,7 +20,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - Turning around the snap axis is a twist. Any other turn **tilts** it off the snap axis; the details line shows "tilted N°".
     - R / Shift+R keep a tilt. *Straighten* takes it off and keeps the twist.
     - The game's build menu only twists modules around snaps. Whether the game builds tilted joints is not checked yet, so *Checks* lists each one ("tilted N° off its snap").
-  - The view follows the gizmo while you drag; the design changes when you let go (one undo step).
+  - The view follows the gizmo while you drag; the design changes when you let go (one undo step). The checks follow the drag: the plot box turns red or green and *Checks* lists what would be wrong if you let go there.
   - *Build first* makes the module the root and step 1: the links between it and the old root are reversed, so that chain hangs on it and is built next (nothing moves); *Build last* moves it (and everything on it) to the end.
   - *A build stage ends here* closes a build stage after it.
   - **Connected by** (attached modules) changes which of its own snaps joins its parent, in place: same parent snap, same twist, everything on it moves along (a tilt is dropped). **C** / Shift+C cycles it. Snaps that hold one of its own modules aren't offered.

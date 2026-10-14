@@ -22,6 +22,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `research/extracted/` | Extracted game and mod files, plus copies of the user's plans (`profile-samples/`). **Git-ignored**: never commit them. |
 | `research/cdp.py`, `ui_smoke.py`, `link_smoke.py`, `texture_smoke.py`, `snap_pick_smoke.py`, `camera_smoke.py` | DevTools client for WebView2; builder smoke test (clicks, selection, WASD, screenshots); live-link test (agent edits an open builder); texture cost measurement; choosing the connecting snap (labels, preview, own-snap cones); camera framing and zoom limits, small designs vs a big station |
 | `research/mcp_smoke.py` | Drives `x4sd mcp` like an agent (build, validate, export a station) |
+| `research/gizmo_checks_smoke.py` | Live checks during a gizmo drag: drags a module out of the plot and back with a real mouse drag, reading the checks before release |
 | `research/blueprint_smoke.py` | Blueprint limit (D-16): MCP tools headless, then the builder's checkbox, Re-read and restart |
 | `research/xmf.py` | Research parser for `.xmf` meshes (format notes in its docstring and docs/x4-game-data.md) |
 | `crates/x4sd-core/examples/zonecheck.rs` | Research: which modules sit in other modules' exclusion zones in real plans, and `--list` of the modules with zones. Results in [docs/x4-construction-plans.md](docs/x4-construction-plans.md#clearance-exclusion-zones-research-2026-10-14). |
