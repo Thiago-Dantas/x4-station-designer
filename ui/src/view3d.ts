@@ -111,6 +111,8 @@ export class View3D {
   private gizmo: TransformControls;
   private gizmoTarget = new THREE.Object3D();
   private onGizmoMoved: ((position: Vec3, rotation: Quat) => void) | null = null;
+  /** Called while the gizmo is dragged with where it is now (game frame), for live checks. */
+  onGizmoDrag: ((position: Vec3, rotation: Quat) => void) | null = null;
   /** The joint an attached module turns about (Three.js frame); null: it turns about its origin. */
   private gizmoPivot: THREE.Vector3 | null = null;
   /** Modules that follow the gizmo while dragging: the selected one and everything on it. */
@@ -289,10 +291,11 @@ export class View3D {
       const centre = [0, 1, 2].map((i) => ((plot.pos[i] - plot.neg[i]) / 2) * 1000) as Vec3;
       const box = new THREE.LineSegments(
         new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)),
-        new THREE.LineBasicMaterial({ color: scene.plot!.fits ? 0x4fbf7a : 0xe5534b }),
+        new THREE.LineBasicMaterial(),
       );
       box.position.copy(toVec(centre));
       this.plotBox.add(box);
+      this.setPlotFits(scene.plot!.fits);
     }
     const bad = new Set(scene.issues.map((i) => i.index).filter((i) => i !== null));
     // Real models are drawn instanced: one mesh per module type, so a 300-module
@@ -393,6 +396,18 @@ export class View3D {
       .multiply(new THREE.Matrix4().compose(position, quaternion, one).invert());
     const m = new THREE.Matrix4();
     for (const p of parts) p.set(m.multiplyMatrices(delta, p.matrix));
+    const p = this.gizmoTarget.position;
+    this.onGizmoDrag?.([p.x, p.y, -p.z], fromQuat(this.gizmoTarget.quaternion)); // game frame (mirror Z)
+  }
+
+  /** Whether the gizmo is being dragged now. */
+  gizmoDragging(): boolean {
+    return this.gizmo.dragging;
+  }
+
+  /** Recolours the plot box: green when the station fits, red when it doesn't. */
+  setPlotFits(fits: boolean) {
+    for (const o of this.plotBox.children) ((o as THREE.LineSegments).material as THREE.LineBasicMaterial).color.setHex(fits ? 0x4fbf7a : 0xe5534b);
   }
 
   /** Whether the pointer is on (or dragging) the gizmo: clicks there aren't picks. */

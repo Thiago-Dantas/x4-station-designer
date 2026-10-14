@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
-import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
+import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type Issue, type ModuleInfo, type PlannedModule, type PlanRef, type PlotStatus, type ProductionPlan, type Quality, type Quat, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
 import { attachMatrix, CLASS_COLORS, type DiffuseTexture, modelGeometry, poseMatrix, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -161,6 +161,63 @@ async function apply(action: Promise<Scene>, done?: string, frame = false, userE
   }
 }
 
+/** The Checks list and the plot summary (also live while a gizmo drag is in progress). */
+function renderChecks(list: Issue[], p: PlotStatus | null) {
+  const issueCount = $("issue-count");
+  issueCount.textContent = list.length ? `(${list.length})` : "";
+  issueCount.className = list.length ? "bad" : "";
+  const issues = $("issues");
+  issues.replaceChildren();
+  if (list.length === 0) {
+    const li = document.createElement("li");
+    li.className = "ok";
+    li.textContent = scene?.entries.length ? "No problems found" : "Empty design";
+    issues.append(li);
+  }
+  for (const issue of list) {
+    const li = document.createElement("li");
+    li.textContent = issue.text;
+    if (issue.index !== null) li.onclick = () => select(issue.index);
+    issues.append(li);
+  }
+  const summary = $("plot-summary");
+  summary.textContent = p?.plot
+    ? `Plot ${p.plot.size.join("×")} km · station needs ${p.required ? p.required.size.join("×") + " km" : "nothing yet"}` + (p.possible ? "" : " (more than any plot)")
+    : "No plot";
+  summary.className = "details" + (p && !p.fits ? " bad" : "");
+}
+
+// Live checks while the gizmo is dragged: one request at a time, the latest position wins.
+let previewWant: { index: number; position: Vec3; rotation: Quat } | null = null;
+let previewSent = "";
+let previewBusy = false;
+async function previewGizmo() {
+  if (previewBusy) return;
+  previewBusy = true;
+  while (previewWant) {
+    const want = previewWant;
+    previewWant = null;
+    try {
+      const r = await api.previewGizmo(want.index, want.position, want.rotation);
+      // A late answer after the drag ended would hide the real checks.
+      if (view.gizmoDragging()) {
+        renderChecks(r.issues, r.plot);
+        view.setPlotFits(r.plot?.fits ?? true);
+      }
+    } catch {
+      // The last checks shown stay; the real ones come when the drag ends.
+    }
+  }
+  previewBusy = false;
+}
+view.onGizmoDrag = (position, rotation) => {
+  const key = JSON.stringify([selected, position, rotation]);
+  if (selected === null || key === previewSent) return;
+  previewSent = key;
+  previewWant = { index: selected, position, rotation };
+  void previewGizmo();
+};
+
 /** The last edit pushed the station outside its plot: offer to enlarge it (or undo). */
 async function offerBiggerPlot(p: NonNullable<Scene["plot"]>) {
   const need = p.required?.text ?? "?";
@@ -233,23 +290,7 @@ function redraw() {
   $<HTMLButtonElement>("btn-undo").disabled = !scene.can_undo;
   $<HTMLButtonElement>("btn-redo").disabled = !scene.can_redo;
 
-  const issueCount = $("issue-count");
-  issueCount.textContent = scene.issues.length ? `(${scene.issues.length})` : "";
-  issueCount.className = scene.issues.length ? "bad" : "";
-  const issues = $("issues");
-  issues.replaceChildren();
-  if (scene.issues.length === 0) {
-    const li = document.createElement("li");
-    li.className = "ok";
-    li.textContent = scene.entries.length ? "No problems found" : "Empty design";
-    issues.append(li);
-  }
-  for (const issue of scene.issues) {
-    const li = document.createElement("li");
-    li.textContent = issue.text;
-    if (issue.index !== null) li.onclick = () => select(issue.index);
-    issues.append(li);
-  }
+  renderChecks(scene.issues, scene.plot);
 
   const sel = entry(selected);
   $("selection-panel").hidden = !sel;
@@ -278,11 +319,6 @@ function redraw() {
   $("btn-place-root").hidden = scene.entries.length > 0;
 
   const p = scene.plot;
-  const summary = $("plot-summary");
-  summary.textContent = p?.plot
-    ? `Plot ${p.plot.size.join("×")} km · station needs ${p.required ? p.required.size.join("×") + " km" : "nothing yet"}` + (p.possible ? "" : " (more than any plot)")
-    : "No plot";
-  summary.className = "details" + (p && !p.fits ? " bad" : "");
   document.querySelectorAll<HTMLInputElement>(".plot-grid input").forEach((input) => {
     const side = input.dataset.side as "pos" | "neg";
     if (document.activeElement !== input) input.value = String(p?.plot?.[side][Number(input.dataset.axis)] ?? "");

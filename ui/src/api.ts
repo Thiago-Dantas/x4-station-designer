@@ -150,6 +150,8 @@ export const api = {
   straighten: (index: number) => serial<Scene>("straighten", { index }),
   /** Moves (and with `rotation`, turns) a free-standing module and everything on it. */
   moveRoot: (index: number, position: Vec3, rotation: Quat | null = null) => serial<Scene>("move_root", { index, position, rotation }),
+  /** Checks as if the module were dropped where the gizmo is now; the design doesn't change. */
+  previewGizmo: (index: number, position: Vec3, rotation: Quat) => invoke<{ issues: Issue[]; plot: PlotStatus | null }>("preview_gizmo", { index, position, rotation }),
   buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),
   analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
   listWares: () => serial<{ ware: string; name: string }[]>("list_wares"),

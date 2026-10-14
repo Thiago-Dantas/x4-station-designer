@@ -75,6 +75,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             reattach_module,
             detach_module,
             move_root,
+            preview_gizmo,
             rotate_attached,
             straighten,
             build_cost,
@@ -464,6 +465,27 @@ fn move_root(state: State<'_, Shared>, index: u32, position: [f64; 3], rotation:
     })
 }
 
+/// Checks while a gizmo drag is in progress: the issues and plot status as if
+/// module `index` were dropped there now (`move_root` for a free-standing one,
+/// `rotate_attached` for an attached one), on a copy; the design doesn't change.
+#[tauri::command]
+fn preview_gizmo(state: State<'_, Shared>, index: u32, position: [f64; 3], rotation: [f64; 4]) -> CmdResult {
+    let app = state.lock().unwrap();
+    let catalog = catalog(&app)?;
+    let mut d = Design::from_plan(app.design.plan().clone());
+    d.set_plot(app.design.plot()).map_err(|e| e.to_string())?;
+    let [w, x, y, z] = rotation;
+    let rotation = Quat { w, x, y, z };
+    let attached = d.plan().entries.iter().find(|e| e.index == index).ok_or_else(|| format!("no entry {index}"))?.predecessor.is_some();
+    let moved = if attached {
+        d.rotate_attached(&catalog, index, rotation)
+    } else {
+        d.move_root(index, Transform { position, rotation })
+    };
+    moved.map_err(|e| e.to_string())?;
+    Ok(json!({"issues": issues_json(&d, &catalog), "plot": ops::plot_status(&d, &catalog)}))
+}
+
 /// Turns an attached module (and everything on it) about its joint to `rotation`
 /// (w, x, y, z), staying attached; turns off the snap axis tilt it.
 #[tauri::command]
@@ -596,16 +618,7 @@ fn scene_json(app: &App) -> CmdResult {
             "equipment": [e.upgrades.len().min(groups), groups],
         }));
     }
-    let issues: Vec<Value> = match &catalog {
-        Some(c) => {
-            let mut all = x4sd_core::validate::validate(plan, c);
-            if let Some(plot) = design.plot() {
-                all.extend(x4sd_core::validate::validate_plot(plan, c, &plot));
-            }
-            all.iter().map(|i| json!({"index": i.index(), "text": i.to_string()})).collect()
-        }
-        None => Vec::new(),
-    };
+    let issues = catalog.as_ref().map(|c| issues_json(design, c)).unwrap_or_default();
     let plot = catalog.as_ref().map(|c| ops::plot_status(design, c)).unwrap_or(Value::Null);
     Ok(json!({
         "id": plan.id,
@@ -618,6 +631,16 @@ fn scene_json(app: &App) -> CmdResult {
         "issues": issues,
         "plot": plot,
     }))
+}
+
+/// The design's validation issues, plot ones included.
+fn issues_json(design: &Design, catalog: &Catalog) -> Vec<Value> {
+    let plan = design.plan();
+    let mut all = x4sd_core::validate::validate(plan, catalog);
+    if let Some(plot) = design.plot() {
+        all.extend(x4sd_core::validate::validate_plot(plan, catalog, &plot));
+    }
+    all.iter().map(|i| json!({"index": i.index(), "text": i.to_string()})).collect()
 }
 
 /// `x4sd.exe` is a console program (the CLI and MCP need stdio). Started by
