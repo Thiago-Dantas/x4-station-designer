@@ -414,11 +414,15 @@ fn detach_module(state: State<'_, Shared>, index: u32) -> CmdResult {
     edit(&state, |d, _| d.detach(index))
 }
 
-/// Moves a free-standing module (and everything on it) to `position`, keeping its rotation.
+/// Moves a free-standing module (and everything on it) to `position`, turned to
+/// `rotation` (w, x, y, z) if given, else keeping its rotation.
 #[tauri::command]
-fn move_root(state: State<'_, Shared>, index: u32, position: [f64; 3]) -> CmdResult {
+fn move_root(state: State<'_, Shared>, index: u32, position: [f64; 3], rotation: Option<[f64; 4]>) -> CmdResult {
     edit(&state, |d, _| {
-        let rotation = d.world(index)?.rotation;
+        let rotation = match rotation {
+            Some([w, x, y, z]) => Quat { w, x, y, z },
+            None => d.world(index)?.rotation,
+        };
         d.move_root(index, Transform { position, rotation })
     })
 }

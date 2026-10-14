@@ -185,12 +185,22 @@ function redraw() {
     windowTitle = title;
     void getCurrentWindow().setTitle(title).catch(() => undefined);
   }
-  // A selected free-standing module can be dragged with the gizmo.
+  // A selected free-standing module can be moved or rotated with the gizmo.
   const root = entry(selected);
+  const free = root && !root.attached && !armed && moving === null && buildStep === null;
   view.setGizmo(
-    root && !root.attached && !armed && moving === null && buildStep === null ? root.position : null,
-    root ? (p) => void apply(api.moveRoot(root.index, p), `Moved ${root.name ?? root.macro}`, false, true) : null,
+    free ? { position: root.position, rotation: root.rotation } : null,
+    root
+      ? (p, q) =>
+          void apply(api.moveRoot(root.index, p, q), `${gizmoMode === "rotate" ? "Rotated" : "Moved"} ${root.name ?? root.macro}`, false, true)
+      : null,
+    gizmoMode,
+    rotationStep,
   );
+  $("gizmo-row").hidden = !free;
+  $("btn-gizmo-mode").textContent = gizmoMode === "rotate" ? "Move gizmo" : "Rotate gizmo";
+  $("btn-twist-left").textContent = `⟲ ${rotationStep}°`;
+  $("btn-twist-right").textContent = `⟳ ${rotationStep}°`;
   $<HTMLInputElement>("design-name").value = scene.name;
   const count = `${scene.entries.length} module${scene.entries.length === 1 ? "" : "s"}`;
   $("patches").textContent = scene.patches.length ? `${count} · Needs: ${scene.patches.join(", ")}` : count;
@@ -965,11 +975,51 @@ async function attachArmed(to: number, toSnap: string, macro = armed?.macro) {
   await apply(api.attachModule(macro, chosen, to, toSnap, twist), `Attached ${moduleName(macro)} to #${to}`, false, true);
 }
 
-async function twistSelected(delta: number) {
+async function twistSelected(direction: 1 | -1) {
   const sel = entry(selected);
   if (!sel?.attached) return;
-  await apply(api.setTwist(sel.index, (sel.attached.twist ?? 0) + delta), undefined, false, true);
+  await apply(api.setTwist(sel.index, (sel.attached.twist ?? 0) + direction * rotationStep), undefined, false, true);
 }
+
+// ---------------------------------------------------------------- rotation
+
+/** Step for twists and the rotate gizmo, in degrees; remembered. */
+let rotationStep = (() => {
+  try {
+    return Number(localStorage.getItem("x4sd.rotationStep")) || 90;
+  } catch {
+    return 90;
+  }
+})();
+let gizmoMode: "translate" | "rotate" = "translate";
+
+/** Shows the rotation step everywhere and offers its multiples as attach twists. */
+function renderRotationStep() {
+  document.querySelectorAll<HTMLSelectElement>(".rot-step").forEach((s) => (s.value = String(rotationStep)));
+  const twist = $<HTMLSelectElement>("armed-twist");
+  const keep = Number(twist.value) || 0;
+  const angles = Array.from({ length: 360 / rotationStep }, (_, i) => i * rotationStep);
+  twist.replaceChildren(...angles.map((a) => new Option(String(a), String(a))));
+  twist.value = String(angles.includes(keep) ? keep : 0);
+}
+document.querySelectorAll<HTMLSelectElement>(".rot-step").forEach(
+  (s) =>
+    (s.onchange = () => {
+      rotationStep = Number(s.value);
+      try {
+        localStorage.setItem("x4sd.rotationStep", String(rotationStep));
+      } catch {
+        // Remembering the step is a convenience only.
+      }
+      renderRotationStep();
+      redraw();
+    }),
+);
+renderRotationStep();
+$("btn-gizmo-mode").onclick = () => {
+  gizmoMode = gizmoMode === "rotate" ? "translate" : "rotate";
+  redraw();
+};
 
 async function removeSelected() {
   if (selected === null) return;
@@ -1090,8 +1140,8 @@ $<HTMLSelectElement>("quality").onchange = async (ev) => {
   models.clear();
   if (scene) await apply(Promise.resolve(scene), `Model detail: ${quality}`);
 };
-$("btn-twist-left").onclick = () => twistSelected(-90);
-$("btn-twist-right").onclick = () => twistSelected(90);
+$("btn-twist-left").onclick = () => twistSelected(-1);
+$("btn-twist-right").onclick = () => twistSelected(1);
 $("btn-remove").onclick = removeSelected;
 $<HTMLSelectElement>("build-method").onchange = (ev) => {
   buildMethod = (ev.target as HTMLSelectElement).value;
@@ -1139,12 +1189,23 @@ $("btn-fit-plot").onclick = () => apply(api.fitPlot(false), "Plot fitted to the 
 $("btn-place-root").onclick = () => armed && apply(api.addModule(armed.macro, [0, 0, 0]), `Placed ${armed.name}`, true, true);
 $<HTMLInputElement>("design-name").onchange = (ev) => apply(api.renameDesign((ev.target as HTMLInputElement).value));
 
-// Click (not drag) in the view: attach to a snap, or select a module.
+// Click (not drag) in the view: attach to a snap, or select a module. A middle
+// click picks a module type to place, like the palette: the one under the cursor,
+// else the selected one (middle drag still zooms).
 const viewport = $("viewport");
 let down: { x: number; y: number } | null = null;
 viewport.addEventListener("pointerdown", (ev) => (down = { x: ev.clientX, y: ev.clientY }));
+viewport.addEventListener("mousedown", (ev) => ev.button === 1 && ev.preventDefault()); // no autoscroll
 viewport.addEventListener("pointerup", async (ev) => {
-  if (!down || ev.button !== 0 || Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 5) return;
+  if (!down || Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 5) return;
+  if (ev.button === 1) {
+    const pick = view.pick(ev.clientX, ev.clientY);
+    const source = entry(pick?.kind === "module" ? pick.index : selected);
+    const info = source && modules.find((m) => m.macro.toLowerCase() === source.macro.toLowerCase());
+    if (info) await arm(info);
+    return;
+  }
+  if (ev.button !== 0) return;
   const pick = view.pick(ev.clientX, ev.clientY);
   if (view.gizmoBusy()) return;
   if (pick?.kind === "snap" && moving !== null) await moveOnto(pick.index, pick.snap);
@@ -1181,7 +1242,7 @@ window.addEventListener("keydown", (ev) => {
   if (ev.ctrlKey && key === "z") void apply(ev.shiftKey ? api.redo() : api.undo());
   else if (ev.ctrlKey && key === "y") void apply(api.redo());
   else if (key === "delete") void removeSelected();
-  else if (key === "r") void twistSelected(ev.shiftKey ? -90 : 90);
+  else if (key === "r") void twistSelected(ev.shiftKey ? -1 : 1);
   else if (key === "f") view.frame();
   else if (key === "escape") {
     if (moving !== null) {

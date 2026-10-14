@@ -135,7 +135,8 @@ export const api = {
   reattachModule: (index: number, snap: string, to: number, toSnap: string, twist: number) =>
     serial<Scene>("reattach_module", { index, snap, to, toSnap, twist }),
   detachModule: (index: number) => serial<Scene>("detach_module", { index }),
-  moveRoot: (index: number, position: Vec3) => serial<Scene>("move_root", { index, position }),
+  /** Moves (and with `rotation`, turns) a free-standing module and everything on it. */
+  moveRoot: (index: number, position: Vec3, rotation: Quat | null = null) => serial<Scene>("move_root", { index, position, rotation }),
   buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),
   analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
   listWares: () => serial<{ ware: string; name: string }[]>("list_wares"),

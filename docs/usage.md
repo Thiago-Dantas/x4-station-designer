@@ -7,7 +7,10 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 - **Palette (left):** all buildable modules, **grouped and ordered like the game's build menu** (Production, Build, Storage, Habitation, Welfare, Dock, Defence, Processing, Other, Venture; then by name), with search, a category filter and **race chips** (pick one or several races, e.g. Terran + Boron; *All* shows every race; modules without a race are *Generic*; remembered), coloured by class. Click a module to *arm* it, or drag it into the view.
 - **First module:** with an empty design, click *Place as first module* (or drop it anywhere in the view).
 - **Attaching:** free snaps show as cyan cones. Click a cone (or drop a dragged module on it) to attach the armed module. *Connect by snap* chooses which snap of the new module connects; *Twist* rotates it around the snap axis.
-- **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it by 90° with everything attached to it; *Remove* (Del) removes it with everything attached.
+- **Selection:** click a module. ⟲/⟳ (Shift+R / R) twist it around its snap with everything attached to it, by the **rotation step** (90°, 45°, 30°, 15° or 5°; remembered; the game's own plans use fine twists too). *Remove* (Del) removes it with everything attached.
+  - The same step sets the twists offered when attaching (*Placing* panel) and the rotate gizmo's snap.
+  - A selected **free-standing module** (like the first one) shows a gizmo. *Rotate gizmo* / *Move gizmo* switches it between moving (10 m steps) and rotating around the module's own axes (tilt, yaw, roll) by the rotation step. Everything attached to it turns along and stays on its snaps.
+  - An attached module only turns around its snap: the game connects modules snap to snap. To tilt part of a station, detach its first module and rotate that.
   - *Build first* moves the module (and the chain it hangs on) to the front of the build order; *Build last* moves it (and everything on it) to the end.
   - *A build stage ends here* closes a build stage after it.
   - **Move…** lifts the module with everything attached to it; click any free snap cone (cones of the moving part are hidden) to re-attach it there. The panel picks which of its snaps connects and the twist; Esc cancels. If the new spot comes later in the build order, the moved part is re-sequenced after it.
@@ -16,7 +19,6 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - Pick what goes on it; only equipment that fits those slots is listed. The number box sets how many of the slots to fill.
     - *Apply to all of this type* copies the module's equipment to every module of the same type.
     - *Apply to all modules* uses its turrets and shields on every group where they fit.
-  - A selected **free-standing module** (like the first one) shows a move gizmo: drag its arrows to move it and everything on it, in 10 m steps.
 - **Build order (left, second tab):** every module in build order, top to bottom, with "End of stage N" dividers.
   - **Drag a row onto another** to move it to that step. A module can't come before the module it attaches to, so impossible moves are refused with a message.
   - Click a row to select the module.
@@ -79,7 +81,8 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
   - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
 - **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load.
-- **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt); right drag **or WASD** pans (W/S up and down, A/D left and right on screen); **Q/E** move straight down/up. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
+- **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt). Right drag pans. **W/S** move forward/back where you look (kept level), **A/D** left/right, **Q/E** straight down/up.
+- **Middle click** a placed module to place more of that type (like a palette click). On empty space it takes the selected module's type. Middle drag still zooms. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, tinted by module class; textures are not shown yet.
 - **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.
 - **Textures** (toolbar, on by default): the game's diffuse textures on the models. Without them, models are tinted by module class. The status bar reports how many loaded and their GPU memory, typically about 10 MB in 0.2 s. Turn them off on weak graphics hardware. The choice is remembered.
 

@@ -8,6 +8,8 @@ import type { Entry, Quat, Scene, Shape, Vec3 } from "./api";
 // q = (w, x, y, z) becomes S·R·S with S = diag(1, 1, -1), i.e. (w, -x, -y, z).
 export const toVec = (v: Vec3) => new THREE.Vector3(v[0], v[1], -v[2]);
 export const toQuat = (q: Quat) => new THREE.Quaternion(-q[1], -q[2], q[3], q[0]);
+/** Back to the game's frame: the inverse of `toQuat`. */
+const fromQuat = (q: THREE.Quaternion): Quat => [q.w, -q.x, -q.y, q.z];
 
 export const CLASS_COLORS: Record<string, number> = {
   connectionmodule: 0x8a96aa,
@@ -84,10 +86,10 @@ export class View3D {
   private clock = new THREE.Clock();
   /** Frame counter shown in the view's corner: frames and busy milliseconds since `fpsSince`. */
   private fps = { el: document.createElement("div"), frames: 0, busy: 0, since: performance.now() };
-  /** Translate gizmo for a selected free-standing module. */
+  /** Move or rotate gizmo for a selected free-standing module. */
   private gizmo: TransformControls;
   private gizmoTarget = new THREE.Object3D();
-  private onGizmoMoved: ((position: Vec3) => void) | null = null;
+  private onGizmoMoved: ((position: Vec3, rotation: Quat) => void) | null = null;
 
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -116,7 +118,7 @@ export class View3D {
       this.controls.enabled = !ev.value;
       if (!ev.value && this.onGizmoMoved) {
         const p = this.gizmoTarget.position;
-        this.onGizmoMoved([p.x, p.y, -p.z]); // back to the game's frame (mirror Z)
+        this.onGizmoMoved([p.x, p.y, -p.z], fromQuat(this.gizmoTarget.quaternion)); // back to the game's frame (mirror Z)
       }
     });
     this.scene.add(this.gizmoTarget, this.gizmo.getHelper());
@@ -161,21 +163,26 @@ export class View3D {
     window.addEventListener("blur", () => this.panKeys.clear());
   }
 
-  /** Keyboard navigation while keys are held: WASD pan in screen space (like
-   * OrbitControls' right drag), Q/E move straight down/up, speeds scaled to the
-   * zoom; arrow keys orbit around the target (left/right) and tilt (up/down). */
+  /** Keyboard navigation while keys are held: W/S move forward/back along the view
+   * direction kept level, A/D left/right, Q/E straight down/up, speeds scaled to
+   * the zoom; arrow keys orbit around the target (left/right) and tilt (up/down). */
   private keyNavigate(seconds: number) {
     if (this.panKeys.size === 0) return;
     const dt = Math.min(seconds, 0.1);
     const held = (code: string) => (this.panKeys.has(code) ? 1 : 0);
     const right = held("KeyD") - held("KeyA");
-    const up = held("KeyW") - held("KeyS");
+    const ahead = held("KeyW") - held("KeyS");
     const rise = held("KeyE") - held("KeyQ");
-    if (right || up || rise) {
+    if (right || ahead || rise) {
       const step = this.camera.position.distanceTo(this.controls.target) * 0.8 * dt;
+      // Forward = where the camera looks, without the vertical part (looking
+      // straight down: the screen's up instead).
+      const forward = this.controls.target.clone().sub(this.camera.position).setY(0);
+      if (forward.lengthSq() < 1e-6) forward.setFromMatrixColumn(this.camera.matrix, 1).setY(0);
+      forward.normalize();
       const offset = new THREE.Vector3()
         .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0), right * step)
-        .addScaledVector(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1), up * step)
+        .addScaledVector(forward, ahead * step)
         .addScaledVector(new THREE.Vector3(0, 1, 0), rise * step);
       this.camera.position.add(offset);
       this.controls.target.add(offset);
@@ -292,15 +299,27 @@ export class View3D {
     }
   }
 
-  /** Shows the translate gizmo at `position` (game frame), or hides it with null.
-   * `onMoved` gets the new position when a drag ends. */
-  setGizmo(position: Vec3 | null, onMoved: ((position: Vec3) => void) | null = null) {
+  /** Shows the gizmo on a module at `at` (game frame), or hides it with null:
+   * `translate` moves it in 10 m steps, `rotate` turns it around its own axes in
+   * `stepDegrees` steps. `onMoved` gets the new position and rotation when a drag ends. */
+  setGizmo(
+    at: { position: Vec3; rotation: Quat } | null,
+    onMoved: ((position: Vec3, rotation: Quat) => void) | null = null,
+    mode: "translate" | "rotate" = "translate",
+    stepDegrees = 90,
+  ) {
     this.onGizmoMoved = onMoved;
-    if (!position) {
+    if (!at) {
       this.gizmo.detach();
       return;
     }
-    if (!this.gizmo.dragging) this.gizmoTarget.position.copy(toVec(position));
+    this.gizmo.setMode(mode);
+    this.gizmo.setSpace(mode === "rotate" ? "local" : "world");
+    this.gizmo.setRotationSnap(THREE.MathUtils.degToRad(stepDegrees));
+    if (!this.gizmo.dragging) {
+      this.gizmoTarget.position.copy(toVec(at.position));
+      this.gizmoTarget.quaternion.copy(toQuat(at.rotation));
+    }
     this.gizmo.attach(this.gizmoTarget);
   }
 

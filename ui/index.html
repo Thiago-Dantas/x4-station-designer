@@ -74,7 +74,8 @@
           <h3 id="armed-title">Placing</h3>
           <div id="armed-name" class="name"></div>
           <label>Connect by snap <select id="armed-snap"></select></label>
-          <label>Twist <select id="armed-twist"><option>0</option><option>90</option><option>180</option><option>270</option></select></label>
+          <label>Twist <select id="armed-twist"></select></label>
+          <label>Rotation step <select class="rot-step" title="Twist and rotation steps, in degrees"><option>90</option><option>45</option><option>30</option><option>15</option><option>5</option></select></label>
           <button id="btn-place-root">Place as first module</button>
           <p class="hint">Click or drop onto a free snap (cone) to attach. Esc cancels.</p>
         </section>
@@ -86,6 +87,10 @@
             <button id="btn-twist-left" title="Twist -90° (Shift+R)">⟲ 90°</button>
             <button id="btn-twist-right" title="Twist +90° (R)">⟳ 90°</button>
             <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
+          </div>
+          <label>Rotation step <select class="rot-step" title="Twist and rotation steps, in degrees"><option>90</option><option>45</option><option>30</option><option>15</option><option>5</option></select></label>
+          <div class="row" id="gizmo-row" hidden>
+            <button id="btn-gizmo-mode" title="Switch the gizmo between moving and rotating this free-standing module (and everything on it)">Rotate</button>
           </div>
           <div class="row order-actions">
             <button id="btn-move" title="Move it (with everything attached) onto another free snap">Move…</button>
