@@ -60,7 +60,15 @@ fn resolves_base_dlc_and_mod_modules() {
     assert!(pier.shape.iter().all(|b| b.half_extents[0] < 3000.0), "docking volume must be skipped: {:?}", pier.shape);
 
     match c.module("recyclemodule_macro") {
-        Ok(m) => assert_eq!(m.source.as_deref(), Some("RecycleShipsAndStations")),
+        Ok(m) => {
+            assert_eq!(m.source.as_deref(), Some("RecycleShipsAndStations"));
+            // Its component borrows another's meshes (`<source geometry>`); its name is in the mod's texts.
+            let model = c.module_model("recyclemodule_macro", 1, 4).unwrap();
+            let textured = model.groups.iter().filter(|g| c.material(&g.0).and_then(|m| m.diffuse).is_some()).count();
+            let name = c.display_name("recyclemodule_macro");
+            eprintln!("mod module: {} triangles, {textured} of {} material groups textured, name {name:?}", model.indices.len() / 3, model.groups.len());
+            assert!(model.indices.len() > 1000 && textured > 0 && name.is_some());
+        }
         Err(e) => eprintln!("mod module not resolved (mod disabled or absent?): {e}"),
     }
 }

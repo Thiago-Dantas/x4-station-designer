@@ -452,6 +452,17 @@ impl Catalog {
         out
     }
 
+    /// A macro's display name (English) from its `<identification name>`, for
+    /// modules outside `station_modules` (e.g. a mod's module without build sets).
+    pub fn display_name(&self, macro_name: &str) -> Option<String> {
+        let entry = self.macros.get(&macro_name.to_ascii_lowercase())?;
+        let xml = self.vfs.read_text(&format!("{}.xml", entry.path)).ok()?;
+        let doc = roxmltree::Document::parse(&xml).ok()?;
+        let m = doc.descendants().find(|n| n.has_tag_name("macro"))?;
+        let name = child(child(Some(m), "properties"), "identification")?.attribute("name")?;
+        Some(self.texts.resolve(name)).filter(|n| !n.is_empty() && !n.starts_with('{'))
+    }
+
     /// Whether the index knows this macro (modules, equipment, anything).
     pub fn has_macro(&self, macro_name: &str) -> bool {
         self.macros.contains_key(&macro_name.to_ascii_lowercase())
@@ -628,9 +639,17 @@ impl Catalog {
             }
             t
         };
+        // A component's meshes are in its `<source geometry>` folder: usually
+        // `<path>_data`, but a mod can borrow another's (RecycleShipsAndStations'
+        // recycle module uses `prod_gen_dronecomponents_data`).
+        let geometry = comp
+            .children()
+            .find(|c| c.has_tag_name("source"))
+            .and_then(|s| s.attribute("geometry"))
+            .map_or_else(|| format!("{component_path}_data"), str::to_owned);
         let mesh_path = |r: &Raw| match r.reference.and_then(|v| v.split_once('.')) {
             Some((component, part)) => Some(normalize(&format!("{}_data/{part}", self.components.get(&component.to_ascii_lowercase())?.path))),
-            None => Some(normalize(&format!("{component_path}_data/{}", r.name))),
+            None => Some(normalize(&format!("{geometry}/{}", r.name))),
         };
         let visible = raw
             .iter()

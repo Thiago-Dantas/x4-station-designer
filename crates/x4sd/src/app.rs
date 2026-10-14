@@ -512,7 +512,12 @@ fn scene_json(app: &App) -> CmdResult {
     let mut entries = Vec::new();
     for e in &plan.entries {
         let world = design.world(e.index).map_err(|e| e.to_string())?;
-        let info = app.info.get(&e.macro_name.to_ascii_lowercase());
+        let info = app.info.get(&e.macro_name.to_ascii_lowercase()).cloned().or_else(|| {
+            // Not in the palette (a mod's module without build sets): name and class from the macro.
+            let c = catalog.as_ref()?;
+            Some((c.display_name(&e.macro_name)?, c.module(&e.macro_name).ok()?.class.clone()))
+        });
+        let info = info.as_ref();
         let attached = e.predecessor.as_ref().map(|p| {
             // Twist, tilt off the snap axis (degrees) and the joint (where the snaps meet).
             let joint = catalog.as_ref().and_then(|c| {

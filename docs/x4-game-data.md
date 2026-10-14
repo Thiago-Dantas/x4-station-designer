@@ -85,7 +85,7 @@ Component XML describes every part in a `<connection tags="part ...">` with `<pa
 - They also give the plot a station needs. For overlaps they are too loose (they cover thin spires and the space beside them); overlaps use boxes built from the collision meshes (below).
 
 ### Module meshes: `.xmf` (reverse-engineered and verified 2026-10-13)
-**Files.** Each part has meshes at `<component path>_data/<part>-lodN.xmf`, LOD 0 being the finest. Main hull parts usually have LOD 0–3, detail parts only LOD 0. `-collision.xmf` and `-collision1.xmf` are collision meshes and aren't drawn.
+**Files.** Each part has meshes at `<geometry>/<part>-lodN.xmf`, LOD 0 being the finest. `<geometry>` is the component's `<source geometry="...">` folder (verified 2026-10-14): usually `<component path>_data`, but a mod can borrow another component's. RecycleShipsAndStations' `recyclemodule` uses `assets\structures\production\prod_gen_dronecomponents_data`, and the builder showed it as a plain box until this was read. That mod's macro has no build sets, so its display name comes from the macro's `<identification name>` (`Catalog::display_name`): "Recycle Module". Main hull parts usually have LOD 0–3, detail parts only LOD 0. `-collision.xmf` and `-collision1.xmf` are collision meshes and aren't drawn.
 
 **Collision meshes (verified 2026-10-13).** Same container; the vertex buffer has **no declaration** (0 elements) and 12-byte items: float3 positions only, plus an index buffer. No materials.
 - Example: `prod_ter_medicalsupplies` `part_main-collision.xmf` has 37,636 vertices and 75,040 triangles.
