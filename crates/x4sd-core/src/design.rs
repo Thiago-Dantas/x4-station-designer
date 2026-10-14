@@ -360,6 +360,16 @@ impl Design {
         true
     }
 
+    /// How many edits can be undone.
+    pub fn history_len(&self) -> usize {
+        self.undo.len()
+    }
+
+    /// Turns the edits made since the history had `since` steps into one undo step.
+    pub fn squash_history(&mut self, since: usize) {
+        self.undo.truncate(since + 1);
+    }
+
     fn checkpoint(&mut self) {
         self.undo.push(self.plan.clone());
         self.redo.clear();
@@ -453,6 +463,7 @@ mod tests {
             snaps,
             shape: Vec::new(),
             parts: Vec::new(),
+            collision: Vec::new(),
             economy: Default::default(),
         };
         Catalog::from_modules(vec![

@@ -246,6 +246,23 @@ try:
           cdp.js("document.getElementById('planner-summary').textContent").replace("\n", " | "))
     cdp.js("document.querySelector('#planner-buy button').click()")
     cdp.wait_for("%s.some(r => r.querySelector('.name').textContent === 'Energy Cell Production')" % rows)
+    # Place all: everything still to place, on the largest plot so no enlarge prompt
+    # (a native dialog) can block the test; then undo it in one step.
+    cdp.js("document.querySelectorAll('.plot-grid input').forEach(i => { i.value = 10; i.dispatchEvent(new Event('change')); })")
+    cdp.wait_for("document.getElementById('plot-summary').textContent.startsWith('Plot 20×20×20')")
+    count = "window.__TAURI_INTERNALS__.invoke('scene').then(s => s.entries.length)"
+    before, todo = cdp.js(count), cdp.js("document.getElementById('planner-place').textContent")
+    cdp.js("document.getElementById('planner-place').click()")
+    cdp.wait_for("document.getElementById('status').textContent.startsWith('Placed ')", timeout=60)
+    time.sleep(1.0)
+    cdp.screenshot(os.path.join(out, "ui-8-placed.png"))
+    issues = cdp.js("[...document.querySelectorAll('#issues li')].map(l => l.textContent).join('; ')")
+    print("8.", todo, "->", cdp.js("document.getElementById('planner-placed').textContent"), "|", before, "->", cdp.js(count), "modules | checks:", issues)
+    assert cdp.js(rows + ".every(r => r.classList.contains('done'))") and cdp.js("document.getElementById('planner-place').hidden")
+    assert issues == "No problems found", issues
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+    cdp.wait_for("%s.then(n => n === %d)" % (count, before))
+    print("   after Ctrl+Z:", cdp.js(count), "modules,", cdp.js("document.getElementById('planner-place').textContent"))
     cdp.js("document.querySelectorAll('#planner-targets button').forEach(b => b.click())")
 finally:
     app.terminate()

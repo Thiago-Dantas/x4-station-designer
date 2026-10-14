@@ -9,6 +9,7 @@ pub mod economy;
 pub mod game;
 pub mod geometry;
 pub mod import;
+pub mod layout;
 pub mod mesh;
 pub mod plan;
 pub mod planner;

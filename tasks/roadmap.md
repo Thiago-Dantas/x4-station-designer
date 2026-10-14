@@ -65,10 +65,10 @@ Proposed order (each step usable on its own):
 - [x] **Build order viewer and editor** (user request; see [workflow-build-order.md](workflow-build-order.md)): list with stage dividers, drag to reorder, build first/last, stage ends, timeline slider, MCP tools. Still to check in game: that player builds follow the order.
 - [x] Keyboard navigation (user requests): WASD pan, Q/E down/up, arrow keys rotate
 - [x] Palette in the game's build-menu category order (user request)
-- [ ] **x4ep_planner functionality** (user request; our own version from the game files; see [workflow-production-planner.md](workflow-production-planner.md)):
+- [x] **x4ep_planner functionality** (user request; our own version from the game files; see [workflow-production-planner.md](workflow-production-planner.md)). Still to check in game: an auto-placed station builds and ships reach its docks.
   - [x] A. Station analysis: production per hour, workforce, storage, docks (right pane, MCP `analyze_station`)
   - [x] B. Production planner: target wares to a module list, with a "to place" list (Planner tab, MCP `plan_production`, `list_wares`)
-  - [ ] C. Auto-placement of the planned modules
+  - [x] C. Auto-placement of the planned modules: Planner tab *Place all*, MCP `auto_place`; overlap checks on collision meshes (also in `validate`)
 - [x] Build cost in the right pane: selected module or whole station, build method (user request; see [workflow-build-cost.md](workflow-build-cost.md))
 - [x] Move placed modules (re-attach to another snap, detach, gizmo for free-standing ones) and warn about unsaved changes (user requests; see [workflow-move-and-unsaved.md](workflow-move-and-unsaved.md))
 - [ ] Release build for players: README, versioning, a GitHub release with `x4sd.exe`

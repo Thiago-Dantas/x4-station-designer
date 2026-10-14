@@ -92,7 +92,7 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #planner-targets li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 #planner-targets li span { flex: 1; }
 #planner-targets li input { width: 52px; }
-#planner-summary { color: var(--muted); font-size: 12px; white-space: pre-line; }
+#planner-summary, #planner-placed { color: var(--muted); font-size: 12px; white-space: pre-line; }
 #planner-result { overflow-y: auto; min-height: 0; flex: 1; font-size: 12px; }
 #planner-result h4 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; color: var(--muted); }
 .planned-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 3px; cursor: pointer; }

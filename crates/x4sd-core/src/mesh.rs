@@ -92,6 +92,10 @@ pub fn parse(data: &[u8]) -> Result<Mesh> {
     }
 
     let mut mesh = Mesh::default();
+    for b in buffers.iter_mut().filter(|b| b.kind != INDEX_BUFFER && b.decl.is_empty() && b.item_size == 12) {
+        // Collision meshes (`-collision.xmf`): a vertex buffer without declaration, positions only.
+        b.decl.push((DECL_FLOAT3, USAGE_POSITION));
+    }
     for b in buffers.iter().filter(|b| b.kind != INDEX_BUFFER) {
         let mut offset = 0;
         for &(t, usage) in &b.decl {

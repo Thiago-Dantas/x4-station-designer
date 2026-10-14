@@ -82,9 +82,16 @@ Component XML describes every part in a `<connection tags="part ...">` with `<pa
   - `geometryinvisible` parts (e.g. a pier's 3.1 km "bounding_box" docking volume).
 - **Fallback:** `landmarks_par_storage_01_macro` has no parts of its own (it is assembled from child landmark pieces), so it gets a box spanning its snap points.
 - Implemented as `Module::shape` (`catalog.rs`). The boxes are now only a fallback; the builder draws the real meshes (below).
+- They also give the plot a station needs. For overlaps they are too loose (they cover thin spires and the space beside them); overlaps use boxes built from the collision meshes (below).
 
 ### Module meshes: `.xmf` (reverse-engineered and verified 2026-10-13)
 **Files.** Each part has meshes at `<component path>_data/<part>-lodN.xmf`, LOD 0 being the finest. Main hull parts usually have LOD 0–3, detail parts only LOD 0. `-collision.xmf` and `-collision1.xmf` are collision meshes and aren't drawn.
+
+**Collision meshes (verified 2026-10-13).** Same container; the vertex buffer has **no declaration** (0 elements) and 12-byte items: float3 positions only, plus an index buffer. No materials.
+- Example: `prod_ter_medicalsupplies` `part_main-collision.xmf` has 37,636 vertices and 75,040 triangles.
+- Where `-collision1.xmf` exists it is a coarser copy with the same bounds (37,424 triangles in that example).
+- Almost every part has one, including `nocollision` detail parts and `collisiononly` boxes.
+- All 287 station modules' collision meshes parse. Used for overlap checks (`Catalog::collision_boxes`; see docs/x4-construction-plans.md, "Overlaps").
 
 **Format.** Little endian, Direct3D 9 conventions:
 - **Header, 64 bytes:**

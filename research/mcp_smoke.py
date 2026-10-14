@@ -81,6 +81,22 @@ print("plan:", [(m["macro"], m["count"], m["role"]) for m in p["modules"]], "| c
       "| self-sufficient", p["analysis"]["self_sufficient"])
 assert p["analysis"]["self_sufficient"], p["analysis"]["notes"]
 assert any(m["macro"] == "prod_ter_computronicsubstrate_macro" and m["role"] == "target" for m in p["modules"]), p["modules"]
+before = len(call("describe_design")["modules"])
+r = call("auto_place", from_plan={"targets": [{"ware": "computronicsubstrate", "modules": 1}], "race": "terran"})
+print("auto_place:", len(r["placed"]), "placed,", len(r["connectors"]), "connection structures, unplaced", r["unplaced"],
+      "| plot needed", r["plot"]["required"]["text"], "fits", r["plot"]["fits"], "| next", r.get("next"))
+assert len(r["placed"]) == sum(m["count"] for m in r["plan"]["modules"]) and not r["unplaced"], r
+if not r["plot"]["fits"]:
+    call("fit_plot", grow_only=True)
+issues = call("validate_design")["issues"]
+assert not issues, issues
+assert call("analyze_station")["self_sufficient"]
+print("undo auto_place:", call("undo"), "-> modules", len(call("describe_design")["modules"]))
+assert len(call("describe_design")["modules"]) == before
+try:
+    call("auto_place")
+except SystemExit as e:
+    print("expected error:", e)
 d = call("describe_design")
 print("design:", d["name"], "patches", d["patches"], "modules", [(m["index"], m["name"], m["position"]) for m in d["modules"]])
 print("remove beam 3:", call("remove_module", index=3), "-> modules", len(call("describe_design")["modules"]))

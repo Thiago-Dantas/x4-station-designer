@@ -13,8 +13,9 @@ use x4sd_core::design::Design;
 use x4sd_core::economy::{analyze, Analysis};
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::import::{new_plan_id, write_import_file};
+use x4sd_core::layout::{self, Options};
 use x4sd_core::plan::{parse_plans, write_plans};
-use x4sd_core::planner::{self, producible_wares, Request};
+use x4sd_core::planner::{self, producible_wares, ProductionPlan, Request};
 use x4sd_core::plot::{required_plot, Plot};
 use x4sd_core::validate::{validate, validate_plot};
 
@@ -45,6 +46,28 @@ pub struct PlanArgs {
     pub sunlight: Option<f64>,
     /// Build method for the cost (default: default)
     pub method: Option<String>,
+}
+
+/// Modules of one macro to place.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ModuleCount {
+    /// Module macro, e.g. prod_gen_energycells_macro
+    pub r#macro: String,
+    /// How many to place
+    pub count: u32,
+}
+
+/// What auto_place places, and how.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct AutoPlaceArgs {
+    /// Modules to place (macro and count); give this or from_plan
+    pub modules: Option<Vec<ModuleCount>>,
+    /// Plan first with these plan_production settings, then place every module the plan lists
+    pub from_plan: Option<PlanArgs>,
+    /// Let the station grow past its plot, up to the largest plot (20 km per axis); default true
+    pub grow_plot: Option<bool>,
+    /// Race of the connection structures it adds: argon, boron, paranid, split, teladi, terran; default: the plan's race, else the most common race of the modules
+    pub race: Option<String>,
 }
 
 /// Lowercase macro -> (display name, class) of every station module.
@@ -90,6 +113,8 @@ pub enum Op {
     ListWares,
     /// The modules to add for target wares (or to fix the station's shortfalls).
     PlanProduction(PlanArgs),
+    /// Attach modules (a list, or a plan's) at free snaps without overlaps.
+    AutoPlace(AutoPlaceArgs),
 }
 
 impl Op {
@@ -252,6 +277,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         Op::AnalyzeStation { sunlight } => analyze_station(c, ctx.design, sunlight.unwrap_or(100.0)),
         Op::ListWares => list_wares(c),
         Op::PlanProduction(args) => plan_production(c, ctx.design, args),
+        Op::AutoPlace(args) => auto_place(c, ctx.design, args),
         Op::SaveDesign { file } => {
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
             ctx.design.mark_saved();
@@ -314,16 +340,54 @@ pub fn list_wares(catalog: &Catalog) -> Result<Value, String> {
 /// storage, docks), the station's analysis with them, and their build cost.
 pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs) -> Result<Value, String> {
     let sunlight = args.sunlight.unwrap_or(100.0);
-    let req = Request {
+    let p = planner::plan_production(catalog, design.plan(), &request(args)).map_err(|e| e.to_string())?;
+    plan_json(catalog, &p, sunlight)
+}
+
+/// Places modules (a list, or what a plan lists) with `layout::auto_place`: the new
+/// indices, the connection structures added, what didn't fit, and the plot.
+pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -> Result<Value, String> {
+    let (modules, race, plan) = match (args.modules, args.from_plan) {
+        (Some(list), None) => (list.into_iter().map(|m| (m.r#macro, m.count)).collect::<Vec<_>>(), args.race, None),
+        (None, Some(settings)) => {
+            let sunlight = settings.sunlight.unwrap_or(100.0);
+            let req = request(settings);
+            let p = planner::plan_production(catalog, design.plan(), &req).map_err(|e| e.to_string())?;
+            let modules = p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
+            (modules, args.race.or(req.race), Some(plan_json(catalog, &p, sunlight)?))
+        }
+        _ => return Err("give either modules or from_plan".to_owned()),
+    };
+    let options = Options { grow_plot: args.grow_plot.unwrap_or(true), race: race.filter(|r| !r.is_empty() && r != "any") };
+    let r = layout::auto_place(catalog, design, &modules, &options).map_err(|e| e.to_string())?;
+    let mut out = json!({
+        "placed": r.placed.iter().map(|(i, m)| json!({"index": i, "macro": m})).collect::<Vec<_>>(),
+        "connectors": r.connectors.iter().map(|(i, m)| json!({"index": i, "macro": m})).collect::<Vec<_>>(),
+        "unplaced": r.unplaced.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
+        "plot": plot_status(design, catalog),
+    });
+    if !out["plot"]["fits"].as_bool().unwrap_or(true) {
+        out["next"] = json!("The station outgrew its plot: tell the user, then fit_plot with grow_only=true");
+    }
+    if let Some(p) = plan {
+        out["plan"] = p;
+    }
+    Ok(out)
+}
+
+fn request(args: PlanArgs) -> Request {
+    Request {
         targets: args.targets.into_iter().map(|t| (t.ware, t.modules)).collect(),
         race: args.race.filter(|r| !r.is_empty() && r != "any"),
         workforce: args.workforce.unwrap_or(true),
         storage_hours: args.storage_hours.unwrap_or(6.0),
         buy: args.buy.unwrap_or_default(),
-        sunlight: sunlight / 100.0,
+        sunlight: args.sunlight.unwrap_or(100.0) / 100.0,
         method: args.method.unwrap_or_else(|| "default".to_owned()),
-    };
-    let p = planner::plan_production(catalog, design.plan(), &req).map_err(|e| e.to_string())?;
+    }
+}
+
+fn plan_json(catalog: &Catalog, p: &ProductionPlan, sunlight: f64) -> Result<Value, String> {
     Ok(json!({
         "modules": p.modules.iter().map(|m| json!({"macro": m.macro_name, "name": m.name, "count": m.count, "role": m.role.as_str(), "ware": m.ware})).collect::<Vec<_>>(),
         "analysis": analysis_json(catalog, &p.analysis, sunlight)?,

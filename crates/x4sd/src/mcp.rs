@@ -26,13 +26,17 @@ Import in the game's station build menu.
 Planning a working station (\"a staffed station with 100 solar panels\"): list_wares for ware ids (solar \
 panels are Energy Cell Production, ware energycells) -> plan_production with targets (ware + number of \
 production modules); it adds the production chain, habitats with their food and medicine, storage, a dock \
-area and a pier -> place every module it lists -> analyze_station to check (wares still short must be \
-bought or mined) -> build_cost for the materials. Self-sufficient means every made ware is produced on \
+area and a pier -> auto_place with from_plan (the same settings) attaches every module it lists, adding \
+connection structures where needed -> validate_design (if the station outgrew its plot, tell the user and \
+fit_plot with grow_only) -> analyze_station to check (wares still short must be bought or mined) -> \
+build_cost for the materials. auto_place also takes a plain module list. Self-sufficient means every made ware is produced on \
 the station; raw materials (ore, ice, silicon, nividium, methane, helium, hydrogen, scrap metal: flows with \
 raw=true) are always brought in (mined or salvaged), never planned, so a self-sufficient station still lists \
 them as short (self_sufficient=true).
 Coordinates are metres in the station frame, Y up. Module indices are 1..n and are renumbered after \
 remove_module. Every edit can be undone with undo.
+Overlaps: validate_design reports modules whose collision shapes intersect (modules joined at a snap may \
+interlock); auto_place never creates any.
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
 New designs start on a 2x2x2 km plot, opened ones on the smallest that fits. validate_design reports modules \
 outside the plot and the size needed; set_plot / fit_plot change it (tell the user when the plot must grow).
@@ -302,7 +306,7 @@ impl Server {
         self.run(Op::Redo)
     }
 
-    #[tool(description = "Check the open design for problems the game does not catch (unknown modules, modules off their snaps, missing DLC patches). An empty list means it is fine.")]
+    #[tool(description = "Check the open design for problems the game does not catch (unknown modules, modules off their snaps, overlapping modules, missing DLC patches, modules outside the plot). An empty list means it is fine.")]
     fn validate_design(&self, Parameters(_): Parameters<NoArgs>) -> ToolResult {
         self.run(Op::ValidateDesign)
     }
@@ -362,9 +366,14 @@ impl Server {
         self.run(Op::ListWares)
     }
 
-    #[tool(description = "Production planner: the modules to add to the open design to make the target wares. It adds the whole production chain, habitats for the workforce with their food and medicine, storage for N hours, and a dock area and pier if missing. Existing modules count as supply; with no targets it fixes the station's shortfalls. Returns the modules (macro, count, role), the station's analysis with them (raw materials stay short: they are mined or salvaged; self_sufficient says whether every made ware is covered) and the cost. It doesn't place anything: attach the modules yourself.")]
+    #[tool(description = "Production planner: the modules to add to the open design to make the target wares. It adds the whole production chain, habitats for the workforce with their food and medicine, storage for N hours, and a dock area and pier if missing. Existing modules count as supply; with no targets it fixes the station's shortfalls. Returns the modules (macro, count, role), the station's analysis with them (raw materials stay short: they are mined or salvaged; self_sufficient says whether every made ware is covered) and the cost. It doesn't place anything: auto_place does.")]
     fn plan_production(&self, Parameters(a): Parameters<ops::PlanArgs>) -> ToolResult {
         self.run(Op::PlanProduction(a))
+    }
+
+    #[tool(description = "Auto-placement: attach modules to the open design at exact snap positions, clear of each other and inside the plot, adding connection structures (hubs, straight pieces) where needed; one undo step. Give modules (macro and count), or from_plan (plan_production settings) to plan and place in one call (the result then has the plan too). Big modules go first, dock areas and piers last. Returns the new modules and connection structures (index, macro), what didn't fit, and the plot: with grow_plot (default true) the station may outgrow its plot, up to 20 km per axis; then tell the user and fit_plot with grow_only.")]
+    fn auto_place(&self, Parameters(a): Parameters<ops::AutoPlaceArgs>) -> ToolResult {
+        self.run(Op::AutoPlace(a))
     }
 
     #[tool(description = "End a build stage after this module (or remove that stage end). Stages let the station be built in steps.")]

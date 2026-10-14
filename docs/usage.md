@@ -30,6 +30,10 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - **Adds to the open design:** the modules already there count as supply, housing and storage. With no wares it fixes the open station's shortfalls.
   - *Race* uses that race's modules where it has them (generic ones otherwise, then any race). *House the workforce* can be turned off.
   - Each row shows **placed/needed** and counts down as you place modules. Click a row to arm that module.
+  - **Place all (N)** attaches every module still to place at once (auto-placement).
+    - Modules go onto free snaps at exact positions, clear of each other, with connection structures of the plan's race added where needed. The largest go first; dock areas and piers go last, where they face open space.
+    - The station may outgrow the plot (up to 20 km per axis); the builder then offers to enlarge it.
+    - What found no room is listed under the button. Ctrl+Z undoes the whole placement.
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
   - Sunlight and build method come from the right pane. The settings are remembered.
 - **Build cost (right):** the materials to build the **selected module** (with its turrets and shields), or the **whole station** when nothing is selected.
@@ -51,7 +55,9 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Fit plot to station* sets that minimum.
   - When an edit pushes the station outside the plot, the builder offers to enlarge it, or, if no plot could hold it (over 20 km on an axis), to undo.
   - The plot is not stored in plan files (the game keeps plots per station).
-- **Checks (right):** the validator's findings, live, including modules outside the plot. Click one to select the module.
+- **Checks (right):** the validator's findings, live, including modules outside the plot and **overlapping modules**. Click one to select the module.
+  - An overlap means two modules' collision shapes intersect by more than 1 m. Modules joined at a snap may interlock, and are never counted.
+  - The depth shown is approximate. Stations built in game can show some: "Allow module overlap", or looser checks in the game. See docs/x4-construction-plans.md, "Overlaps".
 - **Toolbar:**
   - *Open game plan…* lists your saved plans and import files.
   - *Open file…* / *Save as…* work with plan files.
@@ -68,7 +74,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
 | `x4sd list-modules [--class C] [--race R] [text]` | Buildable station modules (base, DLCs, enabled mods): macro, class, race, source, name. `text` matches the name or macro. |
 | `x4sd snaps <macro>` | A module's snap connections with position and facing direction (module frame, metres) |
 | `x4sd show <file>` | Plans in a plan file: id, name, module count, unattached modules, DLC patches, **plot needed** |
-| `x4sd validate <file> [--plan P] [--plot +X,-X,+Y,-Y,+Z,-Z]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, missing DLC patches. With `--plot` (km per side) it also flags modules outside that plot. Exit code 1 if any. |
+| `x4sd validate <file> [--plan P] [--plot +X,-X,+Y,-Y,+Z,-Z]` | Problems the game doesn't catch: unknown modules/snaps, modules off their snap (more than 5 cm), misaligned snaps, overlapping modules, missing DLC patches. With `--plot` (km per side) it also flags modules outside that plot. Exit code 1 if any. |
 | `x4sd export <file> --plan P [--new-id] [--overwrite]` | Writes the plan into `<profile>\constructionplan\` for in-game **Import** (build menu, Import button; the folder is rescanned when the menu opens). `--new-id` makes the import add a new plan instead of replacing one with the same id. |
 
 A plan file is either the profile's `constructionplans.xml` (all saved plans) or a single-plan file like the ones the game exports. Exit code 2 means an error (file not found, game not found, ambiguous plan, and so on).
@@ -78,11 +84,11 @@ A plan file is either the profile's `constructionplans.xml` (all saved plans) or
 ```
 claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 ```
-(add `--game-dir …` / `--profile-dir …` before `mcp` if they aren't found automatically). The server explains the workflow to the agent in its instructions, including the planning recipe for requests like "a staffed station with 100 solar panels": `list_wares`, then `plan_production`, then place the modules, then `analyze_station`.
+(add `--game-dir …` / `--profile-dir …` before `mcp` if they aren't found automatically). The server explains the workflow to the agent in its instructions, including the recipe for requests like "a staffed station with 100 solar panels": `list_wares`, then `auto_place` with `from_plan` (plans and places in one call), then `validate_design` (and `fit_plot` if the station outgrew its plot), then `analyze_station`.
 - **Self-sufficient** means every made ware is produced on the station. Raw materials are brought in, mined or salvaged, never planned (user's definition, 2026-10-13). Flows carry `raw`, and the analysis has `self_sufficient`.
-- **Checked:** that request through MCP gives 137 modules for ≈ 92.8 M Cr, `self_sufficient: true`; only ice is left, to be mined.
-- **TerranScrapyard**, fixed with no targets (Terran), is self-sufficient: it still needs ice and scrap metal brought in.
-- **Not automated yet:** placing a plan's modules takes one `attach_module` per module, and nothing checks for overlaps. Auto-placement (part C in `tasks/workflow-production-planner.md`) is next.
+- **Checked:** that request plans 137 modules for ≈ 92.8 M Cr, `self_sufficient: true`; only ice is left, to be mined.
+  - Placed, it adds 81 connection structures: 218 modules for ≈ 95.6 M Cr on an 8×8×8 km plot, with no overlaps.
+- **TerranScrapyard**, fixed with no targets (Terran), is self-sufficient: it still needs ice and scrap metal brought in. `auto_place` puts its 219 new modules onto the existing station.
 
 | Tool | Purpose |
 |------|---------|
@@ -94,14 +100,15 @@ claude mcp add x4sd -- "E:\code\x4-station-designer\target\release\x4sd.exe" mcp
 | `undo`, `redo` | Every edit can be undone |
 | `builder_status` | Whether a builder window is open (then all tools act on it, live) |
 | `list_wares`, `plan_production` | Wares some module makes; the planner: targets (ware + production modules), race, workforce, storage hours, buy list, sunlight. Returns the modules to add with their roles, the analysis with them and the cost (it doesn't place them) |
+| `auto_place` | Auto-placement: attaches `modules` (macro + count), or what `from_plan` (plan_production settings) lists, at free snaps without overlaps, adding connection structures. `grow_plot` (default true) lets the station outgrow its plot up to 20 km per axis. `race` sets the connectors' race (default: the plan's, else the modules' most common). Returns the new modules and connectors (index, macro), what didn't fit, the plot and, with `from_plan`, the plan. One undo step. |
 | `analyze_station` | Production and use per hour (net per ware), workforce needed vs housed and the bonus, storage per cargo type in hours, dock areas and piers, notes on what is missing; `sunlight` in percent |
 | `build_cost` | Resources and estimated value to build one module (with its equipment) or the whole station, for a build method; lists the methods |
 | `reattach_module`, `detach_module` | Move a placed module (with everything on it) onto another free snap (`moved_to` gives its new index), or make it free-standing |
 | `move_in_build_order`, `build_first`, `build_last`, `set_stage_end` | Reorder the build (renumbers; the result includes `moved_to`) and set stage ends. `describe_design` lists modules in build order with `stage_end`. |
 | `set_plot`, `fit_plot` | Set the plot (km per side), or fit it to the station (optionally only growing it). `describe_design` shows the plot, the size needed and whether it fits; `validate_design` includes plot issues. |
-| `validate_design` | Same checks as `x4sd validate` |
+| `validate_design` | Same checks as `x4sd validate` (overlaps included), plus the plot |
 | `save_design`, `export_design` | Write a plan file, or put the plan into the game's `constructionplan` folder for Import |
 
 **Live link (D-7):** if the builder window is open, every tool works on the design shown there. You watch the agent's changes appear ("Agent: …" in the status bar) and can drag, twist or undo alongside it. Without a builder, `x4sd mcp` keeps its own design (headless). `builder_status` tells the agent which mode it is in. The link is a local TCP socket on `127.0.0.1:47823`, one JSON line per message; only the first builder window opened listens.
 
-`research/mcp_smoke.py <x4sd.exe> <profile dir>` drives the server like an agent: it builds, validates and exports a small Terran station. `research/link_smoke.py` does the same against an open builder and checks that the builder shows the result.
+`research/mcp_smoke.py <x4sd.exe> <profile dir>` drives the server like an agent: it builds a small Terran station, plans and auto-places a production chain onto it (then undoes that), validates it and exports it. `research/link_smoke.py` does the same against an open builder and checks that the builder shows the result.

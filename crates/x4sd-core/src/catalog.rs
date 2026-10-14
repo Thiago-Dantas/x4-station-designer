@@ -62,6 +62,9 @@ pub struct Module {
     pub shape: Vec<ShapeBox>,
     /// Visible parts with meshes (see `Catalog::module_model`).
     pub parts: Vec<Part>,
+    /// Parts that collide: (collision mesh path without `-collision.xmf`, placement
+    /// in the module's frame). See `Catalog::collision_boxes`.
+    pub collision: Vec<(String, Transform)>,
     /// What it produces, needs and holds (see `economy`).
     pub economy: ModuleEconomy,
 }
@@ -126,6 +129,8 @@ pub struct Catalog {
     components: HashMap<String, IndexEntry>,
     texts: Texts,
     cache: Mutex<HashMap<String, Arc<Module>>>,
+    /// Lowercase macro -> collision boxes; built on first use.
+    collision_cache: Mutex<HashMap<String, Arc<Vec<ShapeBox>>>>,
     /// `collection.material` (lowercase) -> maps; read on first use.
     materials: OnceLock<HashMap<String, MaterialMaps>>,
     /// Wares and recipes (build costs); read on first use.
@@ -145,6 +150,7 @@ impl Catalog {
             components: HashMap::new(),
             texts: Texts::default(),
             cache: Mutex::new(HashMap::new()),
+            collision_cache: Mutex::new(HashMap::new()),
             materials: OnceLock::new(),
             wares: OnceLock::new(),
         };
@@ -183,6 +189,7 @@ impl Catalog {
             components: HashMap::new(),
             texts: Texts::default(),
             cache: Mutex::new(cache),
+            collision_cache: Mutex::new(HashMap::new()),
             materials: OnceLock::new(),
             wares: OnceLock::new(),
         }
@@ -348,7 +355,7 @@ impl Catalog {
             })
             .collect();
 
-        let parts = self.mesh_parts(comp, &centry.path);
+        let (parts, collision) = self.mesh_parts(comp, &centry.path);
         let mut shape = shape_boxes(comp);
         if shape.is_empty() {
             shape.extend(snap_bounds(&snaps));
@@ -361,6 +368,7 @@ impl Catalog {
             snaps,
             shape,
             parts,
+            collision,
             economy: economy(macro_el.children().find(|n| n.has_tag_name("properties"))),
         })
     }
@@ -397,7 +405,10 @@ impl Catalog {
     /// collision-only and invisible ones. A part may reference a part of another
     /// component (`ref="xref_dockingbay_gen_xl_pier_01.part_main"`) and may sit on
     /// a parent part (`parent="part_main"`), whose placement it inherits.
-    fn mesh_parts(&self, comp: roxmltree::Node, component_path: &str) -> Vec<Part> {
+    /// Also returns the parts that collide (not tagged `nocollision`, collision-only
+    /// boxes included) with a collision mesh: (mesh path without the
+    /// `-collision.xmf` suffix, placement in the module's frame).
+    fn mesh_parts(&self, comp: roxmltree::Node, component_path: &str) -> (Vec<Part>, Vec<(String, Transform)>) {
         struct Raw<'a> {
             name: &'a str,
             reference: Option<&'a str>,
@@ -405,6 +416,7 @@ impl Catalog {
             offset: Transform,
             parent: Option<&'a str>,
             visible: bool,
+            collides: bool,
         }
         let raw: Vec<Raw> = comp
             .descendants()
@@ -427,6 +439,7 @@ impl Catalog {
                     offset: conn.children().find(|c| c.has_tag_name("offset")).map_or(Transform::IDENTITY, parse_offset),
                     parent: conn.attribute("parent"),
                     visible: !tags.iter().any(|t| *t == "collisiononly" || *t == "geometryinvisible"),
+                    collides: !tags.contains(&"nocollision"),
                 })
             })
             .collect();
@@ -440,17 +453,52 @@ impl Catalog {
             }
             t
         };
-        raw.iter()
+        let mesh_path = |r: &Raw| match r.reference.and_then(|v| v.split_once('.')) {
+            Some((component, part)) => Some(normalize(&format!("{}_data/{part}", self.components.get(&component.to_ascii_lowercase())?.path))),
+            None => Some(normalize(&format!("{component_path}_data/{}", r.name))),
+        };
+        let visible = raw
+            .iter()
             .filter(|r| r.visible)
             .filter_map(|r| {
-                let mesh = match r.reference.and_then(|v| v.split_once('.')) {
-                    Some((component, part)) => format!("{}_data/{part}", self.components.get(&component.to_ascii_lowercase())?.path),
-                    None => format!("{component_path}_data/{}", r.name),
-                };
+                let mesh = mesh_path(r)?;
                 let lods: Vec<u8> = (0..5).filter(|l| self.vfs.contains(&format!("{mesh}-lod{l}.xmf"))).collect();
-                (!lods.is_empty()).then(|| Part { name: r.name.to_owned(), mesh: normalize(&mesh), lods, detail: r.detail, transform: world(r) })
+                (!lods.is_empty()).then(|| Part { name: r.name.to_owned(), mesh, lods, detail: r.detail, transform: world(r) })
             })
-            .collect()
+            .collect();
+        let colliding = raw
+            .iter()
+            .filter(|r| r.collides)
+            .filter_map(|r| mesh_path(r).filter(|m| self.vfs.contains(&format!("{m}-collision.xmf"))).map(|m| (m, world(r))))
+            .collect();
+        (visible, colliding)
+    }
+
+    /// Boxes that closely enclose the module's collision meshes, in its frame
+    /// (see `split_boxes`); the part boxes when it has no collision meshes.
+    pub fn collision_boxes(&self, macro_name: &str) -> Result<Arc<Vec<ShapeBox>>> {
+        let key = macro_name.to_ascii_lowercase();
+        if let Some(b) = self.collision_cache.lock().unwrap().get(&key) {
+            return Ok(b.clone());
+        }
+        let module = self.module(macro_name)?;
+        let from_meshes = || -> Result<Vec<ShapeBox>> {
+            let mut boxes = Vec::new();
+            for (mesh, at) in &module.collision {
+                // `-collision1` is a coarser copy of `-collision` where it exists.
+                let coarse = format!("{mesh}-collision1.xmf");
+                let file = if self.vfs.contains(&coarse) { coarse } else { format!("{mesh}-collision.xmf") };
+                let m = mesh::parse(&self.vfs.read(&file)?).map_err(|e| Error(format!("{file}: {e}")))?;
+                let points: Vec<[f64; 3]> =
+                    m.positions.iter().map(|p| at.then(&Transform { position: p.map(f64::from), rotation: Quat::IDENTITY }).position).collect();
+                split_boxes(&points, m.indices.as_chunks::<3>().0.to_vec(), 0, &mut boxes);
+            }
+            Ok(boxes)
+        };
+        // A module whose collision meshes are missing or unreadable keeps its part boxes.
+        let boxes = Arc::new(from_meshes().ok().filter(|b| !b.is_empty()).unwrap_or_else(|| module.shape.clone()));
+        self.collision_cache.lock().unwrap().insert(key, boxes.clone());
+        Ok(boxes)
     }
 }
 
@@ -541,6 +589,40 @@ fn shape_boxes(component: roxmltree::Node) -> Vec<ShapeBox> {
         });
     }
     boxes
+}
+
+/// Splits a mesh's triangles in half along the longest axis of their bounds
+/// (at the median centre), down to `COLLISION_DEPTH` levels or boxes of at most
+/// `COLLISION_BOX_M`, and adds each group's bounds as a box. Every triangle lies
+/// in a box, so the boxes enclose the mesh surface; together they follow its shape
+/// (a spire gets thin boxes, the space beside it none).
+fn split_boxes(points: &[[f64; 3]], mut triangles: Vec<[u32; 3]>, depth: u32, out: &mut Vec<ShapeBox>) {
+    const COLLISION_DEPTH: u32 = 7;
+    const COLLISION_BOX_M: f64 = 100.0;
+    let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
+    for p in triangles.iter().flatten().map(|&i| points[i as usize]) {
+        for k in 0..3 {
+            lo[k] = lo[k].min(p[k]);
+            hi[k] = hi[k].max(p[k]);
+        }
+    }
+    let size = [0, 1, 2].map(|k| hi[k] - lo[k]);
+    let axis = (0..3).max_by(|&a, &b| size[a].total_cmp(&size[b])).unwrap();
+    if triangles.len() < 2 || depth >= COLLISION_DEPTH || size[axis] <= COLLISION_BOX_M {
+        if !triangles.is_empty() {
+            out.push(ShapeBox {
+                transform: Transform { position: [0, 1, 2].map(|k| (lo[k] + hi[k]) / 2.0), rotation: Quat::IDENTITY },
+                half_extents: size.map(|s| s / 2.0),
+            });
+        }
+        return;
+    }
+    let centre = |t: &[u32; 3]| t.iter().map(|&i| points[i as usize][axis]).sum::<f64>();
+    let half = triangles.len() / 2;
+    triangles.select_nth_unstable_by(half, |a, b| centre(a).total_cmp(&centre(b)));
+    let upper = triangles.split_off(half);
+    split_boxes(points, triangles, depth + 1, out);
+    split_boxes(points, upper, depth + 1, out);
 }
 
 /// Fallback shape for modules without parts of their own (assembled from child

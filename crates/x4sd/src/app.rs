@@ -76,6 +76,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             analyze_station,
             list_wares,
             plan_production,
+            auto_place,
             undo,
             redo,
         ])
@@ -361,6 +362,25 @@ fn plan_production(state: State<'_, Shared>, args: ops::PlanArgs) -> CmdResult {
     let app = state.lock().unwrap();
     let catalog = catalog(&app)?;
     ops::plan_production(&catalog, &app.design, args)
+}
+
+/// Places modules (macro, count) with auto-placement (`ops::auto_place`, plot may
+/// grow); the scene plus `placement` (what was placed, added and left over). Runs
+/// off the main thread: a big station takes a few seconds.
+#[tauri::command]
+async fn auto_place(handle: AppHandle, modules: Vec<ops::ModuleCount>, race: Option<String>) -> CmdResult {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<Shared>();
+        let mut app = state.lock().unwrap();
+        let catalog = catalog(&app)?;
+        let args = ops::AutoPlaceArgs { modules: Some(modules), from_plan: None, grow_plot: Some(true), race };
+        let placement = ops::auto_place(&catalog, &mut app.design, args)?;
+        let mut scene = scene_json(&app)?;
+        scene["placement"] = placement;
+        Ok(scene)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Moves a placed module (and everything on it) onto another free snap; `focus` is its new index.

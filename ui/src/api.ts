@@ -42,6 +42,13 @@ export interface Scene {
   dirty: boolean;
   /** After a build-order change: the moved module's new index (modules are renumbered). */
   focus?: number;
+  /** After auto-placement: what was placed, the connection structures added, what didn't fit. */
+  placement?: Placement;
+}
+export interface Placement {
+  placed: { index: number; macro: string }[];
+  connectors: { index: number; macro: string }[];
+  unplaced: { macro: string; count: number }[];
 }
 export interface CostLine { ware: string; name: string; amount: number; value: number | null }
 export interface BuildCost { method: string; methods: { id: string; name: string }[]; lines: CostLine[]; value: number; unknown: string[] }
@@ -117,6 +124,8 @@ export const api = {
   analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
   listWares: () => serial<{ ware: string; name: string }[]>("list_wares"),
   planProduction: (args: PlanArgs) => serial<ProductionPlan>("plan_production", { args }),
+  /** Places the modules at free snaps without overlaps (the plot may grow); one undo step. */
+  autoPlace: (modules: { macro: string; count: number }[], race: string | null) => serial<Scene>("auto_place", { modules, race }),
   undo: () => serial<Scene>("undo"),
   redo: () => serial<Scene>("redo"),
 };

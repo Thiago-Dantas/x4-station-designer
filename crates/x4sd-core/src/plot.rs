@@ -6,7 +6,7 @@
 
 use std::fmt;
 
-use crate::catalog::Catalog;
+use crate::catalog::{Catalog, Module};
 use crate::geometry::Transform;
 use crate::plan::Plan;
 
@@ -61,7 +61,11 @@ impl fmt::Display for Plot {
 pub fn entry_bounds(plan: &Plan, catalog: &Catalog, index: u32) -> Option<([f64; 3], [f64; 3])> {
     let entry = plan.entries.iter().find(|e| e.index == index)?;
     let module = catalog.module(&entry.macro_name).ok()?;
-    let world = Transform::from_offset(entry.offset.as_ref());
+    module_bounds(&module, &Transform::from_offset(entry.offset.as_ref()))
+}
+
+/// Axis-aligned bounds of a module placed at `world`, from its part boxes.
+pub fn module_bounds(module: &Module, world: &Transform) -> Option<([f64; 3], [f64; 3])> {
     let mut bounds: Option<([f64; 3], [f64; 3])> = None;
     for b in &module.shape {
         let frame = world.then(&b.transform);
@@ -82,20 +86,27 @@ pub fn entry_bounds(plan: &Plan, catalog: &Catalog, index: u32) -> Option<([f64;
 /// `None` for an empty design. Sides with nothing on them still get 0 km, and an
 /// axis is at least 1 km in total.
 pub fn required_plot(plan: &Plan, catalog: &Catalog) -> Option<Plot> {
-    let mut plot: Option<Plot> = None;
+    let mut all: Option<([f64; 3], [f64; 3])> = None;
     for e in &plan.entries {
         let Some((lo, hi)) = entry_bounds(plan, catalog, e.index) else { continue };
-        let need = Plot { pos: hi.map(km_out), neg: lo.map(|v| km_out(-v)) };
-        plot = Some(plot.map_or(need, |p| p.union(&need)));
-    }
-    plot.map(|mut p| {
+        let (alo, ahi) = all.get_or_insert((lo, hi));
         for i in 0..3 {
-            if p.pos[i] + p.neg[i] == 0 {
-                p.pos[i] = 1;
-            }
+            alo[i] = alo[i].min(lo[i]);
+            ahi[i] = ahi[i].max(hi[i]);
         }
-        p
-    })
+    }
+    all.map(bounds_plot)
+}
+
+/// The smallest whole-km plot containing the bounds (min, max corner, metres).
+pub fn bounds_plot((lo, hi): ([f64; 3], [f64; 3])) -> Plot {
+    let mut p = Plot { pos: hi.map(km_out), neg: lo.map(|v| km_out(-v)) };
+    for i in 0..3 {
+        if p.pos[i] + p.neg[i] == 0 {
+            p.pos[i] = 1;
+        }
+    }
+    p
 }
 
 /// Whole km needed to reach `metres` from the origin (rounded up; nothing for ≤ 0).

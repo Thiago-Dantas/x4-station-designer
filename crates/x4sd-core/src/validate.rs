@@ -1,12 +1,13 @@
 //! Plan checks the game itself does not do: it accepts plans whose modules float
-//! away from their links (verified in game, test C) and plans without the
-//! `<patches>` they need.
+//! away from their links (verified in game, test C), plans without the
+//! `<patches>` they need, and (hypothesis) modules that overlap.
 
 use std::collections::HashMap;
 use std::fmt;
 
 use crate::catalog::Catalog;
 use crate::geometry::{fit, Transform};
+use crate::layout::overlaps;
 use crate::plan::{Entry, Plan};
 use crate::plot::{entry_inside, required_plot, Plot, MAX_AXIS_KM};
 
@@ -27,6 +28,9 @@ pub enum Issue {
     SnapGap { index: u32, metres: f64 },
     SnapMisaligned { index: u32, degrees: f64 },
     MissingPatch { extension: String },
+    /// The module's collision shape intersects that of an earlier module it isn't
+    /// joined to (approximate: boxes around the collision meshes).
+    Overlap { index: u32, other: u32, metres: f64 },
     /// The module reaches outside the plot.
     OutsidePlot { index: u32 },
     /// The station needs a bigger plot than it has.
@@ -46,7 +50,8 @@ impl Issue {
             | Issue::MissingPredecessor { index, .. }
             | Issue::SnapGap { index, .. }
             | Issue::SnapMisaligned { index, .. }
-            | Issue::OutsidePlot { index } => Some(*index),
+            | Issue::OutsidePlot { index }
+            | Issue::Overlap { index, .. } => Some(*index),
             Issue::MissingPatch { .. } | Issue::PlotTooSmall { .. } | Issue::TooBigForAnyPlot { .. } => None,
         }
     }
@@ -63,6 +68,7 @@ impl fmt::Display for Issue {
             Issue::SnapGap { index, metres } => write!(f, "entry {index}: {metres:.3} m away from its linked snap"),
             Issue::SnapMisaligned { index, degrees } => write!(f, "entry {index}: snap axis off by {degrees:.2}°"),
             Issue::MissingPatch { extension } => write!(f, "plan uses {extension} but does not list it in <patches>"),
+            Issue::Overlap { index, other, metres } => write!(f, "entry {index}: overlaps entry {other} (by about {metres:.0} m)"),
             Issue::OutsidePlot { index } => write!(f, "entry {index}: outside the plot"),
             Issue::PlotTooSmall { plot, required } => write!(f, "the station needs a {required} plot; the plot is {plot}"),
             Issue::TooBigForAnyPlot { axis, km } => write!(f, "the station is {km} km along {axis}; plots are at most {MAX_AXIS_KM} km"),
@@ -121,6 +127,8 @@ pub fn validate(plan: &Plan, catalog: &Catalog) -> Vec<Issue> {
             issues.push(Issue::SnapMisaligned { index: e.index, degrees: f.misalignment });
         }
     }
+
+    issues.extend(overlaps(plan, catalog).into_iter().map(|(other, index, metres)| Issue::Overlap { index, other, metres }));
 
     for needed in catalog.required_patches(plan) {
         if !plan.patches.iter().any(|p| p.extension == needed.extension) {

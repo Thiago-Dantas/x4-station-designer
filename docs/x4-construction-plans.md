@@ -149,10 +149,47 @@ So:
   - For the player's plans it gives TerranScrapyard 8×5×9 km, the defense stations 4×4×(3–4), and the megashipyard 19×20×15. The megashipyard sits at the 20 km limit, and it was built in game, so our bounds aren't larger than the game's.
   - `validate_plot` reports modules outside, the plot needed, and stations too big for any plot.
 
+## Overlaps (calibrated 2026-10-13, game-data test `overlap_calibration`)
+The plan format doesn't stop modules from intersecting. The build menu has an **"Allow module overlap"** setting (`moduleoverlap`, off by default and off in the user's profile; it toggles `SetConstructionMapCollisionDetection`). We need our own overlap check for auto-placement and for `validate`.
+- **Collision boxes, not part boxes (verified on data).** The part boxes (`<size>`, used for the plot) are too loose for overlaps: in the player's 5 real plans, 29 unlinked pairs intersect by more than 1 m, up to 491 m. Example: the Terran medical-supplies box includes its thin 1.3 km spire, and a habitat stands next to the spire.
+  - So `Catalog::collision_boxes` builds boxes from each colliding part's `-collision.xmf` mesh: every part tagged `part` but not `nocollision`, collision-only boxes included, using the coarser `-collision1.xmf` where it exists.
+  - The mesh's triangles are halved along their longest axis up to 7 times (at most 128 boxes per part), or until a box is 100 m or less. 1 to 767 boxes per module; all 287 modules in 2.4 s, once.
+  - With these, 14 unlinked pairs in the player plans intersect by more than 1 m (up to 98 m).
+  - Halving 10 times (25 m boxes) takes 239 s instead of 3 s and leaves 10. Some depths shrink (98 m → 45 m: box looseness); others stay at 35, 19, 11 m. Those meshes really intersect, so these stations were built with overlap allowed, or the game's check is more lenient. **Hypothesis**, not checked in game.
+- **Joints interlock by design (verified on data).** Where Terran modules meet at a snap in the player's plans, their boxes intersect by at most 0.4 m (471 pairs).
+  - In the game's 116 library plans (all races), 228 of 2,658 joined pairs intersect by more than 20 m, up to 130 m. Connector collars and defence discs reach into what they attach to; Argon medical supplies reach 41 m past their own snap.
+  - So **two modules whose snap points coincide (within 10 cm) never overlap**, linked or merely touching.
+- **Rule** (`layout::overlap`, `layout::overlaps`): two modules that aren't joined at a snap overlap when a pair of their collision boxes intersects by more than **1 m**. The depth is measured with the separating axis theorem over the 15 box axes.
+  - Player plans: 14 overlaps. Library plans: 84.
+  - Checking takes 16 ms for the 5 player plans, and 5 ms for a 239-module station.
+- `validate` reports them as "entry N: overlaps entry M (by about D m)" on the later-built module. The depth is approximate: the boxes enclose the mesh surfaces.
+
+## Auto-placement (2026-10-13)
+`layout::auto_place` attaches a module list (for example a production plan's) to a design at exact snap positions, without overlaps and inside the plot.
+- **Connectors:**
+  - The hub is the race's buildable connection structure with the most snaps (Argon or Terran cross 01).
+  - The struts are its straight 2-snap structures, one per length (Argon 400, 800, 1600 m).
+- **Order:** the largest modules first; dock areas and piers last.
+- **Placement:** each module goes onto the free snap nearest the origin where it fits, with the most compact of its own snaps and the four twists. Alternatively it goes onto a new hub (optionally on a strut) on a free snap, when that is 2 km nearer.
+  - Dock areas and piers first try spots with nothing on the line from the origin out through them.
+- **Plot:** with *grow*, it stays within the largest plot (20 km per axis) and reports the plot needed. Placements keep 1 m inside the plot, so rounding to stored positions can't push a module out.
+- **Undo:** the whole placement is one undo step.
+- **Results** (game-data test `auto_place_planned_stations`):
+
+  | Case | Modules | Connection structures | Plot | Time |
+  |---|---|---|---|---|
+  | "100 solar, staffed" | 137 | 81 (2.9% of the cost) | 8×8×8 km | 2.1 s |
+  | Terran hull parts | 18 | 1 | 6×4×5 km | 0.4 s |
+  | TerranScrapyard's fix | 219, onto the existing station | 21 | 10×10×11 km | 0.9 s |
+
+- **Not checked in game yet:**
+  - that the game builds these stations (modules attached to modules, connectors);
+  - that ships reach the docks.
+
 ## Unknowns
 - Does the game load external edits to `constructionplans.xml` at startup (option A after a restart)? Low priority now that B works.
 - How does the game build a module whose position doesn't match its link (floating, like test C or the 31 library cases)?
-- Collision and overlap rules: the plan format doesn't stop modules from intersecting. The build menu has `SetConstructionMapCollisionDetection`.
+- What the game does with overlapping modules in an imported plan (build them anyway?), and how strict its own collision check is. Our rule is in "Overlaps" above.
 - How does the game handle invalid entries (unknown macro, mismatched connection, missing DLC)?
 - Are ids without the `player_` prefix accepted on import?
 

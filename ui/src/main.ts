@@ -490,6 +490,12 @@ function macroCounts() {
   return counts;
 }
 
+/** How many of a planned module the design gained since the plan was made (`now`: `macroCounts()`). */
+function placedOf(m: PlannedModule, now: Map<string, number>) {
+  const key = m.macro.toLowerCase();
+  return Math.min(m.count, Math.max(0, (now.get(key) ?? 0) - (plan?.baseline.get(key) ?? 0)));
+}
+
 function renderPlanner() {
   const n = (x: number) => Math.round(x).toLocaleString("en-US");
   $("planner-targets").replaceChildren(
@@ -525,7 +531,7 @@ function renderPlanner() {
     }),
   );
   if (!plan) return;
-  const { result, baseline } = plan;
+  const { result } = plan;
   const now = macroCounts();
   const groups: [PlannedModule["role"], string][] = [["target", "Targets"], ["chain", "Production chain"], ["habitat", "Habitats"], ["storage", "Storage"], ["dock", "Docks"]];
   let left = 0;
@@ -537,7 +543,7 @@ function renderPlanner() {
     h.textContent = title;
     rows.push(h);
     for (const m of members) {
-      const placed = Math.min(m.count, Math.max(0, (now.get(m.macro.toLowerCase()) ?? 0) - (baseline.get(m.macro.toLowerCase()) ?? 0)));
+      const placed = placedOf(m, now);
       left += m.count - placed;
       const row = document.createElement("div");
       row.className = "planned-row" + (placed >= m.count ? " done" : "");
@@ -565,6 +571,8 @@ function renderPlanner() {
     }
   }
   $("planner-result").replaceChildren(...rows);
+  $("planner-place").hidden = left === 0;
+  $("planner-place").textContent = `Place all (${left})`;
   const total = result.modules.reduce((s, m) => s + m.count, 0);
   const short = (raw: boolean) =>
     result.analysis.flows
@@ -597,7 +605,34 @@ async function generatePlan() {
     return;
   }
   plan = { result, baseline: macroCounts() };
+  $("planner-placed").textContent = "";
   renderPlanner();
+}
+
+/** Places every planned module still to place (auto-placement; the plot may grow). */
+async function placeAll() {
+  if (!plan) return;
+  const now = macroCounts();
+  const todo = plan.result.modules.map((m) => ({ macro: m.macro, count: m.count - placedOf(m, now) })).filter((m) => m.count > 0);
+  if (!todo.length) return;
+  status(`Placing ${todo.reduce((s, m) => s + m.count, 0)} modules…`);
+  let note = "";
+  await apply(
+    api.autoPlace(todo, planner.race || null).then((s) => {
+      const p = s.placement!;
+      const left = p.unplaced.map((u) => `${u.count} × ${moduleName(u.macro)}`).join(", ");
+      note =
+        `Placed ${p.placed.length} modules` +
+        (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
+        (left ? `. No room for ${left}` : "");
+      return s;
+    }),
+    undefined,
+    true,
+    true,
+  );
+  $("planner-placed").textContent = note;
+  if (note) status(note, note.includes("No room") ? "error" : "good");
 }
 
 async function loadPlanner() {
@@ -641,6 +676,7 @@ $<HTMLInputElement>("planner-hours").onchange = (ev) => {
   savePlanner();
 };
 $("planner-generate").onclick = () => void generatePlan();
+$("planner-place").onclick = () => void placeAll();
 
 /** `index` and every module attached to it, directly or not. */
 function subtree(index: number): Set<number> {

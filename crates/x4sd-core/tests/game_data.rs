@@ -312,6 +312,126 @@ fn production_planner() {
     assert!(fix.analysis.self_sufficient(), "{:?}", fix.analysis.flows.iter().filter(|f| f.net() < 0.0).map(|f| &f.ware).collect::<Vec<_>>());
 }
 
+/// Places `modules` with `auto_place` and checks the result: no overlaps involving
+/// the new modules, every new module linked to its snap, inside a plot the game
+/// allows (or the design's plot), and one undo step. Prints a summary.
+fn place_and_check(c: &Catalog, d: &mut Design, modules: &[(String, u32)], options: &x4sd_core::layout::Options) -> x4sd_core::layout::Placement {
+    use x4sd_core::layout::{auto_place, overlaps};
+    use x4sd_core::plot::required_plot;
+    use x4sd_core::validate::validate_plot;
+    let before = d.plan().clone();
+    let start = Instant::now();
+    let r = auto_place(c, d, modules, options).unwrap();
+    let elapsed = start.elapsed();
+    let mut connectors: std::collections::BTreeMap<&str, usize> = Default::default();
+    for (_, m) in &r.connectors {
+        *connectors.entry(m.as_str()).or_default() += 1;
+    }
+    let w = c.wares().unwrap();
+    let total_cost = w.plan_cost(d.plan(), None, "default").value;
+    let connector_cost = w.cost(r.connectors.iter().map(|(_, m)| (m.as_str(), 1.0)), "default").value;
+    let plot = required_plot(d.plan(), c).unwrap();
+    eprintln!(
+        "[{}] placed {} in {elapsed:?} with connectors {connectors:?} ({:.1}% of the {:.1} M Cr station); unplaced {:?}; plot {plot}",
+        d.plan().name,
+        r.placed.len(),
+        100.0 * connector_cost / total_cost,
+        total_cost / 1e6,
+        r.unplaced
+    );
+    let new = before.entries.len() as u32;
+    assert_eq!(d.plan().entries[..before.entries.len()], before.entries[..], "existing modules stay as they were");
+    assert_eq!(d.plan().entries.len(), before.entries.len() + r.placed.len() + r.connectors.len());
+    let found: Vec<_> = overlaps(d.plan(), c).into_iter().filter(|o| o.1 > new).collect();
+    assert!(found.is_empty(), "{found:?}");
+    let issues: Vec<Issue> = validate(d.plan(), c).into_iter().filter(|i| i.index().is_none_or(|i| i > new)).collect();
+    assert_eq!(issues, Vec::<Issue>::new());
+    match (options.grow_plot, d.plot()) {
+        (false, Some(p)) => assert!(validate_plot(d.plan(), c, &p).is_empty(), "inside {p}"),
+        _ => assert!(plot.is_allowed(), "{plot}"),
+    }
+    assert!(d.undo());
+    assert_eq!(d.plan(), &before, "one undo step");
+    assert!(d.redo());
+    r
+}
+
+/// Auto-placement: "a staffed station with 100 solar panels" planned and placed
+/// without overlaps inside a plot; a Terran station; a small plot; an existing station.
+#[test]
+fn auto_place_planned_stations() {
+    use x4sd_core::layout::Options;
+    use x4sd_core::planner::{plan_production, Request};
+    let Some(c) = catalog() else { return };
+    let req = |targets: &[(&str, u32)], race: Option<&str>| Request {
+        targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        race: race.map(str::to_owned),
+        workforce: true,
+        storage_hours: 6.0,
+        buy: Vec::new(),
+        sunlight: 1.0,
+        method: "default".to_owned(),
+    };
+    let planned = |d: &Design, r: &Request| -> Vec<(String, u32)> {
+        plan_production(c, d.plan(), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
+    };
+    let grow = Options { grow_plot: true, race: None };
+
+    let mut d = Design::new("100 solar");
+    let modules = planned(&d, &req(&[("energycells", 100)], None));
+    let r = place_and_check(c, &mut d, &modules, &grow);
+    assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+    assert_eq!(r.placed.len() as u32, modules.iter().map(|m| m.1).sum::<u32>());
+    // Docks are placed last, so they come last in the build order, and face open
+    // space: nothing on the line from the origin out through their centre.
+    let class = |e: &x4sd_core::plan::Entry| c.module(&e.macro_name).unwrap().class.clone();
+    assert!(d.plan().entries.iter().rev().take(2).all(|e| ["pier", "dockarea"].contains(&class(e).as_str())));
+    let bounds: Vec<(u32, [f64; 3], [f64; 3])> = d
+        .plan()
+        .entries
+        .iter()
+        .map(|e| {
+            let m = c.module(&e.macro_name).unwrap();
+            let (lo, hi) = x4sd_core::layout::Body::new(&c.collision_boxes(&e.macro_name).unwrap(), &m.snaps, &d.world(e.index).unwrap()).bounds();
+            (e.index, lo, hi)
+        })
+        .collect();
+    for (index, lo, hi) in bounds.iter().rev().take(2) {
+        let centre: [f64; 3] = std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0);
+        let len = centre.iter().map(|v| v * v).sum::<f64>().sqrt();
+        let blocked = bounds.iter().filter(|b| b.0 != *index).any(|(_, l, h)| {
+            // Samples every 50 m along the line out to 20 km.
+            (1..400).any(|k| (0..3).all(|i| (l[i]..=h[i]).contains(&(centre[i] * (1.0 + k as f64 * 50.0 / len)))))
+        });
+        eprintln!("dock #{index}: {len:.0} m from the origin, open outward: {}", !blocked);
+        assert!(!blocked);
+    }
+    let path = std::env::temp_dir().join("x4sd-auto-place.xml");
+    std::fs::write(&path, x4sd_core::plan::write_plans(std::slice::from_ref(d.plan()))).unwrap();
+    eprintln!("saved to {}", path.display());
+
+    // Terran modules get Terran connection structures.
+    let mut d = Design::new("terran hull parts");
+    let modules = planned(&d, &req(&[("hullparts", 2)], Some("terran")));
+    let r = place_and_check(c, &mut d, &modules, &grow);
+    assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+    assert!(r.connectors.iter().all(|(_, m)| m.starts_with("struct_ter_")), "{:?}", r.connectors);
+
+    // Without growing, a 2x2x2 km plot holds only some of the solar station.
+    let mut d = Design::new("small plot");
+    let modules = planned(&d, &req(&[("energycells", 100)], None));
+    let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: false, race: None });
+    assert!(!r.placed.is_empty() && !r.unplaced.is_empty());
+
+    // An existing station: the planner's fix for the scrapyard, placed onto it.
+    let Some(plans) = sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml") else { return };
+    let mut d = Design::from_plan(plans.iter().find(|p| p.name == "TerranScrapyard").unwrap().clone());
+    let modules = planned(&d, &req(&[], Some("terran")));
+    let r = place_and_check(c, &mut d, &modules, &grow);
+    eprintln!("scrapyard fix: {} modules to place", modules.iter().map(|m| m.1).sum::<u32>());
+    assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+}
+
 /// Plots: the required plot holds the station; a smaller plot flags the modules outside.
 #[test]
 fn plots() {
@@ -346,7 +466,83 @@ fn plots() {
     eprintln!("grown to {grown}");
 }
 
-/// Player plans: the only real problem is the deliberately moved casino of test C.
+/// Overlap calibration (docs/x4-construction-plans.md, "Overlaps"): how deep the
+/// collision boxes of modules joined at a snap intersect (they interlock by
+/// design, so joints are exempt), and which other pairs intersect, in the player's
+/// plans (built in game) and the game's library plans.
+#[test]
+fn overlap_calibration() {
+    use x4sd_core::layout::{intersection_depth, overlaps, Body, OVERLAP_TOLERANCE_M};
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
+    let start = Instant::now();
+    let modules = c.station_modules().unwrap();
+    let fallback: Vec<&str> = modules
+        .iter()
+        .filter(|m| {
+            let module = c.module(&m.macro_name).unwrap();
+            !module.collision.is_empty() && *c.collision_boxes(&m.macro_name).unwrap() == module.shape
+        })
+        .map(|m| m.macro_name.as_str())
+        .collect();
+    let counts: Vec<usize> = modules.iter().map(|m| c.collision_boxes(&m.macro_name).unwrap().len()).collect();
+    eprintln!(
+        "collision boxes of {} modules in {:?}: {} to {} per module; unreadable collision meshes: {fallback:?}",
+        modules.len(),
+        start.elapsed(),
+        counts.iter().min().unwrap(),
+        counts.iter().max().unwrap()
+    );
+    assert!(fallback.is_empty());
+
+    let player: Vec<Plan> = plans.into_iter().filter(|p| !p.name.starts_with("X4SD")).collect();
+    let library = sample("research/extracted/base/libraries/constructionplans.xml").unwrap_or_default();
+    for (set, plans) in [("player plans", &player), ("library plans", &library)] {
+        let start = Instant::now();
+        let (mut joints, mut others) = (Vec::new(), Vec::new());
+        for plan in plans {
+            let bodies: Vec<_> = plan
+                .entries
+                .iter()
+                .filter_map(|e| {
+                    let (m, boxes) = (c.module(&e.macro_name).ok()?, c.collision_boxes(&e.macro_name).ok()?);
+                    Some((e, Body::new(&boxes, &m.snaps, &Transform::from_offset(e.offset.as_ref()))))
+                })
+                .collect();
+            for (i, (a, body_a)) in bodies.iter().enumerate() {
+                for (b, body_b) in &bodies[i + 1..] {
+                    let Some(depth) = intersection_depth(body_a, body_b, 0.0) else { continue };
+                    let what = format!("[{}] {} {} / {} {}", plan.name, a.index, a.macro_name, b.index, b.macro_name);
+                    if body_a.joined(body_b) { joints.push(depth) } else { others.push((depth, what)) }
+                }
+            }
+        }
+        joints.sort_by(|a, b| b.total_cmp(a));
+        others.sort_by(|a, b| b.0.total_cmp(&a.0));
+        let deeper = |v: &[f64], t: f64| v.iter().filter(|&&d| d > t).count();
+        let other_depths: Vec<f64> = others.iter().map(|o| o.0).collect();
+        eprintln!(
+            "{set}: {} joints intersect (> 1 m: {}, > 20 m: {}, deepest {:.1} m); {} other pairs intersect (> 1 m: {}, > 20 m: {}), checked in {:?}",
+            joints.len(),
+            deeper(&joints, 1.0),
+            deeper(&joints, 20.0),
+            joints.first().copied().unwrap_or(0.0),
+            others.len(),
+            deeper(&other_depths, OVERLAP_TOLERANCE_M),
+            deeper(&other_depths, 20.0),
+            start.elapsed()
+        );
+        for (depth, what) in others.iter().take(if set == "player plans" { 20 } else { 5 }) {
+            eprintln!("  {depth:6.1} m  {what}");
+        }
+    }
+    // Terran modules meet within 0.4 m at their snaps; 14 pairs in the player's
+    // plans overlap (some boxes are loose, some meshes really intersect).
+    let found: usize = player.iter().map(|p| overlaps(p, c).len()).sum();
+    assert_eq!(found, 14);
+}
+
+/// Player plans: apart from overlaps (see `overlap_calibration`), the only real
+/// problem is the deliberately moved casino of test C.
 #[test]
 fn validates_player_plans() {
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
@@ -357,8 +553,10 @@ fn validates_player_plans() {
             found.push((plan.name.clone(), issue));
         }
     }
-    assert_eq!(found.len(), 1, "{found:?}");
-    assert!(matches!(&found[0], (name, Issue::SnapGap { index: 32, metres }) if name == "X4SD test C" && (*metres - 1000.0).abs() < 0.01));
+    let (overlaps, other): (Vec<_>, Vec<_>) = found.into_iter().partition(|(_, i)| matches!(i, Issue::Overlap { .. }));
+    assert!(!overlaps.is_empty());
+    assert_eq!(other.len(), 1, "{other:?}");
+    assert!(matches!(&other[0], (name, Issue::SnapGap { index: 32, metres }) if name == "X4SD test C" && (*metres - 1000.0).abs() < 0.01));
 }
 
 /// Library plans: of the 31 off-link entries in hand-made faction plans, the 17
@@ -368,8 +566,9 @@ fn validates_library_plans() {
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/base/libraries/constructionplans.xml")) else { return };
     let issues: Vec<Issue> = plans.iter().flat_map(|p| validate(p, c)).collect();
     let gaps: Vec<f64> = issues.iter().filter_map(|i| match i { Issue::SnapGap { metres, .. } => Some(*metres), _ => None }).collect();
-    let other: Vec<_> = issues.iter().filter(|i| !matches!(i, Issue::SnapGap { .. })).collect();
-    eprintln!("library: {} gaps, other {other:?}", gaps.len());
+    let overlaps = issues.iter().filter(|i| matches!(i, Issue::Overlap { .. })).count();
+    let other: Vec<_> = issues.iter().filter(|i| !matches!(i, Issue::SnapGap { .. } | Issue::Overlap { .. })).collect();
+    eprintln!("library: {} gaps, {overlaps} overlaps, other {other:?}", gaps.len());
     assert_eq!(gaps.len(), 17);
     assert!(gaps.iter().all(|m| *m > 1.0), "{gaps:?}");
     assert!(other.is_empty(), "{other:?}");

@@ -74,11 +74,11 @@ pub struct ProductionPlan {
 }
 
 /// A module players can build on their stations (build set `factory`).
-struct Candidate {
-    info: ModuleInfo,
-    module: Arc<Module>,
+pub(crate) struct Candidate {
+    pub(crate) info: ModuleInfo,
+    pub(crate) module: Arc<Module>,
     /// Maker race, else the race code in the macro name; `None` for generic modules.
-    race: Option<String>,
+    pub(crate) race: Option<String>,
 }
 
 /// Wares some buildable module makes: (ware id, name), by name.
@@ -198,7 +198,7 @@ fn add(added: &mut BTreeMap<String, Planned>, c: &Candidate, count: u32, role: R
     p.count += count;
 }
 
-fn candidates(catalog: &Catalog) -> Result<Vec<Candidate>> {
+pub(crate) fn candidates(catalog: &Catalog) -> Result<Vec<Candidate>> {
     Ok(catalog
         .station_modules()?
         .into_iter()
@@ -222,7 +222,7 @@ fn producer_ware(c: &Candidate) -> Option<&str> {
 /// The best candidate: the chosen race's, then generic ones (or, with any race,
 /// all alike), then other races'; then the largest `size`; then the shortest macro
 /// name (the plain variant, e.g. a standard dock area before a luxury one); then by name.
-fn best<'a>(candidates: impl Iterator<Item = &'a Candidate>, race: Option<&str>, size: impl Fn(&Candidate) -> f64) -> Option<&'a Candidate> {
+pub(crate) fn best<'a>(candidates: impl Iterator<Item = &'a Candidate>, race: Option<&str>, size: impl Fn(&Candidate) -> f64) -> Option<&'a Candidate> {
     let rank = |c: &Candidate| match (race, c.race.as_deref()) {
         (Some(r), Some(x)) if r == x => 0,
         (None, _) | (_, None) => 1,
