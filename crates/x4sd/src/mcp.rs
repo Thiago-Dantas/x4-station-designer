@@ -59,6 +59,8 @@ Build order: modules are built in index order, each after the module it attaches
 build_first and build_last reorder (and renumber, so describe again); set_stage_end splits the build into stages.
 Moving: reattach_module moves a placed module (with everything on it) onto another free snap; detach_module \
 makes it free-standing; move_module moves free-standing ones.
+Blueprints: to use only modules the player can build, read_blueprints (their newest save, or one they name); \
+blueprint_filter turns that limit off or on again. The limit is shared with the builder's palette setting.
 If the X4 Station Designer builder window is open, all tools work on the design shown there and the \
 user sees every change live (builder_status tells which).";
 
@@ -76,6 +78,7 @@ struct State {
     /// Own catalogue and design, used when no builder runs.
     local: Option<(Catalog, ModuleNames)>,
     design: Design,
+    blueprints: ops::Blueprints,
 }
 
 type ToolResult = Result<String, String>;
@@ -267,12 +270,24 @@ pub struct CopyEquipmentArgs {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
+pub struct ReadBlueprintsArgs {
+    /// Path of a save file (<profile>\save\*.xml.gz); default: the newest save
+    save: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct BlueprintFilterArgs {
+    /// true: limit to the blueprints of the save read last; false: all modules; omit for the status
+    on: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct NoArgs {}
 
 #[tool_router]
 impl Server {
     pub fn new(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> Server {
-        let state = State { game_dir, profile_dir, link: None, local: None, design: Design::new("New station") };
+        let state = State { game_dir, profile_dir, link: None, local: None, design: Design::new("New station"), blueprints: Default::default() };
         Server { state: Arc::new(Mutex::new(state)), tool_router: Self::tool_router() }
     }
 
@@ -288,6 +303,16 @@ impl Server {
     #[tool(description = "List buildable station modules (base game, DLCs, enabled mods): macro, class, race, source, display name.")]
     fn list_modules(&self, Parameters(a): Parameters<ListModulesArgs>) -> ToolResult {
         self.run(Op::ListModules { class: a.class, race: a.race, search: a.search })
+    }
+
+    #[tool(description = "Read the player's blueprints from a save (default: the newest; about half a second) and limit the modules to the ones they can build: list_modules, and the modules plan_production, auto_place and optimize_station choose (production, habitats, storage, docks, connection structures). Modules named explicitly are still used. Wares that only modules without a blueprint make are listed by plan_production in no_blueprint. Returns on, save, modules (owned station modules) and station_modules (all).")]
+    fn read_blueprints(&self, Parameters(a): Parameters<ReadBlueprintsArgs>) -> ToolResult {
+        self.run(Op::ReadBlueprints { save: a.save })
+    }
+
+    #[tool(description = "The blueprint limit (see read_blueprints): on=false shows all modules again, on=true limits them to the save read last (without reading it again); no on: just the status. The builder's palette setting is the same limit.")]
+    fn blueprint_filter(&self, Parameters(a): Parameters<BlueprintFilterArgs>) -> ToolResult {
+        self.run(Op::BlueprintFilter { on: a.on })
     }
 
     #[tool(description = "A module's snap connections: name, position and facing direction in the module's own frame.")]
@@ -503,8 +528,8 @@ impl Server {
             let game = state.game_dir.clone().ok_or("X4 install not found; start with --game-dir or set X4_GAME_DIR")?;
             state.local = Some(ops::load(&game, state.profile_dir.as_deref()).map_err(|e| e.to_string())?);
         }
-        let State { local: Some((catalog, names)), design, profile_dir, .. } = &mut *state else { unreachable!() };
-        let mut ctx = Ctx { catalog, names, design, profile_dir: profile_dir.as_deref() };
+        let State { local: Some((catalog, names)), design, profile_dir, blueprints, .. } = &mut *state else { unreachable!() };
+        let mut ctx = Ctx { catalog, names, design, profile_dir: profile_dir.as_deref(), blueprints };
         ops::execute(op, &mut ctx).map(|v| v.to_string())
     }
 }

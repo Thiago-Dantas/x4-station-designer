@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import type { BufferGeometry } from "three";
-import { api, type Entry, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
+import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type ModuleInfo, type PlannedModule, type PlanRef, type ProductionPlan, type Quality, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
 import { attachMatrix, CLASS_COLORS, type DiffuseTexture, modelGeometry, poseMatrix, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -55,6 +55,18 @@ const races = new Set<string>(
   })(),
 );
 const raceOf = (m: ModuleInfo) => m.race ?? "generic";
+/** The player's blueprints from a save, remembered (D-16). Off by default: every module. */
+let blueprints: Blueprints = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem("x4sd.blueprints") ?? "null") as Blueprints | null) ?? { on: false, save: null, read_at: null, modules: [] };
+  } catch {
+    return { on: false, save: null, read_at: null, modules: [] };
+  }
+})();
+const ownedSet = () => (blueprints.on && blueprints.save ? new Set(blueprints.modules.map((m) => m.toLowerCase())) : null);
+let owned = ownedSet();
+/** The modules on offer: those with a blueprint while the limit is on, else all. */
+const offered = () => (owned ? modules.filter((m) => owned!.has(m.macro.toLowerCase())) : modules);
 
 /** The game's build-menu categories, in its order (`leftBar` in menu_station_configuration.lua),
  * with the macro classes each one holds (radar is filed under Other by the menu). */
@@ -287,7 +299,8 @@ function plotFromInputs(): Promise<Scene> {
 function renderPalette() {
   const text = $<HTMLInputElement>("search").value.toLowerCase();
   const category = $<HTMLSelectElement>("class-filter").value;
-  const shown = modules.filter(
+  const all = offered();
+  const shown = all.filter(
     (m) =>
       (!category || categoryOf(m) === Number(category)) &&
       (races.size === 0 || races.has(raceOf(m))) &&
@@ -311,7 +324,7 @@ function renderPalette() {
       return div;
     }),
   );
-  $("module-count").textContent = `${shown.length} of ${modules.length} modules`;
+  $("module-count").textContent = `${shown.length} of ${all.length} modules${owned ? " with blueprints" : ""}`;
 }
 
 /** The build order list: one row per module in build order, stage dividers, drag to reorder. */
@@ -360,7 +373,7 @@ function renderOrder() {
 
 function renderRaceFilter() {
   const counts = new Map<string, number>();
-  modules.forEach((m) => counts.set(raceOf(m), (counts.get(raceOf(m)) ?? 0) + 1));
+  offered().forEach((m) => counts.set(raceOf(m), (counts.get(raceOf(m)) ?? 0) + 1));
   const chip = (label: string, on: boolean, title: string, click: () => void) => {
     const b = document.createElement("button");
     b.textContent = label;
@@ -834,7 +847,8 @@ function renderPlanner() {
     (result.analysis.self_sufficient ? " · self-sufficient" : "") +
     (short(true) ? `\nRaw materials to bring in per hour: ${short(true)}` : "") +
     (short(false) ? `\nTo buy per hour: ${short(false)}` : "") +
-    (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "");
+    (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "") +
+    (result.no_blueprint.length ? `\nNo blueprint for a module that makes: ${result.no_blueprint.map((w) => wareNames.get(w) ?? w).join(", ")}` : "");
 }
 
 /** An Optimize plan: the modules it adds (chain rows can be bought instead, the
@@ -1065,11 +1079,11 @@ const wareSearch = searchBox(
 const moduleSearch = searchBox(
   $<HTMLInputElement>("planner-module"),
   $("planner-module-list"),
-  () => modules.filter((m) => m.class !== "connectionmodule").map((m) => [m.macro, m.name]),
+  () => offered().filter((m) => m.class !== "connectionmodule").map((m) => [m.macro, m.name]),
   (id) => addExtra(id),
   () => {
     const text = $<HTMLInputElement>("planner-module").value.trim().toLowerCase();
-    const found = modules.find((m) => m.name.toLowerCase() === text || m.macro.toLowerCase() === text);
+    const found = offered().find((m) => m.name.toLowerCase() === text || m.macro.toLowerCase() === text);
     if (found) addExtra(found.macro);
     else status(`No station module "${$<HTMLInputElement>("planner-module").value}"`);
   },
@@ -1502,6 +1516,64 @@ $("btn-save").onclick = async () => {
   }
 };
 $("btn-export").onclick = exportToGame;
+
+/** Sets the blueprint limit, remembers it, and redraws the palette. */
+function setBlueprints(b: Blueprints, tellCore = true) {
+  blueprints = b;
+  owned = ownedSet();
+  try {
+    localStorage.setItem("x4sd.blueprints", JSON.stringify(b));
+  } catch {
+    // Remembering it is a convenience only.
+  }
+  if (tellCore) void api.setBlueprints(b);
+  renderBlueprints();
+  renderRaceFilter();
+  renderPalette();
+}
+
+function renderBlueprints() {
+  $<HTMLInputElement>("bp-on").checked = blueprints.on;
+  $("bp-info").hidden = !blueprints.on || !blueprints.save;
+  if (!blueprints.save) return;
+  const read = blueprints.read_at ? new Date(blueprints.read_at * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
+  $("bp-save").textContent = `${blueprints.save.split(/[\\/]/).pop()} · ${blueprints.modules.length} modules · read ${read}`;
+  $("bp-save").title = blueprints.save;
+}
+
+/** Reads the blueprints from a save; on failure the limit stays as it was. */
+async function readSave(file: string) {
+  const name = file.split(/[\\/]/).pop();
+  status(`Reading the blueprints in ${name}…`);
+  document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("#bp-toggle input, #bp-info button").forEach((e) => (e.disabled = true));
+  try {
+    setBlueprints(await api.readBlueprints(file), false);
+    status(`${blueprints.modules.length} of ${modules.length} modules have blueprints in ${name}`, "good");
+  } catch (e) {
+    status(String(e), "error");
+    renderBlueprints();
+  } finally {
+    document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("#bp-toggle input, #bp-info button").forEach((e) => (e.disabled = false));
+  }
+}
+
+/** A save picked in the profile's save folder, read. */
+async function pickSave() {
+  const file = await open({ defaultPath: profileDir ? `${profileDir}\\save` : undefined, filters: [{ name: "X4 saves", extensions: ["gz", "xml"] }] });
+  if (typeof file === "string") await readSave(file);
+  else renderBlueprints();
+}
+
+$<HTMLInputElement>("bp-on").onchange = (ev) => {
+  const on = (ev.target as HTMLInputElement).checked;
+  // Turning it on again uses the save read last; only the first time asks for one.
+  if (on && !blueprints.save) void pickSave();
+  else setBlueprints({ ...blueprints, on });
+};
+$("bp-other").onclick = () => void pickSave();
+$("bp-reread").onclick = () => {
+  if (blueprints.save) void readSave(blueprints.save);
+};
 $("btn-undo").onclick = () => apply(api.undo());
 $("btn-redo").onclick = () => apply(api.redo());
 $("btn-frame").onclick = () => view.frame();
@@ -1672,10 +1744,18 @@ void listen<{ scene: Scene; op: string; replaced: boolean }>("scene-changed", (e
   apply(Promise.resolve(ev.payload.scene), `Agent: ${ev.payload.op.replace(/_/g, " ")}`, ev.payload.replaced),
 );
 
+// An agent read a save or turned the blueprint limit on or off.
+void listen<Blueprints>("blueprints-changed", (ev) => {
+  setBlueprints(ev.payload, false);
+  status(`Agent: ${blueprints.on ? `only modules with blueprints (${blueprints.modules.length})` : "every module"}`);
+});
+
 // ---------------------------------------------------------------- start
 
 (async () => {
   try {
+    if (blueprints.save) await api.setBlueprints(blueprints);
+    renderBlueprints();
     const catalog = await api.loadCatalog();
     modules = catalog.modules;
     profileDir = catalog.profile;

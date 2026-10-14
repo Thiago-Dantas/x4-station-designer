@@ -16,6 +16,7 @@ pub mod perf;
 pub mod plan;
 pub mod planner;
 pub mod plot;
+pub mod save;
 pub mod text;
 pub mod texture;
 pub mod validate;

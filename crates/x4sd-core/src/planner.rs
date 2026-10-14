@@ -2,7 +2,7 @@
 //! production chain, habitats, storage, a dock area and a pier), on top of what a
 //! plan already has. Rules in tasks/workflow-production-planner.md.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use crate::catalog::{Catalog, Module, ModuleInfo};
@@ -31,6 +31,9 @@ pub struct Request {
     pub sunlight: f64,
     /// Build method for the cost.
     pub method: String,
+    /// The station modules the player has blueprints for (lowercase macros);
+    /// `None`: all. The planner only chooses these (`extra` modules are used as given).
+    pub owned: Option<HashSet<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -77,6 +80,9 @@ pub struct ProductionPlan {
     pub cost: Cost,
     /// Target wares no buildable module makes.
     pub unknown_targets: Vec<String>,
+    /// Wares (targets, or inputs the station is short of) that only modules
+    /// without the player's blueprint make.
+    pub no_blueprint: Vec<String>,
 }
 
 /// A module players can build on their stations (build set `factory`).
@@ -117,19 +123,22 @@ pub fn module_counts(plan: &Plan) -> Vec<(String, u32)> {
 /// station's shortfalls.
 pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Request) -> Result<ProductionPlan> {
     let wares = catalog.wares()?;
-    let candidates = candidates(catalog)?;
+    let all = candidates(catalog)?;
+    let candidates: Vec<&Candidate> = all.iter().filter(|c| owns(req.owned.as_ref(), &c.info.macro_name)).collect();
+    let candidates = || candidates.iter().copied();
     let race = req.race.as_deref();
-    let producer = |ware: &str| best(candidates.iter().filter(|c| producer_ware(c) == Some(ware)), race, |_| 0.0);
-    let habitat = best(candidates.iter().filter(|c| c.module.economy.housing.is_some()), race, |c| {
+    let producer = |ware: &str| best(candidates().filter(|c| producer_ware(c) == Some(ware)), race, |_| 0.0);
+    let anyone_makes = |ware: &str| all.iter().any(|c| producer_ware(c) == Some(ware));
+    let habitat = best(candidates().filter(|c| c.module.economy.housing.is_some()), race, |c| {
         c.module.economy.housing.as_ref().map_or(0.0, |h| f64::from(h.1))
     });
     let stores = |transport: String| {
-        candidates.iter().filter(move |c| matches!(c.module.economy.cargo.as_slice(), [(_, tags)] if tags.len() == 1 && tags[0] == transport))
+        candidates().filter(move |c| matches!(c.module.economy.cargo.as_slice(), [(_, tags)] if tags.len() == 1 && tags[0] == transport))
     };
     let capacity = |c: &Candidate| c.module.economy.cargo[0].0;
     let dock = |class: &str| {
         best(
-            candidates.iter().filter(|c| c.info.class == class && !["tradestation", "venturer"].iter().any(|k| c.info.macro_name.contains(k))),
+            candidates().filter(|c| c.info.class == class && !["tradestation", "venturer"].iter().any(|k| c.info.macro_name.contains(k))),
             race,
             |_| 0.0,
         )
@@ -137,14 +146,16 @@ pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Requ
 
     let mut added: BTreeMap<String, Planned> = BTreeMap::new();
     let mut unknown_targets = Vec::new();
+    let mut no_blueprint = Vec::new();
     for (ware, count) in &req.targets {
         match producer(ware) {
             Some(c) => add(&mut added, c, *count, Role::Target),
+            None if anyone_makes(ware) => no_blueprint.push(ware.clone()),
             None => unknown_targets.push(ware.clone()),
         }
     }
     for (macro_name, count) in &req.modules {
-        match candidates.iter().find(|c| c.info.macro_name.eq_ignore_ascii_case(macro_name)) {
+        match all.iter().find(|c| c.info.macro_name.eq_ignore_ascii_case(macro_name)) {
             Some(c) => add(&mut added, c, *count, Role::Extra),
             None => {
                 let info = catalog
@@ -177,7 +188,12 @@ pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Requ
             }
         }
         for f in a.flows.iter().filter(|f| f.net() < -1e-6 && !req.buy.contains(&f.ware)) {
-            let Some(p) = producer(&f.ware) else { continue };
+            let Some(p) = producer(&f.ware) else {
+                if anyone_makes(&f.ware) && !no_blueprint.contains(&f.ware) {
+                    no_blueprint.push(f.ware.clone());
+                }
+                continue;
+            };
             let per_module: f64 = module_flows(wares, &p.module, a.workforce_fill, req.sunlight)
                 .into_iter()
                 .flatten()
@@ -231,7 +247,7 @@ pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Requ
     let cost = wares.cost(added.values().map(|p| (p.macro_name.as_str(), f64::from(p.count))), &req.method);
     let mut modules: Vec<Planned> = added.into_values().collect();
     modules.sort_by(|a, b| (a.role, &a.name).cmp(&(b.role, &b.name)));
-    Ok(ProductionPlan { modules, analysis, cost, unknown_targets })
+    Ok(ProductionPlan { modules, analysis, cost, unknown_targets, no_blueprint })
 }
 
 /// Adds `count` modules of a candidate (a macro keeps the role it was first added with).
@@ -257,6 +273,11 @@ pub(crate) fn candidates(catalog: &Catalog) -> Result<Vec<Candidate>> {
             Some(Candidate { info, module, race })
         })
         .collect())
+}
+
+/// Whether the player has the blueprint of a module (`owned`: lowercase macros; `None`: all).
+pub(crate) fn owns(owned: Option<&HashSet<String>>, macro_name: &str) -> bool {
+    owned.is_none_or(|o| o.contains(&macro_name.to_ascii_lowercase()))
 }
 
 /// The ware of a production module with a single, regular (not recycling) recipe.

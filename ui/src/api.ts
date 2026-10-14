@@ -88,7 +88,9 @@ export interface PlanArgs {
   sunlight: number;
   method: string;
 }
-export interface ProductionPlan { modules: PlannedModule[]; analysis: StationAnalysis; cost: { lines: CostLine[]; value: number; unknown: string[] }; unknown_targets: string[] }
+export interface ProductionPlan { modules: PlannedModule[]; analysis: StationAnalysis; cost: { lines: CostLine[]; value: number; unknown: string[] }; unknown_targets: string[]; no_blueprint: string[] }
+/** The player's blueprints from a save (`ops::Blueprints`): while `on`, only `modules` are offered. */
+export interface Blueprints { on: boolean; save: string | null; read_at: number | null; modules: string[] }
 export interface EquipmentItem { macro: string; name: string; kind: "turrets" | "shields"; size: string | null; race: string | null; mk: number | null; price: number | null }
 export interface EquipmentGroup {
   group: string;
@@ -157,6 +159,9 @@ export const api = {
   /** Places the modules at free snaps without overlaps (the plot may grow); one undo step. */
   autoPlace: (modules: { macro: string; count: number; sides?: string[] }[], race: string | null, fewerConnectors: boolean) =>
     serial<Scene>("auto_place", { modules, race, fewerConnectors }),
+  /** Reads the blueprints from a save (about half a second) and turns the limit on. */
+  readBlueprints: (file: string) => invoke<Blueprints>("read_blueprints", { file }),
+  setBlueprints: (blueprints: Blueprints) => invoke<void>("set_blueprints", { blueprints }),
   /** A shared operation (`ops::Op` in Rust, as MCP agents use them): its result, and the scene if it may have changed. */
   runOp: <T>(op: { op: string } & Record<string, unknown>) => serial<{ result: T; scene?: Scene }>("run_op", { op }),
   undo: () => serial<Scene>("undo"),

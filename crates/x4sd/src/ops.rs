@@ -2,7 +2,7 @@
 //! design, or sends them to a running builder (`link.rs`), which runs them on
 //! the design open there. Either way they end up here.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use rmcp::schemars;
@@ -19,6 +19,7 @@ use x4sd_core::perf;
 use x4sd_core::plan::{parse_plans, write_plans};
 use x4sd_core::planner::{self, module_counts, producible_wares, ProductionPlan, Request};
 use x4sd_core::plot::{required_plot, Plot};
+use x4sd_core::save::{newest_save, owned_modules, read_blueprints};
 use x4sd_core::validate::{validate, validate_plot};
 
 /// A production target: this many modules making `ware`.
@@ -110,6 +111,40 @@ pub struct EquipArgs {
 /// Lowercase macro -> (display name, class) of every station module.
 pub type ModuleNames = HashMap<String, (String, String)>;
 
+/// The player's blueprints, read from a save (D-16). While `on`, the module
+/// lists and the modules the planner and auto-placement choose are limited to
+/// `modules`; modules named explicitly are used as given.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Blueprints {
+    pub on: bool,
+    /// The save read last.
+    pub save: Option<String>,
+    /// When it was read, unix seconds.
+    pub read_at: Option<u64>,
+    /// Station-module macros the player has blueprints for.
+    pub modules: Vec<String>,
+}
+
+impl Blueprints {
+    /// Reads the save's blueprints (about half a second; a save is ~1 GB of XML) and turns the filter on.
+    pub fn read(catalog: &Catalog, save: &Path) -> Result<Blueprints, String> {
+        let wares = read_blueprints(save).map_err(|e| e.to_string())?;
+        let modules = owned_modules(catalog, &wares).map_err(|e| e.to_string())?;
+        let read_at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        Ok(Blueprints { on: true, save: Some(save.display().to_string()), read_at: Some(read_at), modules })
+    }
+
+    /// The owned modules (lowercase macros) while the filter is on.
+    pub fn owned(&self) -> Option<HashSet<String>> {
+        (self.on && self.save.is_some()).then(|| self.modules.iter().map(|m| m.to_ascii_lowercase()).collect())
+    }
+
+    /// For agents: whether the filter is on, the save, and how many modules it allows.
+    pub fn status(&self, names: &ModuleNames) -> Value {
+        json!({"on": self.on, "save": self.save, "read_at": self.read_at, "modules": self.modules.len(), "station_modules": names.len()})
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum Op {
@@ -167,6 +202,10 @@ pub enum Op {
     /// Give modules the equipment of one: `same_type` (default) copies it to the
     /// modules of its type, `all` uses its equipment as picks for every module.
     CopyEquipment { from: u32, scope: Option<String> },
+    /// Read the player's blueprints from a save (default: the newest) and limit the modules to them.
+    ReadBlueprints { save: Option<String> },
+    /// Turn the blueprint limit on (the last save read) or off; no `on`: just the status.
+    BlueprintFilter { on: Option<bool> },
 }
 
 impl Op {
@@ -187,7 +226,14 @@ impl Op {
                 | Op::ListEquipment { .. }
                 | Op::ModuleEquipment { .. }
                 | Op::PlanProduction(_)
+                | Op::ReadBlueprints { .. }
+                | Op::BlueprintFilter { .. }
         )
+    }
+
+    /// Whether it changes the blueprint limit (the builder then updates its palette).
+    pub fn changes_blueprints(&self) -> bool {
+        matches!(self, Op::ReadBlueprints { .. } | Op::BlueprintFilter { on: Some(_) })
     }
 
     /// Whether the change replaces the whole design (the builder then refits the view).
@@ -205,6 +251,7 @@ pub struct Ctx<'a> {
     pub names: &'a ModuleNames,
     pub design: &'a mut Design,
     pub profile_dir: Option<&'a Path>,
+    pub blueprints: &'a mut Blueprints,
 }
 
 /// Loads the game data and the station-module names.
@@ -224,6 +271,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
     match op {
         Op::ListModules { class, race, search } => {
             let search = search.map(|s| s.to_lowercase());
+            let owned = ctx.blueprints.owned();
             let modules: Vec<Value> = c
                 .station_modules()
                 .map_err(err)?
@@ -231,6 +279,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
                 .filter(|m| class.as_ref().is_none_or(|x| m.class.eq_ignore_ascii_case(x)))
                 .filter(|m| race.as_ref().is_none_or(|r| m.race.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(r))))
                 .filter(|m| search.as_ref().is_none_or(|s| m.name.to_lowercase().contains(s) || m.macro_name.to_lowercase().contains(s)))
+                .filter(|m| owned.as_ref().is_none_or(|o| o.contains(&m.macro_name.to_ascii_lowercase())))
                 .map(|m| json!({"macro": m.macro_name, "class": m.class, "race": m.race, "source": m.source, "name": m.name}))
                 .collect();
             Ok(json!(modules))
@@ -343,7 +392,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             module_equipment(c, ctx.design, index)
         }
         Op::EquipModules(args) => equip_modules(c, ctx.design, args),
-        Op::OptimizeStation(args) => optimize_station(c, ctx.design, args),
+        Op::OptimizeStation(args) => optimize_station(c, ctx.design, args, ctx.blueprints),
         Op::CopyEquipment { from, scope } => match scope.as_deref().unwrap_or("same_type") {
             "same_type" => Ok(json!({"modules": ctx.design.copy_equipment(from).map_err(err)?})),
             "all" => {
@@ -357,8 +406,25 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
             }
             other => Err(format!("scope is same_type or all, not {other}")),
         },
-        Op::PlanProduction(args) => plan_production(c, ctx.design, args, None),
-        Op::AutoPlace(args) => auto_place(c, ctx.design, args),
+        Op::PlanProduction(args) => plan_production(c, ctx.design, args, None, ctx.blueprints),
+        Op::AutoPlace(args) => auto_place(c, ctx.design, args, ctx.blueprints),
+        Op::ReadBlueprints { save } => {
+            let save = match save {
+                Some(s) => s.into(),
+                None => newest_save(ctx.profile_dir.ok_or("player profile not found; pass save")?).ok_or("no save in the profile's save folder; pass save")?,
+            };
+            *ctx.blueprints = Blueprints::read(c, &save)?;
+            Ok(ctx.blueprints.status(ctx.names))
+        }
+        Op::BlueprintFilter { on } => {
+            if on == Some(true) && ctx.blueprints.save.is_none() {
+                return Err("no save read yet: read_blueprints first".to_owned());
+            }
+            if let Some(on) = on {
+                ctx.blueprints.on = on;
+            }
+            Ok(ctx.blueprints.status(ctx.names))
+        }
         Op::SaveDesign { file } => {
             let new_plan = ctx.profile_dir.is_some_and(|p| renew_id_if_renamed(p, ctx.design));
             std::fs::write(&file, write_plans(std::slice::from_ref(ctx.design.plan()))).map_err(|e| format!("{file}: {e}"))?;
@@ -432,9 +498,9 @@ pub fn station_load(catalog: &Catalog, design: &Design) -> Value {
 /// (without slots in the middle, defensible ones around them, docks, piers and
 /// bays outside), as one undo step, and fits the plot to the station. Nothing
 /// changes if anything finds no place.
-pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeArgs) -> Result<Value, String> {
+pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeArgs, blueprints: &Blueprints) -> Result<Value, String> {
     let sunlight = args.plan.sunlight.unwrap_or(100.0);
-    let mut req = request(args.plan);
+    let mut req = request(args.plan, blueprints);
     req.targets.clear();
     req.modules.clear();
     let fixes: Vec<(String, u32)> = match args.modules {
@@ -449,6 +515,7 @@ pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeAr
         grow_plot: true,
         race: req.race,
         fewer_connectors: args.fewer_connectors.unwrap_or(false),
+        owned: req.owned,
     };
     let r = layout::optimize(catalog, design, &fixes, &options).map_err(|e| e.to_string())?;
     design.fit_plot(catalog, false).map_err(|e| e.to_string())?;
@@ -544,16 +611,16 @@ pub fn list_wares(catalog: &Catalog) -> Result<Value, String> {
 /// storage, docks), the station's analysis with them, and their build cost.
 /// `existing`: plan for a station with these modules instead of the design's
 /// (the builder re-plans against the station a plan was made for).
-pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs, existing: Option<Vec<ModuleCount>>) -> Result<Value, String> {
+pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs, existing: Option<Vec<ModuleCount>>, blueprints: &Blueprints) -> Result<Value, String> {
     let sunlight = args.sunlight.unwrap_or(100.0);
     let existing = existing.map_or_else(|| module_counts(design.plan()), |m| m.into_iter().map(|m| (m.r#macro, m.count)).collect());
-    let p = planner::plan_production(catalog, &existing, &request(args)).map_err(|e| e.to_string())?;
+    let p = planner::plan_production(catalog, &existing, &request(args, blueprints)).map_err(|e| e.to_string())?;
     plan_json(catalog, &p, sunlight)
 }
 
 /// Places modules (a list, or what a plan lists) with `layout::auto_place`: the new
 /// indices, the connection structures added, what didn't fit, and the plot.
-pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -> Result<Value, String> {
+pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs, blueprints: &Blueprints) -> Result<Value, String> {
     let (modules, race, plan, sides) = match (args.modules, args.from_plan) {
         (Some(list), None) => {
             let sides = sides(&list)?;
@@ -562,7 +629,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
         (None, Some(settings)) => {
             let sides = sides(settings.extra_modules.as_deref().unwrap_or_default())?;
             let sunlight = settings.sunlight.unwrap_or(100.0);
-            let req = request(settings);
+            let req = request(settings, blueprints);
             let p = planner::plan_production(catalog, &module_counts(design.plan()), &req).map_err(|e| e.to_string())?;
             let modules = p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
             (modules, args.race.or(req.race), Some(plan_json(catalog, &p, sunlight)?), sides)
@@ -575,6 +642,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs) -
         layered: false,
         fewer_connectors: args.fewer_connectors.unwrap_or(false),
         sides,
+        owned: blueprints.owned(),
     };
     let r = layout::auto_place(catalog, design, &modules, &options).map_err(|e| e.to_string())?;
     let mut out = json!({
@@ -603,7 +671,7 @@ fn sides(list: &[ModuleCount]) -> Result<Vec<(String, Vec<Side>)>, String> {
         .collect()
 }
 
-fn request(args: PlanArgs) -> Request {
+fn request(args: PlanArgs, blueprints: &Blueprints) -> Request {
     Request {
         targets: args.targets.into_iter().map(|t| (t.ware, t.modules)).collect(),
         modules: args.extra_modules.unwrap_or_default().into_iter().map(|m| (m.r#macro, m.count)).collect(),
@@ -614,6 +682,7 @@ fn request(args: PlanArgs) -> Request {
         buy: args.buy.unwrap_or_default(),
         sunlight: args.sunlight.unwrap_or(100.0) / 100.0,
         method: args.method.unwrap_or_else(|| "default".to_owned()),
+        owned: blueprints.owned(),
     }
 }
 
@@ -627,6 +696,7 @@ fn plan_json(catalog: &Catalog, p: &ProductionPlan, sunlight: f64) -> Result<Val
             "unknown": p.cost.unknown,
         },
         "unknown_targets": p.unknown_targets,
+        "no_blueprint": p.no_blueprint,
     }))
 }
 

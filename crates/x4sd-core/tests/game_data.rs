@@ -276,6 +276,7 @@ fn production_planner() {
         buy: buy.iter().map(|w| w.to_string()).collect(),
         sunlight: 1.0,
         method: "default".to_owned(),
+        owned: None,
     };
     let empty: Vec<(String, u32)> = Vec::new();
     let count = |p: &x4sd_core::planner::ProductionPlan, m: &str| p.modules.iter().find(|x| x.macro_name == m).map_or(0, |x| x.count);
@@ -422,6 +423,7 @@ fn auto_place_planned_stations() {
         buy: Vec::new(),
         sunlight: 1.0,
         method: "default".to_owned(),
+        owned: None,
     };
     let planned = |d: &Design, r: &Request| -> Vec<(String, u32)> {
         plan_production(c, &x4sd_core::planner::module_counts(d.plan()), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
@@ -488,6 +490,7 @@ fn fewer_connectors() {
         buy: Vec::new(),
         sunlight: 1.0,
         method: "default".to_owned(),
+        owned: None,
     };
     let planned = |p: &x4sd_core::plan::Plan, r: &Request| -> Vec<(String, u32)> {
         plan_production(c, &module_counts(p), r).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect()
@@ -516,7 +519,7 @@ fn fewer_connectors() {
     let mut connectors = Vec::new();
     for fewer_connectors in [false, true] {
         let mut d = Design::from_plan(yard.clone());
-        let options = OptimizeOptions { keep_shape: false, grow_plot: true, race: Some("terran".to_owned()), fewer_connectors };
+        let options = OptimizeOptions { keep_shape: false, grow_plot: true, race: Some("terran".to_owned()), fewer_connectors, owned: None };
         let r = optimize(c, &mut d, &fixes, &options).unwrap();
         let plot = x4sd_core::plot::required_plot(d.plan(), c).unwrap();
         let load = x4sd_core::perf::load(d.plan(), c);
@@ -619,7 +622,7 @@ fn optimize_station() {
     use x4sd_core::planner::{module_counts, plan_production, Request};
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
     let yard = plans.iter().find(|p| p.name == "TerranScrapyard").unwrap();
-    let req = Request { targets: Vec::new(), modules: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, storage: Vec::new(), buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
+    let req = Request { targets: Vec::new(), modules: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, storage: Vec::new(), buy: Vec::new(), sunlight: 1.0, method: "default".to_owned(), owned: None };
     let fixes: Vec<(String, u32)> = plan_production(c, &module_counts(yard), &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
     let class = |m: &str| c.module(m).unwrap().class.clone();
     let counts = |p: &x4sd_core::plan::Plan| {
@@ -993,7 +996,7 @@ fn optimize_keeps_zones_clear() {
     use x4sd_core::planner::{module_counts, plan_production, Request};
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
     let yard = plans.iter().find(|p| p.name == "megashipyard terran").unwrap();
-    let req = Request { targets: Vec::new(), modules: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, storage: Vec::new(), buy: Vec::new(), sunlight: 1.0, method: "default".to_owned() };
+    let req = Request { targets: Vec::new(), modules: Vec::new(), race: Some("terran".to_owned()), workforce: true, storage_hours: 6.0, storage: Vec::new(), buy: Vec::new(), sunlight: 1.0, method: "default".to_owned(), owned: None };
     let fixes: Vec<(String, u32)> = plan_production(c, &module_counts(yard), &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
     let counts = |p: &x4sd_core::plan::Plan| {
         let mut n: BTreeMap<String, u32> = BTreeMap::new();
@@ -1049,6 +1052,7 @@ fn planner_extras() {
         buy: Vec::new(),
         sunlight: 1.0,
         method: "default".to_owned(),
+        owned: None,
     };
     let listed = |p: &x4sd_core::planner::ProductionPlan| -> Vec<(String, u32)> { p.modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect() };
 
@@ -1127,4 +1131,60 @@ fn planner_extras() {
             assert_eq!(r.sides_blocked, 0);
         }
     }
+}
+
+#[test]
+fn blueprints_from_save_limit_the_planner() {
+    use std::collections::HashSet;
+    use x4sd_core::layout::{auto_place, Options};
+    use x4sd_core::planner::{plan_production, Request};
+    use x4sd_core::save::{newest_save, owned_modules, read_blueprints};
+    let Some(c) = catalog() else { return };
+    let modules = c.station_modules().unwrap();
+
+    // The newest real save, if the profile has one.
+    if let Some(save) = find_profile_dir().and_then(|p| newest_save(&p)) {
+        let start = Instant::now();
+        let wares = read_blueprints(&save).unwrap();
+        let owned = owned_modules(c, &wares).unwrap();
+        eprintln!("{}: {} blueprints, {} station modules, in {:?}", save.display(), wares.len(), owned.len(), start.elapsed());
+        assert!(!owned.is_empty() && owned.len() <= modules.len());
+    } else {
+        eprintln!("skipped the save part: no save in the profile");
+    }
+
+    // Everything but the energy-cell makers: the planner can't choose one.
+    let makes = |m: &str, w: &str| c.module(m).is_ok_and(|x| x.economy.production.iter().any(|(ware, _)| ware == w));
+    let owned: HashSet<String> = modules.iter().filter(|m| !makes(&m.macro_name, "energycells")).map(|m| m.macro_name.to_ascii_lowercase()).collect();
+    let req = |targets: &[(&str, u32)], owned: Option<HashSet<String>>| Request {
+        targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        modules: Vec::new(),
+        race: Some("argon".to_owned()),
+        workforce: true,
+        storage_hours: 6.0,
+        storage: Vec::new(),
+        buy: Vec::new(),
+        sunlight: 1.0,
+        method: "default".to_owned(),
+        owned,
+    };
+    let p = plan_production(c, &[], &req(&[("energycells", 4)], Some(owned.clone()))).unwrap();
+    assert_eq!(p.no_blueprint, ["energycells"]);
+    assert!(p.unknown_targets.is_empty());
+    let p = plan_production(c, &[], &req(&[("hullparts", 4)], Some(owned.clone()))).unwrap();
+    assert!(p.modules.iter().all(|m| owned.contains(&m.macro_name.to_ascii_lowercase())), "{:?}", p.modules);
+    assert!(p.no_blueprint.contains(&"energycells".to_owned()), "hull parts need energy cells: {:?}", p.no_blueprint);
+    let free = plan_production(c, &[], &req(&[("hullparts", 4)], None)).unwrap();
+    assert!(free.no_blueprint.is_empty() && free.modules.iter().any(|m| m.ware.as_deref() == Some("energycells")));
+
+    // Connection structures: only owned ones, even for another race.
+    let teladi: HashSet<String> = modules
+        .iter()
+        .filter(|m| m.class != "connectionmodule" || m.race.as_deref() == Some("teladi"))
+        .map(|m| m.macro_name.to_ascii_lowercase())
+        .collect();
+    let mut d = Design::new("blueprints");
+    let r = auto_place(c, &mut d, &[("prod_gen_energycells_macro".to_owned(), 6)], &Options { grow_plot: true, race: Some("argon".to_owned()), owned: Some(teladi.clone()), ..Default::default() }).unwrap();
+    assert!(!r.connectors.is_empty());
+    assert!(r.connectors.iter().all(|(_, m)| teladi.contains(&m.to_ascii_lowercase())), "{:?}", r.connectors);
 }

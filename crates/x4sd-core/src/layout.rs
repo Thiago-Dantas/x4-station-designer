@@ -20,7 +20,7 @@ use crate::catalog::{Catalog, CollisionMesh, MeshNode, Module, ShapeBox, Snap};
 use crate::design::Design;
 use crate::geometry::{attach, Quat, Transform};
 use crate::plan::{Plan, Upgrade};
-use crate::planner::{best, candidates, Candidate};
+use crate::planner::{best, candidates, owns, Candidate};
 use crate::plot::{bounds_plot, module_bounds, Plot};
 use crate::{Error, Result};
 
@@ -438,6 +438,9 @@ pub struct Options {
     /// outside of the station on its side, with a clear lane out (`Placer::lane`),
     /// after every other module.
     pub sides: Vec<(String, Vec<Side>)>,
+    /// The station modules the player has blueprints for (lowercase macros);
+    /// `None`: all. Connection structures are added only from these.
+    pub owned: Option<HashSet<String>>,
 }
 
 /// Attaches the modules (macro, count) to the open design at exact snap
@@ -487,7 +490,8 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
 
     let all = candidates(catalog)?;
     let race = options.race.clone().or_else(|| common_race(&all, order.iter().map(|o| o.0.macro_name.as_str())));
-    let connectors = Connectors::choose(catalog, &all, race.as_deref())?;
+    let owned: Vec<Candidate> = all.into_iter().filter(|c| owns(options.owned.as_ref(), &c.info.macro_name)).collect();
+    let connectors = Connectors::choose(catalog, &owned, race.as_deref())?;
     let mut placer = Placer::new(catalog, design, if options.grow_plot { None } else { design.plot() })?;
     placer.hub_penalty = if options.fewer_connectors { FEWER_HUBS_PENALTY_M } else { HUB_PENALTY_M };
     if design.plan().entries.is_empty() {
@@ -612,6 +616,8 @@ pub struct OptimizeOptions {
     pub race: Option<String>,
     /// See `Options::fewer_connectors`.
     pub fewer_connectors: bool,
+    /// See `Options::owned`.
+    pub owned: Option<HashSet<String>>,
 }
 
 /// Re-lays a station out in layers (see `auto_place`) and adds `fixes` (macro,
@@ -669,7 +675,7 @@ pub fn optimize(catalog: &Catalog, design: &mut Design, fixes: &[(String, u32)],
         catalog,
         design,
         &modules,
-        &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true, fewer_connectors: options.fewer_connectors, sides: Vec::new() },
+        &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true, fewer_connectors: options.fewer_connectors, sides: Vec::new(), owned: options.owned.clone() },
     )?;
     if !placement.unplaced.is_empty() {
         if design.history_len() > history {

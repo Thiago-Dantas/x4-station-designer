@@ -27,6 +27,8 @@ struct App {
     catalog: Option<Arc<Catalog>>,
     info: ModuleNames,
     design: Design,
+    /// The blueprint limit (D-16); the UI keeps it across restarts and sets it at start.
+    blueprints: ops::Blueprints,
 }
 
 type Shared = Mutex<App>;
@@ -35,7 +37,7 @@ type CmdResult = Result<Value, String>;
 pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core::Result<()> {
     #[cfg(windows)]
     detach_own_console();
-    let app = App { game_dir, profile_dir, catalog: None, info: HashMap::new(), design: Design::new("New station") };
+    let app = App { game_dir, profile_dir, catalog: None, info: HashMap::new(), design: Design::new("New station"), blueprints: Default::default() };
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(app))
@@ -80,6 +82,8 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             list_wares,
             plan_production,
             auto_place,
+            read_blueprints,
+            set_blueprints,
             run_op,
             undo,
             redo,
@@ -369,7 +373,7 @@ fn list_wares(state: State<'_, Shared>) -> CmdResult {
 fn plan_production(state: State<'_, Shared>, args: ops::PlanArgs, baseline: Option<Vec<ops::ModuleCount>>) -> CmdResult {
     let app = state.lock().unwrap();
     let catalog = catalog(&app)?;
-    ops::plan_production(&catalog, &app.design, args, baseline)
+    ops::plan_production(&catalog, &app.design, args, baseline, &app.blueprints)
 }
 
 /// Runs a shared operation (`ops::Op`, as MCP agents do) on the open design: its
@@ -382,8 +386,8 @@ async fn run_op(handle: AppHandle, op: Op) -> CmdResult {
         let mut app = state.lock().unwrap();
         let catalog = catalog(&app)?;
         let changes = op.changes_design();
-        let App { info, design, profile_dir, .. } = &mut *app;
-        let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref() })?;
+        let App { info, design, profile_dir, blueprints, .. } = &mut *app;
+        let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref(), blueprints })?;
         let mut out = json!({"result": result});
         if changes {
             out["scene"] = scene_json(&app)?;
@@ -404,13 +408,35 @@ async fn auto_place(handle: AppHandle, modules: Vec<ops::ModuleCount>, race: Opt
         let mut app = state.lock().unwrap();
         let catalog = catalog(&app)?;
         let args = ops::AutoPlaceArgs { modules: Some(modules), from_plan: None, grow_plot: Some(true), race, fewer_connectors: Some(fewer_connectors) };
-        let placement = ops::auto_place(&catalog, &mut app.design, args)?;
+        let App { design, blueprints, .. } = &mut *app;
+        let placement = ops::auto_place(&catalog, design, args, blueprints)?;
         let mut scene = scene_json(&app)?;
         scene["placement"] = placement;
         Ok(scene)
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Reads the player's blueprints from a save and turns the limit on; the new
+/// `ops::Blueprints`. The save is read without holding the design.
+#[tauri::command]
+async fn read_blueprints(handle: AppHandle, file: String) -> CmdResult {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = handle.state::<Shared>();
+        let catalog = catalog(&state.lock().unwrap())?;
+        let blueprints = ops::Blueprints::read(&catalog, Path::new(&file))?;
+        state.lock().unwrap().blueprints = blueprints.clone();
+        Ok(json!(blueprints))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Sets the blueprint limit: on/off, or the one the UI remembered at start.
+#[tauri::command]
+fn set_blueprints(state: State<'_, Shared>, blueprints: ops::Blueprints) {
+    state.lock().unwrap().blueprints = blueprints;
 }
 
 /// Moves a placed module (and everything on it) onto another free snap; `focus` is its new index.
@@ -486,9 +512,12 @@ fn agent_op(handle: &AppHandle, op: Op) -> Result<Value, String> {
     let state = handle.state::<Shared>();
     let mut app = state.lock().unwrap();
     let catalog = catalog(&app)?;
-    let (changes, replaced, name) = (op.changes_design(), op.replaces_design(), op.name());
-    let App { info, design, profile_dir, .. } = &mut *app;
-    let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref() });
+    let (changes, replaced, name, blueprints_changed) = (op.changes_design(), op.replaces_design(), op.name(), op.changes_blueprints());
+    let App { info, design, profile_dir, blueprints, .. } = &mut *app;
+    let result = ops::execute(op, &mut Ctx { catalog: &catalog, names: info, design, profile_dir: profile_dir.as_deref(), blueprints });
+    if blueprints_changed && result.is_ok() {
+        let _ = handle.emit("blueprints-changed", &app.blueprints);
+    }
     if changes && result.is_ok() {
         let scene = scene_json(&app)?;
         let _ = handle.emit("scene-changed", json!({"scene": scene, "op": name, "replaced": replaced}));

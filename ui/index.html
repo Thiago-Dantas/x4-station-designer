@@ -38,6 +38,8 @@
           <input id="search" placeholder="Search modules…" spellcheck="false" />
           <select id="class-filter"><option value="">All categories</option></select>
           <div id="race-filter" class="chips" title="Show modules of these races (none selected: all)"></div>
+          <label id="bp-toggle" title="Read a save to find the modules the player has blueprints for, and offer only those (here and in the planner). Off: every module."><input type="checkbox" id="bp-on" /> Only modules I have blueprints for</label>
+          <div id="bp-info" hidden><span id="bp-save"></span> <button id="bp-other" title="Read the blueprints from another save">Other save…</button> <button id="bp-reread" title="Read this save again (e.g. after buying blueprints and saving)">Re-read</button></div>
           <div id="module-list"></div>
           <div id="module-count"></div>
         </div>

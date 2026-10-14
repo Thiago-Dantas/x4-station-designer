@@ -66,6 +66,10 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .module .m { color: var(--muted); font-size: 11px; }
 .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: baseline; }
 #module-count { color: var(--muted); font-size: 11px; }
+#bp-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+#bp-info { color: var(--muted); font-size: 11px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+#bp-info[hidden] { display: none; }
+#bp-info button { padding: 1px 6px; font-size: 11px; }
 
 #inspector h3 { margin: 12px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 /* Right pane: a section's title folds it away or opens it. */

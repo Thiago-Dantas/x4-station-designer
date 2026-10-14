@@ -192,6 +192,13 @@ The megashipyard first dropped from 240 to 68 fps with textures, because there w
 - **Maker races:** most producers are generic (no `makerrace`). Food, medicine and race-specific wares have one module per race, e.g. medical supplies ×6. Habitats, storage and piers exist per race, but most dock areas have no maker race; their race shows only in the macro name (`dockarea_arg_…`).
 - **Player's plans:** TerranScrapyard: 10,000 of 11,665 workers housed (bonus 86%), hull parts +12,645 per hour, energy cells −758,820 per hour (the scrap recyclers).
 
+### Savegames: the player's blueprints (verified 2026-10-14)
+- **Files:** `<profile>\save\*.xml.gz` (`save_NNN`, `autosave_NN`, `quicksave`). They are gzip; the game can also write plain `.xml`. `save_001` is 120 MB gzipped and 1.0 GB of XML. The header has `<info><save name date/><game version build start …/><player name location money/>`.
+- **Blueprints:** one `<blueprints>` block of `<blueprint ware="…"/>` lines, one per line. It is the player's: a full scan of `save_001` found exactly one, 447 wares, 113 of them `module_*`, the rest paint, clothing, equipment and so on.
+  - It starts at byte 241 M of the XML (line 6.0 M), so a reader can stop after it. Python reaches it in 2.5 s and reads the whole file in 9 s; our reader (`crates/x4sd-core/src/save.rs`, release build) reaches it in 0.43 s.
+  - A module ware maps to its macro through `<component ref>` in `wares.xml` (all 113 did). 109 of them are palette modules; the other 4 (`recyclemodule_macro` and three showroom dock areas) have no `factory` build set and aren't offered anyway.
+- **The game offers only blueprinted modules:** the station build menu fills its module list from `C.GetBlueprints(set, moduletype, "")`, the player's blueprints (`menu_station_configuration.lua` line 1671). It also warns about plans with modules the player has no blueprint for (lines 2049–2081).
+
 ## What we need from game data
 | Need | Source |
 |------|--------|
