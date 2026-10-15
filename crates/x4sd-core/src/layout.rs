@@ -164,7 +164,8 @@ pub struct Body {
     boxes: Vec<WorldBox>,
     box_bounds: Vec<Bounds>,
     bounds: Bounds,
-    snaps: Vec<[f64; 3]>,
+    /// Snap points and the way each faces (its +Z).
+    snaps: Vec<([f64; 3], [f64; 3])>,
 }
 
 impl Body {
@@ -174,7 +175,8 @@ impl Body {
         let boxes: Vec<WorldBox> = boxes.iter().map(|b| WorldBox::new(world, b)).collect();
         let box_bounds: Vec<Bounds> = boxes.iter().map(WorldBox::bounds).collect();
         let bounds = box_bounds.iter().copied().reduce(union).unwrap_or(([0.0; 3], [0.0; 3]));
-        Body { boxes, box_bounds, bounds, snaps: snaps.iter().map(|s| world.then(&s.transform).position).collect() }
+        let snaps = snaps.iter().map(|s| world.then(&s.transform)).map(|t| (t.position, t.rotation.rotate([0.0, 0.0, 1.0]))).collect();
+        Body { boxes, box_bounds, bounds, snaps }
     }
 
     /// Axis-aligned bounds of the boxes: (min, max) corner.
@@ -208,9 +210,11 @@ impl Body {
         area.iter().any(|a| intersect(&self.bounds, a, tol) && self.box_bounds.iter().any(|b| intersect(b, a, tol)))
     }
 
-    /// Whether the two modules meet at a snap (linked, or touching where snaps coincide).
+    /// Whether the two modules meet at a snap (linked, or touching where snaps
+    /// coincide and face each other). Snaps in the same place facing the same way
+    /// mean one module sits where the other's neighbour would.
     pub fn joined(&self, other: &Body) -> bool {
-        self.snaps.iter().any(|a| other.snaps.iter().any(|b| dot(sub(*a, *b), sub(*a, *b)) < JOINED_M * JOINED_M))
+        self.snaps.iter().any(|(a, fa)| other.snaps.iter().any(|(b, fb)| dot(sub(*a, *b), sub(*a, *b)) < JOINED_M * JOINED_M && dot(*fa, *fb) < -0.999))
     }
 }
 
@@ -689,9 +693,29 @@ struct Piece {
 struct Connectors {
     hub: Piece,
     struts: Vec<Piece>,
+    /// Each strut's length (metres), in `struts` order.
+    lengths: Vec<f64>,
 }
 
 impl Connectors {
+    /// Chains of two or three struts end to end, one per total length, shortest
+    /// first: for a new hub out past what is in the way (`Placer::reach`).
+    fn chains(&self) -> Vec<Vec<&Piece>> {
+        let n = self.struts.len();
+        let mut out: Vec<(f64, Vec<usize>)> = Vec::new();
+        for a in 0..n {
+            for b in a..n {
+                out.push((self.lengths[a] + self.lengths[b], vec![a, b]));
+                for c in b..n {
+                    out.push((self.lengths[a] + self.lengths[b] + self.lengths[c], vec![a, b, c]));
+                }
+            }
+        }
+        out.sort_by(|x, y| x.0.total_cmp(&y.0).then(x.1.len().cmp(&y.1.len())));
+        out.dedup_by(|y, x| (x.0 - y.0).abs() < 1.0);
+        out.into_iter().map(|(_, ids)| ids.into_iter().map(|i| &self.struts[i]).collect()).collect()
+    }
+
     fn choose(catalog: &Catalog, all: &[Candidate], race: Option<&str>) -> Result<Connectors> {
         let piece = |c: &Candidate| -> Result<Piece> { Ok(Piece { module: c.module.clone(), boxes: catalog.collision_boxes(&c.info.macro_name)? }) };
         let connection = || all.iter().filter(|c| c.info.class == "connectionmodule");
@@ -712,7 +736,8 @@ impl Connectors {
         struts.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.info.macro_name.cmp(&b.1.info.macro_name)));
         // One per length (a vertical structure is a base structure on its side).
         struts.dedup_by(|b, a| (a.0 - b.0).abs() < 1.0);
-        Ok(Connectors { hub: piece(hub)?, struts: struts.into_iter().map(|(_, c)| piece(c)).collect::<Result<_>>()? })
+        let lengths = struts.iter().map(|s| s.0).collect();
+        Ok(Connectors { hub: piece(hub)?, struts: struts.into_iter().map(|(_, c)| piece(c)).collect::<Result<_>>()?, lengths })
     }
 }
 
@@ -733,10 +758,10 @@ struct Fit {
 /// The best way to attach a module to one snap: (own snap, twist, fit).
 type Choice = (String, f64, Fit);
 
-/// A hub placed on a free snap (on a strut, maybe) with a module on it: (hub snap,
-/// hub twist, hub snap the module takes, the module's choice, the hub's fit, the
-/// strut's fit, where the hub goes).
-type Unit = (String, f64, String, Choice, Fit, Option<Fit>, Transform);
+/// A hub placed on a free snap (at the end of a chain of struts, maybe) with a
+/// module on it: (hub snap, hub twist, hub snap the module takes, the module's
+/// choice, the hub's fit, the struts' fits, where the hub goes).
+type Unit = (String, f64, String, Choice, Fit, Vec<Fit>, Transform);
 
 /// A placed module's index, and the connection structures added for it: (index, macro).
 type Placed = (u32, Vec<(u32, String)>);
@@ -751,9 +776,12 @@ struct Placer<'a> {
     free: Vec<FreeSnap>,
     /// The entry each body belongs to.
     owners: Vec<u32>,
-    /// (entry, snap, macro, through a new hub, outward, half, side) that didn't
-    /// fit. Placing only adds obstacles, so what failed once fails again.
-    failed: HashSet<(u32, String, String, bool, bool, bool, Option<Side>)>,
+    /// (entry, snap, macro, through a new hub, outward, half, side, reach) that
+    /// didn't fit. Placing only adds obstacles, so what failed once fails again.
+    failed: HashSet<(u32, String, String, bool, bool, bool, Option<Side>, bool)>,
+    /// A module found no place otherwise: new hubs may go at the end of a chain of
+    /// two or three struts (`Connectors::chains`), out past what is in the way.
+    reach: bool,
     /// Modules that need clear space (`outer`) now need it: clear zones, and for
     /// dock areas and piers a clear corridor too (see `corridor`); a module with a
     /// `side`, a clear lane (`lane`).
@@ -799,6 +827,7 @@ impl<'a> Placer<'a> {
             free: Vec::new(),
             owners: Vec::new(),
             failed: HashSet::new(),
+            reach: false,
             outward: false,
             side: None,
             half: false,
@@ -915,7 +944,18 @@ impl<'a> Placer<'a> {
         if let Some(b) = module_bounds(&module, &world) {
             self.bounds = Some(self.bounds.map_or(b, |s| union(s, b)));
         }
-        self.free.extend(design.free_snaps(self.catalog, index)?.into_iter().map(|s| FreeSnap { entry: index, snap: s.name, world: s.world }));
+        // A free snap meeting another one (facing it, in the same place) closes a loop: nothing fits there.
+        let facing = |a: &Transform, b: &Transform| {
+            let gap = sub(a.position, b.position);
+            dot(gap, gap) < JOINED_M * JOINED_M && dot(a.rotation.rotate([0.0, 0.0, 1.0]), b.rotation.rotate([0.0, 0.0, 1.0])) < -0.999
+        };
+        for s in design.free_snaps(self.catalog, index)? {
+            let before = self.free.len();
+            self.free.retain(|f| !facing(&f.world, &s.world));
+            if self.free.len() == before {
+                self.free.push(FreeSnap { entry: index, snap: s.name, world: s.world });
+            }
+        }
         Ok(())
     }
 
@@ -1000,15 +1040,17 @@ impl<'a> Placer<'a> {
         } else {
             &[(false, false)]
         };
-        for &(outward, half) in tries {
-            (self.outward, self.half) = (outward, half);
+        // Each way is tried as is, then with chains of struts (`reach`): they add
+        // connection structures, so only when nothing nearer works.
+        for (&(outward, half), reach) in tries.iter().flat_map(|t| [false, true].map(move |r| (t, r))) {
+            (self.outward, self.half, self.reach) = (outward, half, reach);
             // Keep room to grow (`leaves_exit`) while there is a way to; then fill anyway.
             let exits = !outward && self.side.is_none();
             let mut placed = self.place_with(design, conn, module, exits)?;
             if placed.is_none() && exits {
                 placed = self.place_with(design, conn, module, false)?;
             }
-            (self.outward, self.half) = (false, false);
+            (self.outward, self.half, self.reach) = (false, false, false);
             if let Some((index, _)) = &placed {
                 if self.side.is_some() && !half {
                     self.sides_blocked += 1;
@@ -1043,11 +1085,11 @@ impl<'a> Placer<'a> {
         options.sort_by(|a, b| a.0.total_cmp(&b.0));
         let options: Vec<(FreeSnap, bool)> = options.into_iter().map(|(_, f, x)| (f.clone(), x)).collect();
         for (f, through_hub) in options {
-            let key = (f.entry, f.snap.clone(), name.clone(), through_hub, self.outward, self.half, self.side);
+            let key = (f.entry, f.snap.clone(), name.clone(), through_hub, self.outward, self.half, self.side, self.reach);
             if self.failed.contains(&key) {
                 continue;
             }
-            if !through_hub {
+            if !through_hub && !self.reach {
                 if let Some((snap, twist, fit)) = self.best_at(module, &boxes, &f.world, &[]) {
                     let new = beyond(module, &[&snap], &attach(&f.world, &Transform::IDENTITY, &module.snap(&snap).unwrap().transform, twist));
                     if keep_exit && !self.leaves_exit(&conn.hub, &f, &new, &[&fit]) {
@@ -1060,20 +1102,21 @@ impl<'a> Placer<'a> {
                 }
             } else {
                 let mut closes = false;
-                for strut in std::iter::once(None).chain(conn.struts.iter().map(Some)) {
-                    if let Some(unit) = self.unit_at(&f, strut, &conn.hub, module, &boxes) {
+                let chains = if self.reach { conn.chains() } else { std::iter::once(Vec::new()).chain(conn.struts.iter().map(|s| vec![s])).collect() };
+                for chain in &chains {
+                    if let Some(unit) = self.unit_at(&f, chain, &conn.hub, module, &boxes) {
                         if keep_exit {
-                            let (hub_snap, _, on, (snap, twist, fit), hub_fit, strut_fit, hub_at) = &unit;
+                            let (hub_snap, _, on, (snap, twist, fit), hub_fit, strut_fits, hub_at) = &unit;
                             let module_at = attach(&hub_at.then(&conn.hub.module.snap(on).unwrap().transform), &Transform::IDENTITY, &module.snap(snap).unwrap().transform, *twist);
                             let mut new = beyond(&conn.hub.module, &[hub_snap, on], hub_at);
                             new.extend(beyond(module, &[snap], &module_at));
-                            let extra: Vec<&Fit> = [Some(fit), Some(hub_fit), strut_fit.as_ref()].into_iter().flatten().collect();
+                            let extra: Vec<&Fit> = [fit, hub_fit].into_iter().chain(strut_fits).collect();
                             if !self.leaves_exit(&conn.hub, &f, &new, &extra) {
                                 closes = true;
                                 continue;
                             }
                         }
-                        return self.commit(design, &f, strut, &conn.hub, module, unit).map(Some);
+                        return self.commit(design, &f, chain, &conn.hub, module, unit).map(Some);
                     }
                 }
                 if closes {
@@ -1114,18 +1157,17 @@ impl<'a> Placer<'a> {
         found
     }
 
-    /// A hub at free snap `f` (on a strut, if given) that the module fits on.
-    fn unit_at(&self, f: &FreeSnap, strut: Option<&Piece>, hub: &Piece, module: &Module, boxes: &[ShapeBox]) -> Option<Unit> {
+    /// A hub at free snap `f` (at the end of `chain`, struts end to end) that the module fits on.
+    fn unit_at(&self, f: &FreeSnap, chain: &[&Piece], hub: &Piece, module: &Module, boxes: &[ShapeBox]) -> Option<Unit> {
         let mut base = f.world;
-        let strut_fit = match strut {
-            Some(s) => {
-                let at = attach(&f.world, &Transform::IDENTITY, &s.module.snaps[0].transform, 0.0);
-                base = at.then(&s.module.snaps[1].transform);
-                Some(self.fits(&s.module, &s.boxes, &at, &[])?)
-            }
-            None => None,
-        };
-        let extra: Vec<&Fit> = strut_fit.iter().collect();
+        let mut strut_fits: Vec<Fit> = Vec::new();
+        for s in chain {
+            let at = attach(&base, &Transform::IDENTITY, &s.module.snaps[0].transform, 0.0);
+            base = at.then(&s.module.snaps[1].transform);
+            let fit = self.fits(&s.module, &s.boxes, &at, &strut_fits.iter().collect::<Vec<_>>())?;
+            strut_fits.push(fit);
+        }
+        let extra: Vec<&Fit> = strut_fits.iter().collect();
         // Hub placements that put its snaps in the same places are the same for the module.
         let mut seen: Vec<Vec<[i64; 3]>> = Vec::new();
         for hs in &hub.module.snaps {
@@ -1150,7 +1192,7 @@ impl<'a> Placer<'a> {
                         rank(&a.1).total_cmp(&rank(&b.1))
                     });
                 if let Some((on, choice)) = best {
-                    return Some((hs.name.clone(), twist, on, choice, hub_fit, strut_fit, at));
+                    return Some((hs.name.clone(), twist, on, choice, hub_fit, strut_fits, at));
                 }
             }
         }
@@ -1161,7 +1203,7 @@ impl<'a> Placer<'a> {
         &mut self,
         design: &mut Design,
         f: &FreeSnap,
-        strut: Option<&Piece>,
+        chain: &[&Piece],
         hub: &Piece,
         module: &Module,
         (hub_snap, hub_twist, on, (snap, twist, _), ..): Unit,
@@ -1169,7 +1211,7 @@ impl<'a> Placer<'a> {
         let mut added = Vec::new();
         let (mut to, mut to_snap) = (f.entry, f.snap.clone());
         self.take(f.entry, &f.snap);
-        if let Some(s) = strut {
+        for s in chain {
             let (a, b) = (&s.module.snaps[0].name, &s.module.snaps[1].name);
             let index = design.attach(self.catalog, &s.module.macro_name, a, to, &to_snap, 0.0)?;
             self.add(design, index)?;
@@ -1273,10 +1315,11 @@ mod tests {
         // 250 m apart the blocks are clear, but the arm (x -20..60) crosses the spire (x -10..10).
         assert!((overlap(&at(&spired, 0.0), &at(&armed, 250.0)).unwrap() - 20.0).abs() < 1e-9);
         assert_eq!(overlap(&at(&spired, 0.0), &at(&armed, 290.0)), None, "the arm ends at x 20, clear of the spire");
-        // Joined at a snap, modules may interlock.
-        let snap = |x: f64| Snap { name: "s".to_owned(), transform: Transform { position: [x, 0.0, 0.0], rotation: Quat::IDENTITY } };
-        let joined = |x: f64, s: f64| Body::new(&spired, &[snap(s)], &Transform { position: [x, 0.0, 0.0], ..Transform::IDENTITY });
-        assert_eq!(overlap(&joined(0.0, 85.0), &joined(170.0, -85.0)), None);
-        assert!(overlap(&joined(0.0, 85.0), &joined(170.0, -80.0)).is_some(), "5 m apart is not joined");
+        // Joined at a snap (facing each other), modules may interlock.
+        let snap = |x: f64, yaw: f64| Snap { name: "s".to_owned(), transform: Transform { position: [x, 0.0, 0.0], rotation: Quat::axis_angle(Axis::Y, yaw) } };
+        let joined = |x: f64, s: f64, yaw: f64| Body::new(&spired, &[snap(s, yaw)], &Transform { position: [x, 0.0, 0.0], ..Transform::IDENTITY });
+        assert_eq!(overlap(&joined(0.0, 85.0, 90.0), &joined(170.0, -85.0, -90.0)), None);
+        assert!(overlap(&joined(0.0, 85.0, 90.0), &joined(170.0, -80.0, -90.0)).is_some(), "5 m apart is not joined");
+        assert!(overlap(&joined(0.0, 85.0, 90.0), &joined(170.0, -85.0, 90.0)).is_some(), "facing the same way is not joined");
     }
 }

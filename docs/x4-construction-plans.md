@@ -75,6 +75,8 @@ What we know about how X4 stores station plans, and the ways we could inject one
 - `entry@bookmark` (165 entries) and `entry@fixed` (2 entries) exist. The build-map struct has matching `bookmarknum` and `isfixed` fields.
 - Several entries per plan can lack a `connection`/`predecessor` (164 such entries across 116 plans), so **a plan can have several unconnected roots** (floating modules placed by offset only).
   - Most of them are joined anyway (**verified** 2026-10-15 by checking every snap pair, gap ≤ 5 cm and ≤ 0.5°): of the 58 unlinked entries that aren't first in the library and the player's plans, 43 meet another module at a snap, usually one built later (e.g. TerranScrapyard #10 on #11). The other 15 stand apart: 13 disc defence platforms (0.8-3 km off), a scanning array and the megashipyard's observation deck. `validate` reports only those 15 (*not attached to the station*, D-20).
+  - **Verified in game** (user, 2026-10-15): the megashipyard's observation deck (#173) floats in game too. We treat that as a game quirk and keep reporting it.
+- **Snap gaps in game** (user, 2026-10-15): the megashipyard's entries 562, 565, 567 and 575 sit 0.6–1.4 km from their linked snaps (`validate`: "N m away from its linked snap"). The game shows them where the builder does, and they look wrong there too (likely a bug in the planner mod that made the plan). We keep reporting them as problems.
 - 3 entries have no `<offset>` at all.
 
 ### How `connection` names map to module geometry (verified for one module)
@@ -201,7 +203,8 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   - **Corrected 2026-10-14:** those were box looseness too, not real intersections. The user confirmed TerranScrapyard was built and exported in game. On the collision-mesh triangles (below), none of the 14 pairs intersect. Axis-aligned boxes stay loose around curved and diagonal geometry such as the Terran habitat rings, however finely they are split.
 - **Joints interlock by design (verified on data).** Where Terran modules meet at a snap in the player's plans, their boxes intersect by at most 0.4 m (471 pairs).
   - In the game's 116 library plans (all races), 228 of 2,658 joined pairs intersect by more than 20 m, up to 130 m. Connector collars and defence discs reach into what they attach to; Argon medical supplies reach 41 m past their own snap.
-  - So **two modules whose snap points coincide (within 10 cm) never overlap**, linked or merely touching.
+  - So **two modules joined at a snap never overlap**, linked or merely touching: a snap of each in the same place (within 10 cm), **facing each other** (+Z axes opposite, as `attach` makes them).
+  - **Facing added 2026-10-15** (user report: Optimize put ship fabs inside piers). With position alone, a free snap lying on another module's free snap let a module attached there sit inside that other module. Auto-placement did that everywhere: on 1.3.0, "100 solar" had 1184 module pairs whose meshes cross (a ring of four cross hubs whose last one sits exactly on the first), the rebuilt megashipyard 1061. **Verified:** the player's and the library plans give the same calibration and `validate` results with the facing rule (game-data tests `overlap_calibration`, `validates_*`, output unchanged).
 - **Rule** (`layout::overlap`, `layout::overlaps`, 2026-10-14). Two modules that aren't joined at a snap overlap when two things hold:
   - a pair of their collision boxes intersects by more than **1 m** (separating axis theorem over the 15 box axes);
   - their collision meshes (`-collision.xmf`, full detail) really intersect: an edge of a triangle of one passes through the inside of a triangle of the other. Faces or edges that only touch don't count.
@@ -260,6 +263,8 @@ The red volume the build menu draws in front of a pier while you move it is an *
 
 ## Auto-placement (2026-10-13)
 `layout::auto_place` attaches a module list (for example a production plan's) to a design at exact snap positions, without overlaps and inside the plot.
+- **Sizes and counts below were measured before 2026-10-15**, when placement still stacked modules (see "Overlaps", facing). With the fix, "100 solar" needs 20×20×19 km (36 connection structures), not 9×8×8. Re-tuning is open (tasks/workflow-joined-snaps.md).
+- Two free snaps that meet (same place, facing each other) close a loop: nothing fits there, so the placer drops both (2026-10-15).
 - **Connectors:**
   - The hub is the race's buildable connection structure with the most snaps (Argon or Terran cross 01).
   - The struts are its straight 2-snap structures, one per length (Argon 400, 800, 1600 m).
@@ -268,6 +273,7 @@ The red volume the build menu draws in front of a pier while you move it is an *
     - Layers cost compactness. "100 solar, staffed" needs a 20×20×20 km plot in layers, against 8×8×8 biggest-first. So *Place all* stays biggest-first.
   - "Nearest" is measured from the centre of the station as it was (2026-10-14), so an off-centre station grows around itself; for a new design that is the origin.
 - **Placement:** each module goes onto the free snap nearest the origin where it fits, with the most compact of its own snaps and the four twists. Alternatively it goes onto a new hub (optionally on a strut) on a free snap, when that is 2 km nearer.
+  - **Reach** (2026-10-15): before each fallback (a dock or bay without clear space, or giving up), the hub may also go at the end of a chain of two or three struts (`Connectors::chains`, one chain per total length). Measured: overloading the optimized TerranScrapyard and terran high tech factory with 25 dock areas and 40 piers, 1 more dock each gets clear space. It doesn't help a station whose every free snap faces into a neighbour (the user's "test" station, 46 free snaps: no cross hub fits on any with Terran pieces, one with Argon, and nothing past it); there only a rebuild helps, and even a rebuild leaves 3 of 10 Terran 3-Dock E Piers out (their approach zones).
   - **Fewer connection structures** (`Options::fewer_connectors`, 2026-10-14): 4 km instead of 2 km. Game-data test `fewer_connectors`:
 
     | Case | Threshold | Connection structures | Plot |
