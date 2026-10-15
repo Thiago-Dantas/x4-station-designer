@@ -1663,6 +1663,23 @@ $<HTMLInputElement>("textures").onchange = async (ev) => {
   if (showTextures) await loadTextures();
   redraw();
 };
+/** Frame rate limit of the view (0: the screen's); 60 by default. */
+view.maxFps = (() => {
+  try {
+    return Number(localStorage.getItem("x4sd.maxFps") ?? "60");
+  } catch {
+    return 60;
+  }
+})();
+$<HTMLSelectElement>("max-fps").value = String(view.maxFps);
+$<HTMLSelectElement>("max-fps").onchange = (ev) => {
+  view.maxFps = Number((ev.target as HTMLSelectElement).value);
+  try {
+    localStorage.setItem("x4sd.maxFps", String(view.maxFps));
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+};
 $<HTMLSelectElement>("quality").value = quality;
 $<HTMLSelectElement>("quality").onchange = async (ev) => {
   quality = (ev.target as HTMLSelectElement).value as Quality;

@@ -22,6 +22,13 @@
         <option value="normal" selected>Normal</option>
         <option value="detailed">Detailed</option>
       </select>
+      <select id="max-fps" title="Frame rate limit while the view moves: lower uses less GPU (an idle view draws nothing anyway)">
+        <option value="30">30 fps</option>
+        <option value="60" selected>60 fps</option>
+        <option value="120">120 fps</option>
+        <option value="144">144 fps</option>
+        <option value="0">Screen fps</option>
+      </select>
       <span class="sep"></span>
       <input id="design-name" spellcheck="false" title="Plan name (also the import file name)" />
       <span id="dirty" hidden title="Changes since the last save or export">● unsaved</span>

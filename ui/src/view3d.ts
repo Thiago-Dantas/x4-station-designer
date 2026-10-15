@@ -108,6 +108,9 @@ export class View3D {
   /** Something on screen changed: draw the next frame. The view draws only then,
    * so an idle view costs (almost) no GPU time. */
   private dirty = true;
+  /** Frame rate limit (0: the screen's refresh rate), and when the last frame was drawn. */
+  maxFps = 60;
+  private lastDraw = 0;
   /** Frame counter shown in the view's corner: frames and busy milliseconds since `fpsSince`. */
   private fps = { el: document.createElement("div"), frames: 0, busy: 0, since: performance.now() };
   /** Move or rotate gizmo for a selected free-standing module. */
@@ -166,12 +169,16 @@ export class View3D {
       const start = performance.now();
       const keys = this.keyNavigate(this.clock.getDelta());
       // True while the camera moves, damping's glide after a drag included.
-      const moved = this.controls.update();
-      if (this.dirty || keys || moved) {
-        this.dirty = false;
-        this.renderer.render(this.scene, this.camera);
-        this.countFrame(start);
-      } else this.countFrame(null);
+      if (this.controls.update() || keys) this.dirty = true;
+      const interval = this.maxFps > 0 ? 1000 / this.maxFps : 0;
+      const elapsed = start - this.lastDraw;
+      if (!this.dirty || elapsed < interval) return this.countFrame(null);
+      // Carry the remainder over so the rate averages out to the limit
+      // (e.g. 60 on a 144 Hz screen); after a pause, start afresh.
+      this.lastDraw = interval && elapsed < 2 * interval ? start - (elapsed % interval) : start;
+      this.dirty = false;
+      this.renderer.render(this.scene, this.camera);
+      this.countFrame(start);
     });
   }
 
