@@ -17,4 +17,4 @@ User: "when a plan is made and applied with 'Only modules i have blueprints for'
 - [x] Placement reaches further before giving up: chains of 2-3 struts to a new hub (`Placer::reach`). Small gain (1 more dock with clear space in an overload test); the claytronics and "test" stations are sealed, which it can't fix.
 - [x] Checks in the builder (fresh builder per scenario, largest plot): "test" + 4 S, 2 M container storage, 2 Terran piers, race Any: No → 154 modules, plan unchanged; Yes → 163, plan lists 2 M storage, 10 energy, 1 habitat; extras list 2 M storage. Blueprint limit on → 103 "no blueprint" checks; off → 0.
 - [x] Docs: usage.md, x4-construction-plans.md (reach), decisions D-21
-- Known: after a partial build the plan summary still shows the full plan's cost.
+- [x] After a partial build the plan is made again (station as it is now, the shrunk targets and extras): checked in the builder, "test" scenario: 19 modules ≈ 12,793,316 Cr → 13 modules ≈ 8,381,616 Cr, same 3 rows left.

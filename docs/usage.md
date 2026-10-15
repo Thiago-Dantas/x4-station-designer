@@ -59,7 +59,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Race* uses that race's modules where it has them (generic ones otherwise, then any race). *House the workforce* can be turned off.
   - Each row shows **placed/needed** and counts down as you place modules. Click a row to arm that module.
   - **Place all (N)** attaches every module still to place at once (auto-placement).
-    - When some find no place, it asks first: **keep a partial build?** *No* leaves the station as it was. *Yes* keeps what was placed, and the plan then lists only what is left (the wares and other modules to add shrink by what was placed).
+    - When some find no place, it asks first: **keep a partial build?** *No* leaves the station as it was. *Yes* keeps what was placed: the wares and other modules to add shrink by what was placed, and the plan is made again for the station as it now is, so it lists only what is left, with its cost.
     - Before giving up on a spot, placement also tries a new connection hub at the end of a chain of two or three straight connection structures, out past what is in the way. A station whose free snaps all face into neighbouring modules has no way out: *Optimize* with *Rebuild connection structures* lays the whole station out again instead.
     - Modules go onto free snaps at exact positions, clear of each other, with connection structures of the plan's race added where needed. The largest go first; dock areas, piers and bays go last, where they have clear space.
     - The station may outgrow the plot (up to 20 km per axis); the builder then offers to enlarge it.

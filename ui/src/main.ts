@@ -1110,12 +1110,13 @@ async function placeAll() {
   renderPlanner();
 }
 
-/** After a partial build: the plan keeps only what is left to place, and the
- * targets and other modules to add shrink by what was placed (`now`: `macroCounts()`). */
+/** After a partial build: the targets and other modules to add shrink by what was
+ * placed, and the plan is made again for the station as it is now (`now`:
+ * `macroCounts()`), so it lists only what is left, with its cost and analysis. */
 function dropPlaced(now: Map<string, number>) {
   if (!plan) return;
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-  // Both the planner's lists and what the plan was asked for (a re-plan uses that).
+  // Both the planner's lists and what the plan was asked for (the re-plan uses that).
   const lists = [planner, plan.asked];
   for (const m of plan.result.modules) {
     const placed = placedOf(m, now);
@@ -1125,16 +1126,14 @@ function dropPlaced(now: Map<string, number>) {
       const extra = m.role === "extra" ? l.extras.find((x) => same(x.macro, m.macro)) : undefined;
       if (extra) extra.count -= placed;
     }
-    m.count -= placed;
   }
-  plan.result.modules = plan.result.modules.filter((m) => m.count > 0);
-  plan.baseline = now;
   for (const l of lists) {
     l.targets = l.targets.filter((t) => t.modules > 0);
     l.extras = l.extras.filter((x) => x.count > 0);
   }
+  plan.baseline = now;
   savePlanner();
-  renderPlanner();
+  void generatePlan(false);
 }
 
 /** Auto-places `todo` (one undo step; the station's modules stay where they are)
