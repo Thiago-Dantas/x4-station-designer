@@ -1331,19 +1331,46 @@ fn break_up_opens_a_sealed_station() {
     }
 }
 
-/// Defence platforms and piers end up outermost after Optimize (user report
-/// 2026-10-15: a disc deep inside the "test" station): nothing on the line out
-/// from the station's centre through them.
+/// Optimize with a rebuild on the user's "test" station with 12 Terran discs
+/// (2026-10-15): it fills a compact plot instead of growing arms, and defence
+/// platforms and piers end up outermost (they were deep inside): nothing on the
+/// line out from the station's centre through them, the defence platforms
+/// spread out, each in the outer half of the station's body.
 #[test]
 fn optimize_puts_defence_and_piers_outside() {
     use x4sd_core::layout::{optimize, overlaps, OptimizeOptions};
-    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/test-20261015.xml")) else { return };
+    use x4sd_core::plot::{entry_bounds, required_plot};
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/test-20261015-discs.xml")) else { return };
     let mut d = Design::from_plan(plans[0].clone());
-    let fixes: Vec<(String, u32)> = [("dockarea_ter_m_station_01_standard_macro", 5), ("pier_ter_harbor_03_macro", 10), ("defence_ter_disc_01_macro", 2)].iter().map(|(m, n)| (m.to_string(), *n)).collect();
-    let r = optimize(c, &mut d, &fixes, &OptimizeOptions { grow_plot: true, race: Some("terran".to_owned()), ..Default::default() }).unwrap();
-    eprintln!("{} entries, connectors +{}, docks blocked {}", d.plan().entries.len(), r.placement.connectors.len(), r.placement.docks_blocked);
+    let start = Instant::now();
+    let r = optimize(c, &mut d, &[], &OptimizeOptions { grow_plot: true, race: Some("terran".to_owned()), ..Default::default() }).unwrap();
+    let plot = required_plot(d.plan(), c).unwrap();
+    eprintln!("{:?}: {} entries, connectors -{} +{}, broken up {}, docks blocked {}; plot {plot}", start.elapsed(), d.plan().entries.len(), r.connectors_removed, r.placement.connectors.len(), r.placement.broken_up, r.placement.docks_blocked);
     assert!(overlaps(d.plan(), c).is_empty());
-    let outside: Vec<u32> = d.plan().entries.iter().filter(|e| ["defencemodule", "pier"].contains(&c.module(&e.macro_name).unwrap().class.as_str())).map(|e| e.index).collect();
-    assert_eq!(outside.len(), 13);
-    assert_clear_out(c, &d, &outside, station_centre(c, &d));
+    assert_eq!(r.placement.docks_blocked, 0);
+    assert!(plot.size().iter().all(|&s| s <= 12), "compact: {plot} (20x11x19 km before)");
+    let class = |e: &x4sd_core::plan::Entry| c.module(&e.macro_name).unwrap().class.clone();
+    let outside: Vec<u32> = d.plan().entries.iter().filter(|e| ["defencemodule", "pier"].contains(&class(e).as_str())).map(|e| e.index).collect();
+    assert_eq!(outside.len(), 23);
+    let centre = station_centre(c, &d);
+    assert_clear_out(c, &d, &outside, centre);
+    // Defence platforms against the station's body (what isn't docks, piers, bays,
+    // defence or connection structures; piers reach 4-6 km out, past them).
+    let body: Vec<[f64; 3]> = d
+        .plan()
+        .entries
+        .iter()
+        .filter(|e| !["connectionmodule", "dockarea", "pier", "defencemodule", "buildmodule"].contains(&class(e).as_str()))
+        .map(|e| entry_bounds(d.plan(), c, e.index).unwrap())
+        .map(|(l, h)| std::array::from_fn(|i| (l[i] + h[i]) / 2.0))
+        .collect();
+    let middle: [f64; 3] = std::array::from_fn(|i| body.iter().map(|p| p[i]).sum::<f64>() / body.len() as f64);
+    let out = |p: [f64; 3]| (0..3).map(|i| (p[i] - middle[i]).powi(2)).sum::<f64>().sqrt();
+    for e in d.plan().entries.iter().filter(|e| class(e) == "defencemodule") {
+        let (l, h) = entry_bounds(d.plan(), c, e.index).unwrap();
+        let at = out(std::array::from_fn(|i| (l[i] + h[i]) / 2.0));
+        let farther = body.iter().filter(|p| out(**p) > at).count();
+        eprintln!("defence #{} {at:.0} m from the body's middle, {farther} of {} body modules farther", e.index, body.len());
+        assert!(farther * 2 < body.len(), "#{}: in the outer half of the body", e.index);
+    }
 }

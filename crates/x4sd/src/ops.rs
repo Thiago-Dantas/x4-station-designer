@@ -668,6 +668,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs, b
         sides,
         owned: blueprints.owned(),
         break_up: args.break_up.unwrap_or(true),
+        fill: false,
     };
     let r = layout::auto_place(catalog, design, &modules, &options).map_err(|e| e.to_string())?;
     let mut out = json!({
