@@ -50,6 +50,8 @@ Open a plan you saved in game, check its production, cost and load, and step thr
 4. Click **Export to game**. This writes the plan into your profile's `constructionplan` folder.
 5. In game, open the station build menu and click **Import**. The plan appears with your other plans; the game doesn't need a restart.
 
+When a new version is released, the builder shows a bar with a download link at start (it asks GitHub once per start; *Skip this version* hides it until the next release).
+
 Exporting a plan with the same id as one you have replaces it in game, after the game asks. If you renamed it, it is exported as a new plan instead.
 
 ## For AI agents (MCP)

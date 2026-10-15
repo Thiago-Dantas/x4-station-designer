@@ -146,6 +146,8 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #status { padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); min-height: 24px; }
 #status.error { color: var(--bad); }
 #status.good { color: var(--ok); }
+#update { padding: 4px 10px; background: var(--panel-2); border-top: 1px solid var(--accent); display: flex; align-items: center; gap: 8px; }
+#update[hidden] { display: none; }
 
 #modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 #modal[hidden] { display: none; }

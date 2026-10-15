@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Builder window: core APIs and file dialogs",
+  "description": "Builder window: core APIs, file dialogs, opening the release page",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "core:window:allow-destroy", "core:window:allow-set-title"]
+  "permissions": ["core:default", "dialog:default", "opener:default", "core:window:allow-destroy", "core:window:allow-set-title"]
 }

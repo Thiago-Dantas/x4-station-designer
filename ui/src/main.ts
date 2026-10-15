@@ -2,8 +2,10 @@
 // through the Tauri commands in api.ts, which return the new scene.
 import "./style.css";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BufferGeometry } from "three";
 import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type Issue, type ModuleInfo, type PlannedModule, type PlanRef, type PlotStatus, type ProductionPlan, type Quality, type Quat, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
 import { attachMatrix, CLASS_COLORS, type DiffuseTexture, modelGeometry, poseMatrix, View3D } from "./view3d";
@@ -1853,5 +1855,44 @@ void listen<Blueprints>("blueprints-changed", (ev) => {
     await apply(api.scene(), `${modules.length} modules loaded · profile ${catalog.profile ?? "not found"}`, true);
   } catch (e) {
     status(String(e), "error");
+  }
+})();
+
+/** "1.10.0" > "1.9.2": numeric parts, a leading "v" ignored. */
+function newerVersion(a: string, b: string): boolean {
+  const parts = (v: string) => v.replace(/^v/, "").split(".").map((x) => parseInt(x) || 0);
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+}
+
+/** Once per start: if GitHub has a newer release than this one, and newer than the
+ * last one the user skipped, a banner offers it. Offline or failing: nothing. */
+void (async () => {
+  try {
+    const r = await fetch("https://api.github.com/repos/Thiago-Dantas/x4-station-designer/releases/latest");
+    if (!r.ok) return;
+    const { tag_name: tag, html_url: url } = (await r.json()) as { tag_name: string; html_url: string };
+    const skipped = (() => {
+      try {
+        return localStorage.getItem("x4sd.skipVersion") ?? "0";
+      } catch {
+        return "0";
+      }
+    })();
+    if (!newerVersion(tag, await getVersion()) || !newerVersion(tag, skipped)) return;
+    $("update-text").textContent = `X4 Station Designer ${tag.replace(/^v/, "")} is out.`;
+    $("update-download").onclick = () => void openUrl(url);
+    $("update-skip").onclick = () => {
+      try {
+        localStorage.setItem("x4sd.skipVersion", tag);
+      } catch {
+        // Not remembered: it shows again next start.
+      }
+      $("update").hidden = true;
+    };
+    $("update").hidden = false;
+  } catch {
+    // No network or no answer: no banner.
   }
 })();

@@ -40,6 +40,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
     let app = App { game_dir, profile_dir, catalog: None, info: HashMap::new(), design: Design::new("New station"), blueprints: Default::default() };
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(app))
         .setup(|app| {
             let handle = app.handle().clone();
