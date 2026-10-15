@@ -136,6 +136,8 @@ export class View3D {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.addEventListener("change", () => (this.dirty = true));
+    // A left drag turns the view too: around what is in the middle (before the controls see the press).
+    container.addEventListener("pointerdown", (ev) => ev.button === 0 && this.pivotOnView(), true);
     this.scene.add(new THREE.HemisphereLight(0xdde6ff, 0x202430, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, 2, 1.5);
@@ -204,8 +206,10 @@ export class View3D {
     const codes = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "KeyZ", "KeyX", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
     const typing = (ev: KeyboardEvent) =>
       ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.target instanceof HTMLTextAreaElement;
+    const turns = ["KeyQ", "KeyE", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
     window.addEventListener("keydown", (ev) => {
       if (codes.includes(ev.code) && !typing(ev) && !ev.ctrlKey && !ev.altKey) {
+        if (turns.includes(ev.code) && !turns.some((c) => this.panKeys.has(c))) this.pivotOnView();
         this.panKeys.add(ev.code);
         if (ev.code.startsWith("Arrow")) ev.preventDefault(); // no list scrolling
       }
@@ -217,7 +221,8 @@ export class View3D {
   /** Keyboard navigation while keys are held, like the game's: W/S move forward/back
    * along the view direction kept level, A/D left/right, Z/X straight down/up
    * (speeds scaled to the zoom); Q/E (and the left/right arrows) turn the camera
-   * around the target, the up/down arrows tilt it. */
+   * around the target, the up/down arrows tilt it. A turn starts by moving the
+   * target onto what is in the middle of the view (`pivotOnView`). */
   private keyNavigate(seconds: number): boolean {
     if (this.panKeys.size === 0) return false;
     const dt = Math.min(seconds, 0.1);
@@ -556,6 +561,16 @@ export class View3D {
     const direction = this.camera.position.clone().sub(this.controls.target).normalize();
     this.controls.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
+  }
+
+  /** Turns go around what is in the middle of the view: the module surface there,
+   * if any. WASD moves the target along with the camera, so after flying close
+   * to the station it can be far beyond what the camera looks at. The view doesn't
+   * change, only the point it turns around. */
+  private pivotOnView() {
+    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+    const hit = this.raycaster.intersectObjects(this.station.children, true).find((h) => h.distance > this.camera.near);
+    if (hit) this.controls.target.copy(hit.point);
   }
 
   private setRay(clientX: number, clientY: number) {

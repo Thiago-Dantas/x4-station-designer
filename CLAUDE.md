@@ -25,6 +25,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 | `research/mcp_smoke.py` | Drives `x4sd mcp` like an agent (build, validate, export a station) |
 | `research/gizmo_checks_smoke.py` | Live checks during a gizmo drag: drags a module out of the plot and back with a real mouse drag, reading the checks before release |
 | `research/sequence_smoke.py` | Copy / Remove sequence keys in the builder (Ctrl+C, Ctrl+Shift+C, Shift+middle click, Del, Shift+Del) and the *not attached* check (D-20) |
+| `research/turn_pivot_smoke.py` | Q/E after flying in with WASD: the view turns around the module in the middle, not a point far beyond (user report 2026-10-15) |
 | `research/blueprint_smoke.py` | Blueprint limit (D-16): MCP tools headless, then the builder's checkbox, Re-read and restart |
 | `research/record_gifs.py`, `docs/media/` | Records the README GIFs (snap-building, planner, Optimize, agent live edit, plan analysis) by scripting the builder over DevTools; gifski encodes them. Usage in docs/dev-setup.md |
 | `research/xmf.py` | Research parser for `.xmf` meshes (format notes in its docstring and docs/x4-game-data.md) |
