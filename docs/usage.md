@@ -62,7 +62,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - What found no room is listed under the button. Ctrl+Z undoes the whole placement.
     - Once everything is placed, the wares and other modules to add are cleared (the plan stays on screen). If something found no room, they stay, for another try.
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
-    - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
+    - Either way the plan is redone for the station and the wares it was made for (also once Place all has cleared the lists). What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
   - Sunlight and build method come from the right pane. The settings are remembered.
   - **Optimize station** (the x4ep_planner's *Optimise*, plus a re-layout) works on the open station with the settings above (wares to make are ignored).
     - First it only shows a **plan**: the modules that cover the station's shortfalls, by role. Nothing changes yet. Trim it:
@@ -118,7 +118,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
   - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
 - **New versions** (D-19): once per start the builder asks GitHub for the latest release. If it is newer than the running one, a bar above the status line offers it: *Download* opens the release page in the browser; *Skip this version* hides it until a later release comes out (skip 1.1 and 1.2 shows again). With no network nothing shows. The CLI and the MCP server don't check.
-- **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load.
+- **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load. The view draws only when something changes (camera, keys, gizmo, hover, an edit), so it reads **idle** and uses almost no GPU when you aren't moving anything.
 - **View:** left drag **or the arrow keys** rotate (left/right around, up/down tilt). Right drag pans. Keys follow the game: **W/S** move forward/back where you look (kept level), **A/D** left/right, **Z/X** straight down/up, **Q/E** turn the camera left/right (like the arrow keys).
 - **Middle click** a placed module to place more of that type (like a palette click). On empty space it takes the selected module's type. Middle drag still zooms. Keys are smooth while held, with speed following the zoom; the wheel zooms. Modules show their **real game models**, with textures (below) or tinted by module class.
 - **Model detail** (toolbar): *Fast* (lowest LOD, hull only; for very large stations), *Normal* (default), *Detailed* (finest LOD with all small details). The choice is remembered.

@@ -722,10 +722,12 @@ let planner: PlannerState = (() => {
   }
 })();
 let wareNames = new Map<string, string>();
-/** The last plan, and how many of each macro the design had when it was made.
+/** The last plan, how many of each macro the design had when it was made, and
+ * the wares and other modules it was made for (`asked`; a re-plan keeps them, even
+ * once Place all has cleared the lists).
  * `optimize`: an Optimize plan (the shortfall fixes), applied with Apply plan;
  * `dropped` holds the macros of rows the user removed. */
-let plan: { result: ProductionPlan; baseline: Map<string, number>; optimize?: { dropped: Set<string> } } | null = null;
+let plan: { result: ProductionPlan; baseline: Map<string, number>; asked: Pick<PlannerState, "targets" | "extras">; optimize?: { dropped: Set<string> } } | null = null;
 
 /** An Optimize plan's modules, without the rows the user removed. */
 function optimizeModules() {
@@ -962,12 +964,13 @@ async function generatePlan(fresh: boolean, optimize = false) {
   const baseline = fresh || !plan ? macroCounts() : plan.baseline;
   // A re-plan (buying a ware) keeps an Optimize plan's mode and removed rows.
   const mode = fresh ? (optimize ? { dropped: new Set<string>() } : undefined) : plan?.optimize;
+  const asked = fresh || !plan ? structuredClone({ targets: planner.targets, extras: planner.extras }) : plan.asked;
   let result;
   try {
     result = await api.planProduction(
       {
-        targets: mode ? [] : planner.targets,
-        extra_modules: mode ? [] : planner.extras.map(({ macro, count }) => ({ macro, count })),
+        targets: mode ? [] : asked.targets,
+        extra_modules: mode ? [] : asked.extras.map(({ macro, count }) => ({ macro, count })),
         race: planner.race || null,
         workforce: planner.workforce,
         storage_hours: planner.hours,
@@ -983,7 +986,7 @@ async function generatePlan(fresh: boolean, optimize = false) {
     return;
   }
   if (fresh || !plan) $("planner-placed").textContent = "";
-  plan = { result, baseline, optimize: mode };
+  plan = { result, baseline, asked, optimize: mode };
   renderPlanner();
 }
 

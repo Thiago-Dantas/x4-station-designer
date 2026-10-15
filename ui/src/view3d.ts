@@ -105,6 +105,9 @@ export class View3D {
    * down/up, the arrow keys rotate the camera around its target. */
   private panKeys = new Set<string>();
   private clock = new THREE.Clock();
+  /** Something on screen changed: draw the next frame. The view draws only then,
+   * so an idle view costs (almost) no GPU time. */
+  private dirty = true;
   /** Frame counter shown in the view's corner: frames and busy milliseconds since `fpsSince`. */
   private fps = { el: document.createElement("div"), frames: 0, busy: 0, since: performance.now() };
   /** Move or rotate gizmo for a selected free-standing module. */
@@ -129,6 +132,7 @@ export class View3D {
     this.camera.position.set(4000, 3000, 4000);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
+    this.controls.addEventListener("change", () => (this.dirty = true));
     this.scene.add(new THREE.HemisphereLight(0xdde6ff, 0x202430, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, 2, 1.5);
@@ -153,28 +157,36 @@ export class View3D {
       }
     });
     this.gizmo.addEventListener("objectChange", () => this.followGizmo());
+    this.gizmo.addEventListener("change", () => (this.dirty = true));
     this.scene.add(this.gizmoTarget, this.gizmo.getHelper());
     this.bindPanKeys();
     this.fps.el.className = "fps";
     container.append(this.fps.el);
     this.renderer.setAnimationLoop(() => {
       const start = performance.now();
-      this.keyNavigate(this.clock.getDelta());
-      this.controls.update();
-      this.renderer.render(this.scene, this.camera);
-      this.countFrame(start);
+      const keys = this.keyNavigate(this.clock.getDelta());
+      // True while the camera moves, damping's glide after a drag included.
+      const moved = this.controls.update();
+      if (this.dirty || keys || moved) {
+        this.dirty = false;
+        this.renderer.render(this.scene, this.camera);
+        this.countFrame(start);
+      } else this.countFrame(null);
     });
   }
 
-  /** Updates the frame counter twice a second: frames per second, and the time a
-   * frame takes to update and draw (the frame rate stops at the screen's refresh rate). */
-  private countFrame(start: number) {
+  /** Updates the frame counter twice a second: frames drawn per second, and the
+   * time a frame takes to update and draw (the frame rate stops at the screen's
+   * refresh rate); "idle" when nothing was drawn. `start`: null for a frame not drawn. */
+  private countFrame(start: number | null) {
     const f = this.fps;
     const now = performance.now();
-    f.frames++;
-    f.busy += now - start;
+    if (start !== null) {
+      f.frames++;
+      f.busy += now - start;
+    }
     if (now - f.since >= 500) {
-      f.el.textContent = `${Math.round((f.frames * 1000) / (now - f.since))} fps · ${(f.busy / f.frames).toFixed(1)} ms`;
+      f.el.textContent = f.frames ? `${Math.round((f.frames * 1000) / (now - f.since))} fps · ${(f.busy / f.frames).toFixed(1)} ms` : "idle";
       f.frames = 0;
       f.busy = 0;
       f.since = now;
@@ -199,8 +211,8 @@ export class View3D {
    * along the view direction kept level, A/D left/right, Z/X straight down/up
    * (speeds scaled to the zoom); Q/E (and the left/right arrows) turn the camera
    * around the target, the up/down arrows tilt it. */
-  private keyNavigate(seconds: number) {
-    if (this.panKeys.size === 0) return;
+  private keyNavigate(seconds: number): boolean {
+    if (this.panKeys.size === 0) return false;
     const dt = Math.min(seconds, 0.1);
     const held = (code: string) => (this.panKeys.has(code) ? 1 : 0);
     const right = held("KeyD") - held("KeyA");
@@ -230,6 +242,7 @@ export class View3D {
       this.camera.position.copy(this.controls.target).add(offset.setFromSpherical(s));
       this.camera.lookAt(this.controls.target);
     }
+    return true;
   }
 
   /** A WebGL compressed texture from `texture` bytes, or null if this GPU lacks the format. */
@@ -280,6 +293,7 @@ export class View3D {
     upTo: number | null = null,
     noSnaps: Set<number> | null = null,
   ) {
+    this.dirty = true;
     clear(this.station);
     clear(this.snaps);
     clear(this.plotBox);
@@ -343,6 +357,7 @@ export class View3D {
     onMoved: ((position: Vec3, rotation: Quat) => void) | null = null,
     mode: "translate" | "rotate" = "translate",
   ) {
+    this.dirty = true;
     this.onGizmoMoved = onMoved;
     if (!at) {
       this.gizmo.detach();
@@ -407,6 +422,7 @@ export class View3D {
 
   /** Recolours the plot box: green when the station fits, red when it doesn't. */
   setPlotFits(fits: boolean) {
+    this.dirty = true;
     for (const o of this.plotBox.children) ((o as THREE.LineSegments).material as THREE.LineBasicMaterial).color.setHex(fits ? 0x4fbf7a : 0xe5534b);
   }
 
@@ -426,6 +442,7 @@ export class View3D {
   /** Cones on the moving module's own snaps (`snaps` in its frame, the module
    * at `at`); `chosen` is drawn brighter and larger. Null removes them. */
   setOwnSnaps(at: { position: Vec3; rotation: Quat } | null, snaps: SnapInfo[], chosen: string) {
+    this.dirty = true;
     clear(this.ownSnaps);
     if (!at) return;
     const matrix = poseMatrix(at.position, at.rotation);
@@ -444,6 +461,7 @@ export class View3D {
   /** Shows see-through modules at `matrix` (Three.js frame): real models, else
    * their boxes. Null or an empty list removes the preview. */
   setGhost(parts: { model: THREE.BufferGeometry | null; shape: Shape | undefined; matrix: THREE.Matrix4 }[] | null) {
+    this.dirty = true;
     clear(this.ghost);
     const material = new THREE.MeshBasicMaterial({ color: 0x7fe8ff, transparent: true, opacity: 0.35, depthWrite: false });
     for (const p of parts ?? []) {
@@ -477,6 +495,7 @@ export class View3D {
 
   /** Highlights the free snap under the cursor and returns it. */
   hoverSnap(clientX: number, clientY: number): { index: number; snap: string } | null {
+    this.dirty = true;
     this.setRay(clientX, clientY);
     const hit = this.raycaster.intersectObjects(this.snaps.children, false)[0]?.object as THREE.Mesh | undefined;
     if (this.hovered && this.hovered !== hit) (this.hovered.material as THREE.MeshBasicMaterial).color.set(SNAP_COLOR);
@@ -488,6 +507,7 @@ export class View3D {
 
   /** Points the camera at the whole station, `extra` metres farther out than a tight fit. */
   frame(extra = 0) {
+    this.dirty = true;
     const box = new THREE.Box3().setFromObject(this.station);
     if (box.isEmpty()) box.set(new THREE.Vector3(-2000, -2000, -2000), new THREE.Vector3(2000, 2000, 2000));
     const sphere = box.getBoundingSphere(new THREE.Sphere());
@@ -499,6 +519,7 @@ export class View3D {
 
   /** Shows the whole plot box from the current viewing direction (the station when there is no plot). */
   framePlot() {
+    this.dirty = true;
     const box = new THREE.Box3().setFromObject(this.plotBox);
     if (box.isEmpty()) return this.frame();
     const sphere = box.getBoundingSphere(new THREE.Sphere());
@@ -510,6 +531,7 @@ export class View3D {
 
   /** Points the camera at module `index` from the current viewing direction (nothing when it isn't drawn). */
   frameModule(index: number) {
+    this.dirty = true;
     const box = new THREE.Box3();
     for (const o of this.station.children) {
       if (o instanceof THREE.InstancedMesh) {
@@ -536,6 +558,7 @@ export class View3D {
   }
 
   private resize() {
+    this.dirty = true;
     const { clientWidth: w, clientHeight: h } = this.container;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(h, 1);
