@@ -200,7 +200,7 @@ Steps:
     - dock areas and piers prefer open space.
   - **Open (in game):**
     - ~~the game builds an auto-placed station~~ works in game (user, 2026-10-14, light testing);
-    - ships reach its dock area and pier;
+    - ~~ships reach its dock area and pier~~ verified (user, 2026-10-14, light testing);
     - whether the game minds the overlaps `validate` reports on stations built in game.
 - 2026-10-13: user feedback on the Planner tab, fixed the same day:
   - **Ware search:** the `<datalist>` gave no usable search. It is replaced by an in-page list that matches every typed word against the name or id, names starting with the first word first. Arrow keys and Enter, or a click, add the ware.

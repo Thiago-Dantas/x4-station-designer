@@ -1,6 +1,6 @@
 # Workflow: build order viewer and editor (user request)
 
-Status: **done** (2026-10-13); the in-game check is still open
+Status: **done** (2026-10-13); the game follows a changed build order (user, 2026-10-14, light testing)
 
 User request: "can we edit the module build order? ... change the build order and set priorities for specific modules; a module build order viewer would be nice", later: "drag and drop on the build order to reorder things".
 
@@ -19,7 +19,7 @@ See docs/x4-construction-plans.md, "Build order and stages":
 - [x] Tests:
   - unit test `build_order_moves_respect_attachments`
   - ui_smoke: 84 rows; step 10 dims 74; build first moves "Terran L Solid Storage" from #50 to #4, still selected; stage divider; undo; synthetic drag of row 14 onto row 10
-- [ ] In game: export a reordered plan and watch the build order (needs the user)
+- [x] In game: export a reordered plan and watch the build order (needs the user). Works (user, 2026-10-14, light testing).
 
 ## Notes
 - 2026-10-14: user feedback: a pier at step 10 couldn't be built first, because it hung on a 9-module chain from the root. `build_first` now re-roots: it reverses that chain's links (offsets unchanged), so any module can be step 1. Unit test updated; checked on the user's 307-module plan (valid order, 0 issues).

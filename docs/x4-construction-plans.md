@@ -137,7 +137,7 @@ So:
 
 ## Build order and stages (2026-10-13)
 - **Order = entry order (verified in data).** In all 4,000+ entries we have (player and library plans), a predecessor always has a lower `index` than its child. So `index` order is a valid build order: a module comes after the module it attaches to.
-  - **Hypothesis:** the builder constructs modules in that order. To check in game, export a plan with a changed order and watch the build.
+  - **Verified in game** (user, 2026-10-14, light testing): the game follows a changed build order.
 - **Stages (verified in the Lua and schema).** `entry@bookmark="1"` closes a build stage. The build menu reads it as `bookmarknum` and shows "[Stage N]" plus a "Toggle Bookmark" button, but only when `IsCheatVersion()` (Egosoft's internal build).
   - MD actions can build up to a stage: `add_build_to_expand_station <stage>` ("use 0 to construct whole sequence"), and `create_station` / station state with `<stage>`.
   - 42 library plans use stages, e.g. `arg_claytronics_prefab_08` with 7. Player plans have none.
@@ -146,7 +146,7 @@ So:
 - **Implemented:** `Design::move_in_build_order`, `build_first`, `build_last` and `set_stage_end` (core). They're in the builder's Build order tab and the MCP tools. Every reorder is checked so a module never comes before its predecessor, then the plan is renumbered.
 - **Re-rooting (2026-10-14).** `build_first` makes the module the root: each link on the path from it to the old root is reversed (the child's `connection` and the predecessor's snap swap roles), so that chain hangs on it, then it and the chain go to the front. Offsets don't change, so the geometry stays the same. Checked on a 307-module player plan: every module still comes after its predecessor, and validation finds no issues before or after.
   - **Hypothesis:** the game accepts a root that isn't at the station origin and builds it first. Offsets are authoritative (test C), and 164 entries in real plans have no `connection`. Still to check in game.
-- **Still to check in game:** whether the builder follows the order, and whether stages matter for player builds.
+- **Still to check in game:** whether stages matter for player builds.
 
 ## Plots (verified in the build menu Lua, 2026-10-13)
 - **Shape:** a plot is a box around the station origin, measured per side in whole km (+X, −X, +Y, −Y, +Z, −Z). Each axis is at most 20 km (`maxPlotSize`) and at least 1 km. Internally it's a size in metres plus a centre offset (`GetBuildPlotSize` / `GetBuildPlotCenterOffset`).
@@ -188,6 +188,7 @@ So:
   - `validate` reports equipment on a group the module lacks, equipment that doesn't fit, and more than the slots.
   - The *loadout level* is our own rule, not the game's: fitting non-missile equipment, the module's race first, cheapest/middle/most expensive. **Hypothesis**: the game's `GenerateModuleLoadout(level)` may pick differently.
   - **Not checked in game yet:** that an imported plan builds with this equipment, and what a partial count (fewer than the slots) does.
+    - **Hypothesis, likely:** it builds. Plans with equipment made in game load into the builder with that equipment, and the export writes the same form back.
 
 ## Overlaps (calibrated 2026-10-13, game-data test `overlap_calibration`)
 The plan format doesn't stop modules from intersecting. The build menu has an **"Allow module overlap"** setting (`moduleoverlap`, off by default and off in the user's profile; it toggles `SetConstructionMapCollisionDetection`). We need our own overlap check for auto-placement and for `validate`.
@@ -285,7 +286,7 @@ The red volume the build menu draws in front of a pier while you move it is an *
     - **Docks already on the station stay where they are** (D-18, 2026-10-14). Until then every run lifted off the dock areas, piers and bays with nothing attached and placed them again outside, so *Place all* moved the station's own docks. Now their corridors (from the station's centre before the run) and zones are protected instead, if they are clear at the start.
     - New dock areas and piers go last, at the nearest spot with a clear corridor.
     - The run reports `docks_blocked` (placed without a clear corridor because there was no such spot).
-    - **Hypothesis:** a 3 km corridor straight out is enough room for ships to reach them. Not checked in game.
+    - **Verified in game** (user, 2026-10-14, light testing): ships reach the docks of auto-placed and optimized stations, so a 3 km corridor straight out is enough room.
   - **Clearance** (D-12, 2026-10-14; see "Clearance: exclusion zones"): modules that need clear space (`layout::outer`: dock areas, piers, and every module with exclusion zones, such as fabrication and maintenance bays) form the outer layer and go last; those already on the station stay, with their zones protected.
     - They are placed where all their zones are clear of modules not joined to them; their zones are then protected like corridors.
     - The 3 km corridor stays for dock areas and piers whose zones are all shorter than it (M dock areas: 500 m up). Without it a dock area sat among the "100 solar" panels with only a clear column above it. Piers don't need it (100 km zones); requiring it too left 6 modules of the megashipyard without a spot.
@@ -318,18 +319,16 @@ The red volume the build menu draws in front of a pier while you move it is an *
     | Rebuild | 1.9 s | 9×10×10 km | 2.1 / 3.7 / 3.0 km |
 
   - Both modes: nothing lost, equipment kept, no overlaps, docks clear.
-- **In game (verified by the user, 2026-10-14, light testing):** stations from the planner's *Place all* and from Optimize work in game. Not tested extensively.
-- **Not checked in game yet:**
-  - that ships reach the docks.
+- **In game (verified by the user, 2026-10-14, light testing):** stations from the planner's *Place all* and from Optimize work in game, and ships reach their docks. Not tested extensively.
 
-## In-game load (hypothesis, 2026-10-14)
-What likely costs the game frame rate, from players' experience; **nothing here is measured** in game:
+## In-game load (2026-10-14)
+What costs the game frame rate, from players' experience. **Verified in game** (user, 2026-10-14, light testing): the load numbers track frame rate. They are counts, not a frame-rate measurement:
 - **Module count** matters most: each module is an object the game draws and checks for collisions. Connection structures add to it and make nothing.
 - **Turrets:** each aims and fires on its own, which costs most in fights.
 - **Traffic and sprawl:** docking ships, and ships steering around a sprawling station (pathfinding).
 - **Location:** stations in other sectors run on a cheaper simulation, so the cost is mostly felt in the same sector.
 
-`perf::load` counts these (modules, connection structures, turrets and shields as slots filled, dock areas plus piers, size). It feeds the builder's *In-game load* section, MCP `station_load` and `x4sd show`. Checked on the samples: TerranScrapyard 84 modules (16 connection structures); "defense station" 288 turrets on 144 entries (`exact`), 144 shields. A way to verify: build a sprawling and a compact variant of one station in game and compare the frame rate in its sector.
+`perf::load` counts these (modules, connection structures, turrets and shields as slots filled, dock areas plus piers, size). It feeds the builder's *In-game load* section, MCP `station_load` and `x4sd show`. Checked on the samples: TerranScrapyard 84 modules (16 connection structures); "defense station" 288 turrets on 144 entries (`exact`), 144 shields.
 
 ## Unknowns
 - Does the game load external edits to `constructionplans.xml` at startup (option A after a restart)? Low priority now that B works.

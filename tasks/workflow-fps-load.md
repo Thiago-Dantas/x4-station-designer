@@ -1,6 +1,6 @@
 # Workflow: in-game load readout; fewer connection structures (user request)
 
-Status: **done** (2026-10-14); in game it is still unchecked whether these counts track frame rate
+Status: **done** (2026-10-14); these counts track frame rate in game (user, 2026-10-14, light testing)
 
 User, 2026-10-14, asked "is there a way to optimize stations to have less in game FPS impact?". The answer (community knowledge, all **hypotheses**, nothing measured in game): module count matters most (connection structures add count and produce nothing), then turrets (each one aims and fires), then dock traffic and sprawl (ship pathfinding), then where the station is (other sectors are simulated cheaply). The user picked two follow-ups: "i like both Cost readout and Planner option, do it".
 

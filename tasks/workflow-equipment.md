@@ -1,6 +1,6 @@
 # Workflow: equipment (shields and turrets per module group)
 
-Status: **done** (2026-10-14); an in-game check of an equipped plan is still open
+Status: **done** (2026-10-14); an in-game check of an equipped plan is still open (likely works: the user's in-game plans with equipment load into the builder correctly)
 
 User: "next lets go with Equipment (shields/turrets per module group) in the model, the builder and MCP" (roadmap Phase 4).
 

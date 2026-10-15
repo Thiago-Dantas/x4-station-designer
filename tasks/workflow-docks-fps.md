@@ -1,6 +1,6 @@
 # Workflow: FPS counter; docks and piers kept on the outside (user requests)
 
-Status: **done** (2026-10-14); in-game check of ships reaching the docks still open
+Status: **done** (2026-10-14); ships reach the docks in game (user, 2026-10-14, light testing)
 
 User, 2026-10-14 (screenshot of a dock area among solar panels and habitat rings):
 - "can you add an FPS counter, im noticing its a bit slower now"
