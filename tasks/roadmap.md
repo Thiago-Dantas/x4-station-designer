@@ -98,7 +98,7 @@ Proposed order (each step usable on its own):
 - [x] Find the game on any machine: Steam libraries anywhere, GOG, a folder picker in the builder that is remembered (D-24, [workflow-find-game.md](workflow-find-game.md))
 - [x] Automated checks (CI) for the parts that don't need the game installed (`ci.yml`, part of [workflow-scorecard.md](workflow-scorecard.md))
 - [x] GitHub security checks, OpenSSF Scorecard, releases built by Actions from a tag (D-26, [workflow-github-ci.md](workflow-github-ci.md))
-- [ ] Raise the OpenSSF Scorecard score (3.9 at first) ([workflow-scorecard.md](workflow-scorecard.md))
+- [x] Raise the OpenSSF Scorecard score (3.9 at first, 6.1 after) ([workflow-scorecard.md](workflow-scorecard.md))
 - [x] Modules no longer stack inside each other: snaps join only facing each other ([workflow-joined-snaps.md](workflow-joined-snaps.md)); Place all asks before a partial build ([workflow-placement-partial.md](workflow-placement-partial.md))
 - [ ] Re-tune auto-placement for honest layouts: break up sealed stations, connectors inside for internal modules ([workflow-retune-placement.md](workflow-retune-placement.md))
 

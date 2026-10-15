@@ -1,6 +1,6 @@
 # Workflow: raise the OpenSSF Scorecard score
 
-Status: **open** (created 2026-10-15)
+Status: **done** (created and finished 2026-10-15; Signed-Releases rises with each tagged release from now on)
 
 Request (2026-10-15): work through the Scorecard checks after the setup in [workflow-github-ci.md](workflow-github-ci.md) (D-26). First score: **3.9/10**.
 
@@ -31,7 +31,7 @@ Request (2026-10-15): work through the Scorecard checks after the setup in [work
 - **Contributors (0):** needs contributors from several organisations.
 
 ## Finish
-- [ ] Re-read the score; record before/after per check in the notes below
+- [x] Re-read the score; record before/after per check in the notes below
 - [x] Docs: `docs/decisions.md` (extend D-26 or a new entry), `CLAUDE.md` layout rows for new files, `BUILDING.md` if the release or CI steps change, roadmap
 
 ## Notes
@@ -49,3 +49,5 @@ Request (2026-10-15): work through the Scorecard checks after the setup in [work
   - CodeQL: default setup turned off (`gh api -X PATCH .../code-scanning/default-setup -f state=not-configured`), then `codeql.yml` pushed (73973ae): actions, javascript-typescript, python, rust, all `build-mode: none` (the languages default setup had). First run OK, 4 analyses uploaded, 0 alerts.
   - Ruleset 25195674 "main: no force push or deletion" (rules `deletion`, `non_fast_forward`, default branch, no bypass actors) = Branch-Protection Tier 1, 3/10 (checks.md). Direct pushes still work (this commit). Code-Review stays 0 without PRs.
 - CI: first run OK (test 4m09s on windows-latest: 51 passed, 2 ignored; game-data tests return early; actionlint 10 s).
+- **After:** 6.1/10 (Scorecard API, 2026-10-15T20:37Z, commit d493486). Changed: Security-Policy 0 -> 10, Dependency-Update-Tool 0 -> 10, Vulnerabilities 8 -> 10, SAST 0 -> 10 ("SAST tool detected: CodeQL"), Branch-Protection 0 -> 3. Unchanged: Code-Review 0, Maintained 0, CII-Best-Practices 0, Fuzzing 0, Contributors 0, Signed-Releases 0 (until the next tag), Packaging -1, CI-Tests -1, the 10s stay 10 (Pinned-Dependencies too, with the actionlint Docker image pinned by digest).
+- Left open: Signed-Releases (next release v1.5.0 gives floor(8/5) = 1, then +1-2 per release); Maintained (rises after 90 days); CII badge and fuzzing (user: skip for now); Dependabot alert #1 (glib) still open on GitHub, the user decides whether to dismiss it ("vulnerable code not used").
