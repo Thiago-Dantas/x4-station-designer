@@ -14,6 +14,7 @@ An external station designer and toolset for **X4: Foundations**. People and AI 
 |------|---------|
 | `CLAUDE.md` | Entry point: rules, key paths, doc index |
 | `README.md` | Public front page for players: features with the GIFs in `docs/media/`, getting started, MCP, CLI, status. Keep build details out of it (only a pointer to `BUILDING.md`). |
+| `SECURITY.md` | How to report a vulnerability (GitHub private reporting), supported versions, scope. Scorecard reads it (Security-Policy). |
 | `BUILDING.md`, `build.bat` | Build instructions for contributors; `build.bat` installs missing tools with winget (MSVC Build Tools + Windows SDK, Rust, Node.js LTS) and builds `target\release\x4sd.exe` |
 | `docs/` | Durable knowledge: goals, X4 internals, decisions |
 | `tasks/` | Roadmap (`roadmap.md`) plus one state file per workstream (`workflow-<topic>.md`, `subagent-<role>-<task>.md`) |
