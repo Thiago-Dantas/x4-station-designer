@@ -74,8 +74,8 @@ The server tells the agent how to work with it. A request like "a staffed statio
 Details and every builder control are in [docs/usage.md](docs/usage.md).
 
 ## Status
-The builder, planner, CLI and MCP server work and are tested against the game data. Some things are not yet confirmed in game:
-- that an auto-placed or optimized station builds, and that ships reach its docks;
+The builder, planner, CLI and MCP server work and are tested against the game data. In-game tests show it works: stations made with the planner and with Optimize work in game. It hasn't been tested extensively in game yet. Some things are not yet confirmed in game:
+- that ships reach the docks of an auto-placed or optimized station;
 - that the game follows a changed build order;
 - that equipment set here is built;
 - that the in-game load numbers track frame rate. They are players' rules of thumb, not measurements.

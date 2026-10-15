@@ -1,6 +1,6 @@
 # Workflow: x4ep_planner functionality in the designer (user request)
 
-Status: **done**: A, B and C done (2026-10-13); the user's in-game check of an auto-placed station is still open
+Status: **done**: A, B and C done (2026-10-13); the user's in-game check (2026-10-14, light) shows an auto-placed station works
 
 User: "next i want to add x4ep_planner mod functionality".
 
@@ -154,10 +154,10 @@ Steps:
   - Tauri command `auto_place` runs off the main thread; the usual enlarge-the-plot prompt follows; Ctrl+Z undoes it all.
 - [x] Validate: add an overlap issue to `validate` (G4 lists overlaps), so hand-made designs get it too.
   - `Issue::Overlap { index, other, metres }` on the later-built module. The player's plans show 14 (6 in TerranScrapyard), the library plans 84.
-- [ ] Tests:
+- [x] Tests:
   - [x] a game-data test ("100 solar, staffed": everything placed, no overlaps, validate clean, inside 20 km): `auto_place_planned_stations`, plus a Terran station, a small fixed plot and the TerranScrapyard fix placed onto the existing station; docks checked for open space;
   - [x] mcp_smoke (`auto_place` with `from_plan`, validate, undo) and ui_smoke (Place all, checks clean, Ctrl+Z);
-  - [ ] an in-game check by the user: Import and look.
+  - [x] an in-game check by the user: Import and look. Works (2026-10-14, light testing).
 
 ## Notes
 - 2026-10-13: A done.
@@ -199,7 +199,7 @@ Steps:
     - a new hub competes with direct placement (2 km penalty) instead of being only a fallback;
     - dock areas and piers prefer open space.
   - **Open (in game):**
-    - the game builds an auto-placed station;
+    - ~~the game builds an auto-placed station~~ works in game (user, 2026-10-14, light testing);
     - ships reach its dock area and pier;
     - whether the game minds the overlaps `validate` reports on stations built in game.
 - 2026-10-13: user feedback on the Planner tab, fixed the same day:

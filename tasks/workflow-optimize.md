@@ -1,6 +1,6 @@
 # Workflow: x4ep_planner "Optimize" (user request)
 
-Status: **done** (2026-10-14); an in-game check of an optimized station is still open
+Status: **done** (2026-10-14); the user's in-game check (2026-10-14, light) shows an optimized station works
 
 User, 2026-10-14: "now i want to add the x4ep_planner optimize functionality. a few things when reordering modules we should strive to do:
 * defensible modules should be outwards, modules that cant have turrets/shields should be towards the center

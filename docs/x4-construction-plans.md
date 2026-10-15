@@ -318,8 +318,8 @@ The red volume the build menu draws in front of a pier while you move it is an *
     | Rebuild | 1.9 s | 9×10×10 km | 2.1 / 3.7 / 3.0 km |
 
   - Both modes: nothing lost, equipment kept, no overlaps, docks clear.
+- **In game (verified by the user, 2026-10-14, light testing):** stations from the planner's *Place all* and from Optimize work in game. Not tested extensively.
 - **Not checked in game yet:**
-  - that the game builds these stations (modules attached to modules, connectors);
   - that ships reach the docks.
 
 ## In-game load (hypothesis, 2026-10-14)
