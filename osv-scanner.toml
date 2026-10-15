@@ -1,0 +1,11 @@
+# Known advisories in Cargo.lock that don't reach x4sd.exe. Read by osv-scanner and by OpenSSF Scorecard.
+# Both crates come only from Tauri's Linux side (gtk-rs 0.18); the exe is built for Windows only.
+# Check with: cargo tree -i glib --target all   (and: cargo tree -i glib  -> nothing on Windows)
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+reason = "glib 0.18.5 (VariantStrIter unsoundness): Linux-only dependency of Tauri's GTK backend, not compiled into the Windows exe. Tauri pins gtk-rs 0.18, so it can't be updated to 0.20 here."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+reason = "proc-macro-error 1.0.4 is unmaintained (no known vulnerability). Build-time macro of glib-macros, Linux-only like glib; not in the Windows exe."
