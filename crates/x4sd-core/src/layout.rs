@@ -33,8 +33,8 @@ pub const OVERLAP_TOLERANCE_M: f64 = 1.0;
 /// what the plan file stores can't push a module out.
 const PLOT_MARGIN_M: f64 = 1.0;
 
-/// Dock areas and piers want open space: nothing within this distance (metres)
-/// on the line from the station origin out through their centre.
+/// Dock areas, piers and defence platforms go outermost: nothing within this
+/// distance (metres) on the line from the station origin out through their centre.
 const DOCK_CLEARANCE_M: f64 = 3_000.0;
 
 /// Snap points closer than this (metres) join two modules (plans store positions
@@ -414,7 +414,7 @@ pub struct Placement {
     pub connectors: Vec<(u32, String)>,
     /// Modules that found no place: (macro, count).
     pub unplaced: Vec<(String, u32)>,
-    /// Dock areas, piers and bays placed without clear space: no such spot.
+    /// Dock areas, piers, defence platforms and bays placed without clear space: no such spot.
     pub docks_blocked: u32,
     /// Modules placed on a side (`Options::sides`) that found no spot on that half
     /// of the station with a clear lane out (a tightly packed station may have no
@@ -465,7 +465,7 @@ pub struct Options {
 /// snap a hub fits on, `Placer::leaves_exit`) while there is a way to.
 ///
 /// Docks and bays stay reachable: the modules that need clear space (`outer`) go
-/// last, where their exclusion zones (`zones`) and, for dock areas and piers, their
+/// last, where their exclusion zones (`zones`) and, for those that go `outermost`, their
 /// corridor (`corridor`) are clear; no module may enter a placed module's zones or
 /// corridor. Modules already on the station stay where they are.
 pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u32)], options: &Options) -> Result<Placement> {
@@ -564,20 +564,21 @@ fn corridor(bounds: &Bounds, centre: [f64; 3]) -> Option<Vec<Bounds>> {
     Some((1..=steps).map(|k| { let s = k as f64 * step; ([0, 1, 2].map(|i| bounds.0[i] + dir[i] * s), [0, 1, 2].map(|i| bounds.1[i] + dir[i] * s)) }).collect())
 }
 
-/// Dock areas and piers: ships have to reach them.
-fn docking(m: &Module) -> bool {
-    m.class == "dockarea" || m.class == "pier"
+/// Modules that go outermost, with a clear corridor out (`corridor`): dock areas
+/// and piers (ships have to reach them) and defence platforms (user, 2026-10-15).
+fn outermost(m: &Module) -> bool {
+    m.class == "dockarea" || m.class == "pier" || m.class == "defencemodule"
 }
 
-/// Modules that need clear space around them: dock areas, piers, and modules with
-/// exclusion zones (fabrication and maintenance bays, scrap processors, radar).
+/// Modules that need clear space around them: those that go `outermost`, and
+/// modules with exclusion zones (fabrication and maintenance bays, scrap processors, radar).
 fn outer(m: &Module) -> bool {
-    docking(m) || !m.clearance.is_empty()
+    outermost(m) || !m.clearance.is_empty()
 }
 
 /// Placement layer, inside out: 0 modules that can't carry turrets or shields
-/// (habitats, welfare…), 1 defensible ones (production, storage, defence), 2 those
-/// that need clear space (`outer`: docks, piers, bays).
+/// (habitats, welfare…), 1 defensible ones (production, storage), 2 those that
+/// need clear space (`outer`: docks, piers, defence platforms, bays).
 fn layer(m: &Module) -> u8 {
     if outer(m) {
         2
@@ -815,7 +816,7 @@ struct Placer<'a> {
     /// two or three struts (`Connectors::chains`), out past what is in the way.
     reach: bool,
     /// Modules that need clear space (`outer`) now need it: clear zones, and for
-    /// dock areas and piers a clear corridor too (see `corridor`); a module with a
+    /// those that go `outermost` a clear corridor too (see `corridor`); a module with a
     /// `side`, a clear lane (`lane`).
     outward: bool,
     /// The side of the station the module being placed goes on.
@@ -927,11 +928,10 @@ impl<'a> Placer<'a> {
             .fold(0.0, f64::max)
     }
 
-    /// Whether a module needs a clear corridor (`corridor`), so it stays outermost
-    /// (workflow-docks-fps): dock areas and piers, unless an exclusion zone already
-    /// keeps open space that far out (a pier's 100 km; a dock area's runs 500 m).
+    /// Whether a module needs a clear corridor (`corridor`): those that go
+    /// `outermost`, unless placed on a side (their lane keeps them outside).
     fn needs_corridor(&self, module: &Module) -> bool {
-        docking(module) && !module.clearance.iter().any(|z| self.catalog.exclusion_size(&z.tag).is_some_and(|s| s[2] >= DOCK_CLEARANCE_M))
+        self.side.is_none() && outermost(module)
     }
 
     /// The centre of the station's bounds.

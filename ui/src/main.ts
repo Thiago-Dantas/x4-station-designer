@@ -1270,7 +1270,7 @@ async function placeModules(todo: { macro: string; count: number; sides?: string
       ? `Rebuilt the station: re-placed ${rebuilt.moved} modules, added ${p.placed}; connection structures −${rebuilt.connectors_removed} +${p.connectors}` + (rebuilt.plot.plot ? `; plot fitted: ${rebuilt.plot.plot.text}` : "")
       : `Placed ${p.placed} modules` + (p.connectors ? ` and ${p.connectors} connection structures` : "")) +
     (p.broken_up ? `. Opened the station up ${p.broken_up === 1 ? "once" : `${p.broken_up} times`} (a connection hub put into a joint, what hung there moved out)` : "") +
-    (p.docks_blocked ? `. ${p.docks_blocked} docks or bays have no clear space` : "") +
+    (p.docks_blocked ? `. ${p.docks_blocked} docks, defence platforms or bays have no clear space` : "") +
     (p.sides_blocked ? `. ${p.sides_blocked} modules couldn't go on their side (no free snaps there with a clear view out): move them by hand` : "") +
     (left ? `. Partial build: no room for ${left}` : "");
   $("planner-placed").textContent = note;

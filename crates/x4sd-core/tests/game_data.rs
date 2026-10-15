@@ -1333,3 +1333,20 @@ fn break_up_opens_a_sealed_station() {
         assert_eq!(d.plan(), &before, "one undo step");
     }
 }
+
+/// Defence platforms and piers end up outermost after Optimize (user report
+/// 2026-10-15: a disc deep inside the "test" station): nothing on the line out
+/// from the station's centre through them.
+#[test]
+fn optimize_puts_defence_and_piers_outside() {
+    use x4sd_core::layout::{optimize, overlaps, OptimizeOptions};
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/test-20261015.xml")) else { return };
+    let mut d = Design::from_plan(plans[0].clone());
+    let fixes: Vec<(String, u32)> = [("dockarea_ter_m_station_01_standard_macro", 5), ("pier_ter_harbor_03_macro", 10), ("defence_ter_disc_01_macro", 2)].iter().map(|(m, n)| (m.to_string(), *n)).collect();
+    let r = optimize(c, &mut d, &fixes, &OptimizeOptions { grow_plot: true, race: Some("terran".to_owned()), ..Default::default() }).unwrap();
+    eprintln!("{} entries, connectors +{}, docks blocked {}", d.plan().entries.len(), r.placement.connectors.len(), r.placement.docks_blocked);
+    assert!(overlaps(d.plan(), c).is_empty());
+    let outside: Vec<u32> = d.plan().entries.iter().filter(|e| ["defencemodule", "pier"].contains(&c.module(&e.macro_name).unwrap().class.as_str())).map(|e| e.index).collect();
+    assert_eq!(outside.len(), 13);
+    assert_clear_out(c, &d, &outside, station_centre(c, &d));
+}
