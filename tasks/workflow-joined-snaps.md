@@ -33,8 +33,7 @@ User: "looks like we have a regression the optimizer placement, we are placing s
 - [x] usage.md
 
 ## Scratch
-- `crates/x4sd-core/examples/scratch_megayard.rs`, `scratch_solar.rs` (delete before commit); worktree `../x4sd-prev` at HEAD for comparisons.
-- Copy of the profile: `research/extracted/profile-samples/constructionplans-20261015-mega.xml`.
+- Scratch examples, the comparison worktree and the profile copy used here were deleted (2026-10-15).
 
 ## Also uncommitted in layout.rs (2026-10-15)
 - Placement reach: chains of 2-3 struts before each fallback (workflow-placement-partial.md, D-21). Committed together with the facing rule once the user decides.

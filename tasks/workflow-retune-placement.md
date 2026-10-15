@@ -22,8 +22,7 @@ Since the facing rule (2026-10-15, workflow-joined-snaps.md), placement can no l
 - No overlaps; docs numbers (usage.md *Fewer connection structures*, x4-construction-plans.md "Auto-placement") measured again.
 
 ## Tools
-- Scratch examples (untracked): `crates/x4sd-core/examples/scratch_docks.rs` (place a module list on plans; `MODS`, `RACE` env), `scratch_free.rs` (free snaps, which hubs fit), `scratch_rebuild.rs` (Optimize with a module list), `scratch_clay.rs`, `scratch_opt_docks.rs`.
-- Worktree `../x4sd-prev` (detached, older HEAD) for comparisons.
+- Game-data tests `break_up_opens_a_sealed_station` and `auto_place_keeps_room_to_grow`; the user's sealed station: `research/extracted/profile-samples/test-20261015.xml` (git-ignored copy). The scratch examples used on 2026-10-15 were deleted; write new ones as needed and delete them when done.
 
 ## Decisions (user, 2026-10-15)
 - Rebuild connection structures **off**: move the station's modules only when nothing fits otherwise. **On**: move things around and add connectors freely (Place all lays the station out again too). D-22.
