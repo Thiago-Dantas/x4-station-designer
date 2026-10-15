@@ -269,8 +269,7 @@ pub(crate) fn candidates(catalog: &Catalog) -> Result<Vec<Candidate>> {
         .filter(|i| i.sets.iter().any(|s| s == "factory"))
         .filter_map(|info| {
             let module = catalog.module(&info.macro_name).ok()?;
-            let race = info.race.clone().or_else(|| name_race(&info.macro_name));
-            Some(Candidate { info, module, race })
+            Some(Candidate { race: info.race.clone(), info, module })
         })
         .collect())
 }
@@ -301,18 +300,4 @@ pub(crate) fn best<'a>(candidates: impl Iterator<Item = &'a Candidate>, race: Op
         let name = |c: &Candidate| (c.info.macro_name.len(), c.info.macro_name.clone());
         rank(a).cmp(&rank(b)).then(size(b).total_cmp(&size(a))).then(name(a).cmp(&name(b)))
     })
-}
-
-/// Race code in a macro name such as `dockarea_arg_m_station_01_macro`.
-pub(crate) fn name_race(macro_name: &str) -> Option<String> {
-    let race = match macro_name.split('_').nth(1)? {
-        "arg" => "argon",
-        "bor" => "boron",
-        "par" => "paranid",
-        "spl" => "split",
-        "tel" => "teladi",
-        "ter" => "terran",
-        _ => return None,
-    };
-    Some(race.to_owned())
 }

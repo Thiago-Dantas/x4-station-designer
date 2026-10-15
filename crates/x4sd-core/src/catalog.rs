@@ -206,6 +206,7 @@ pub struct ModuleInfo {
     pub class: String,
     /// Display name (English).
     pub name: String,
+    /// Maker race; else the race code in the macro name (dock areas have no maker race).
     pub race: Option<String>,
     /// Id of the extension that defines it; `None` for the base game.
     pub source: Option<String>,
@@ -344,7 +345,7 @@ impl Catalog {
                 macro_name: m.attribute("name").unwrap_or(key).to_owned(),
                 class: class.to_owned(),
                 name: ident.and_then(|i| i.attribute("name")).map_or_else(|| key.clone(), |n| self.texts.resolve(n)),
-                race: ident.and_then(|i| i.attribute("makerrace")).map(str::to_owned),
+                race: ident.and_then(|i| i.attribute("makerrace")).map(str::to_owned).or_else(|| name_race(m.attribute("name").unwrap_or(key))),
                 source: entry.source.map(|i| self.extensions[i].id.clone()),
                 sets: sets.filter_map(|s| s.attribute("ref")).map(str::to_owned).collect(),
             });
@@ -961,4 +962,18 @@ fn parse_offset(offset: roxmltree::Node) -> Transform {
         }
     }
     t
+}
+
+/// Race code in a macro name such as `dockarea_arg_m_station_01_macro`.
+pub(crate) fn name_race(macro_name: &str) -> Option<String> {
+    let race = match macro_name.split('_').nth(1)? {
+        "arg" => "argon",
+        "bor" => "boron",
+        "par" => "paranid",
+        "spl" => "split",
+        "tel" => "teladi",
+        "ter" => "terran",
+        _ => return None,
+    };
+    Some(race.to_owned())
 }

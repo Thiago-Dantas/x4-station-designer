@@ -3,7 +3,7 @@
 
 use crate::catalog::{size_of, Catalog, Equipment, Module};
 use crate::plan::Upgrade;
-use crate::planner::name_race;
+use crate::catalog::name_race;
 use crate::Result;
 
 /// The kinds of group equipment, as plans name them.
