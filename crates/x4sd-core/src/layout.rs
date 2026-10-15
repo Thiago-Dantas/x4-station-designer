@@ -433,7 +433,8 @@ pub struct Options {
     /// Place in layers, inside out (see `layer`): modules without turret/shield
     /// slots first, then defensible ones around them, then dock areas, piers and
     /// bays; `optimize` uses it. Otherwise: biggest first, docks, piers and bays
-    /// last. Defence platforms go last either way (`Placer::spread`).
+    /// last. Either way Administrative Centres go first (`admin`), defence
+    /// platforms last (`Placer::spread`).
     pub layered: bool,
     /// Add a new hub only when it puts the module `FEWER_HUBS_PENALTY_M` nearer the
     /// centre (instead of `HUB_PENALTY_M`): fewer modules for the game to run, a
@@ -490,7 +491,17 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
     if order.is_empty() {
         return Ok(out);
     }
-    let rank = |m: &Module, side: Option<Side>| if side.is_some() || defence(m) { 3 } else if options.layered { layer(m) } else { u8::from(outer(m)) * 2 };
+    let rank = |m: &Module, side: Option<Side>| {
+        if side.is_some() || defence(m) {
+            4
+        } else if admin(m) {
+            0
+        } else if options.layered {
+            layer(m) + 1
+        } else {
+            u8::from(outer(m)) * 2 + 1
+        }
+    };
     order.sort_by(|(a, sa, da), (b, sb, db)| rank(a, *da).cmp(&rank(b, *db)).then(sb.total_cmp(sa)).then(a.macro_name.cmp(&b.macro_name)));
 
     let all = candidates(catalog)?;
@@ -568,9 +579,15 @@ fn corridor(bounds: &Bounds, centre: [f64; 3]) -> Option<Vec<Bounds>> {
     Some((1..=steps).map(|k| { let s = k as f64 * step; ([0, 1, 2].map(|i| bounds.0[i] + dir[i] * s), [0, 1, 2].map(|i| bounds.1[i] + dir[i] * s)) }).collect())
 }
 
-/// Defence platforms (and Administrative Centres).
+/// Defence platforms: defence modules with turret/shield slots.
 fn defence(m: &Module) -> bool {
-    m.class == "defencemodule"
+    m.class == "defencemodule" && !m.equipment_slots.is_empty()
+}
+
+/// Administrative Centres: defence modules without turret/shield slots (all the
+/// `claim` ones, verified 2026-10-15). They go first, innermost (user, 2026-10-15).
+fn admin(m: &Module) -> bool {
+    m.class == "defencemodule" && m.equipment_slots.is_empty()
 }
 
 /// Modules that go outermost, with a clear corridor out (`corridor`): dock areas

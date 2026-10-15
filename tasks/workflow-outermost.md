@@ -37,3 +37,11 @@ Findings:
 - [x] Commit and push
 
 Costs (measured): TerranScrapyard rebuild 7 -> 27 connection structures (10x11x12 km instead of 13x13x12), megashipyard rebuild 25 -> 54 and 12 -> 17 s; keep shape 5.6 -> 14 s on the megashipyard (piers try more snaps in the compact layer order). Not checked in the builder over DevTools; the builder's rebuild calls the same `optimize`.
+
+## Round 3 (user, 2026-10-15)
+"We are counting Administrative Centre as a defense platform, it's in the defense section but it holds no equipment; administrative centers are a special case and they should be in the innermost."
+- [x] Data: all 7 `claim` modules have 0 slots; disc and bridge platforms 22-56
+- [x] `layout::defence` = defence module with slots; `layout::admin` = without: placed first (before every layer, also in *Place all*)
+- [x] Test `optimize_puts_defence_and_piers_outside`: claim in the inner tenth of the body (746 m, 137 of 139 farther), 12 discs outer half; 10x10x12 km, 35 connection structures
+- [x] Docs: D-23, D-24, x4-construction-plans.md, usage.md, MCP descriptions
+- [x] Commit and push

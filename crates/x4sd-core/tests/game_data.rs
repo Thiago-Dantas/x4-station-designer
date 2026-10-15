@@ -1335,7 +1335,8 @@ fn break_up_opens_a_sealed_station() {
 /// (2026-10-15): it fills a compact plot instead of growing arms, and defence
 /// platforms and piers end up outermost (they were deep inside): nothing on the
 /// line out from the station's centre through them, the defence platforms
-/// spread out, each in the outer half of the station's body.
+/// spread out, each in the outer half of the station's body. The Administrative
+/// Centre (a defence module without slots) is innermost.
 #[test]
 fn optimize_puts_defence_and_piers_outside() {
     use x4sd_core::layout::{optimize, overlaps, OptimizeOptions};
@@ -1350,8 +1351,9 @@ fn optimize_puts_defence_and_piers_outside() {
     assert_eq!(r.placement.docks_blocked, 0);
     assert!(plot.size().iter().all(|&s| s <= 12), "compact: {plot} (20x11x19 km before)");
     let class = |e: &x4sd_core::plan::Entry| c.module(&e.macro_name).unwrap().class.clone();
-    let outside: Vec<u32> = d.plan().entries.iter().filter(|e| ["defencemodule", "pier"].contains(&class(e).as_str())).map(|e| e.index).collect();
-    assert_eq!(outside.len(), 23);
+    let admin = |e: &x4sd_core::plan::Entry| class(e) == "defencemodule" && c.module(&e.macro_name).unwrap().equipment_slots.is_empty();
+    let outside: Vec<u32> = d.plan().entries.iter().filter(|e| (class(e) == "defencemodule" && !admin(e)) || class(e) == "pier").map(|e| e.index).collect();
+    assert_eq!(outside.len(), 22);
     let centre = station_centre(c, &d);
     assert_clear_out(c, &d, &outside, centre);
     // Defence platforms against the station's body (what isn't docks, piers, bays,
@@ -1370,7 +1372,11 @@ fn optimize_puts_defence_and_piers_outside() {
         let (l, h) = entry_bounds(d.plan(), c, e.index).unwrap();
         let at = out(std::array::from_fn(|i| (l[i] + h[i]) / 2.0));
         let farther = body.iter().filter(|p| out(**p) > at).count();
-        eprintln!("defence #{} {at:.0} m from the body's middle, {farther} of {} body modules farther", e.index, body.len());
-        assert!(farther * 2 < body.len(), "#{}: in the outer half of the body", e.index);
+        eprintln!("{} #{} {at:.0} m from the body's middle, {farther} of {} body modules farther", e.macro_name, e.index, body.len());
+        if admin(e) {
+            assert!(farther * 10 > body.len() * 9, "#{}: in the inner tenth of the body", e.index);
+        } else {
+            assert!(farther * 2 < body.len(), "#{}: in the outer half of the body", e.index);
+        }
     }
 }
