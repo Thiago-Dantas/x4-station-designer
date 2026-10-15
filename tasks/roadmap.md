@@ -96,7 +96,9 @@ Proposed order (each step usable on its own):
   - [x] v1.4.0 published 2026-10-15: game found on any machine, placement breaks the station up and packs rebuilds, docks/piers/defence outermost, partial builds, most overlaps are notes ([workflow-release-1.4.md](workflow-release-1.4.md))
   - [x] The user published it and made the repo public
 - [x] Find the game on any machine: Steam libraries anywhere, GOG, a folder picker in the builder that is remembered (D-24, [workflow-find-game.md](workflow-find-game.md))
-- [ ] Automated checks (CI) for the parts that don't need the game installed
+- [ ] Automated checks (CI) for the parts that don't need the game installed (part of [workflow-scorecard.md](workflow-scorecard.md))
+- [x] GitHub security checks, OpenSSF Scorecard, releases built by Actions from a tag (D-26, [workflow-github-ci.md](workflow-github-ci.md))
+- [ ] Raise the OpenSSF Scorecard score (3.9 at first) ([workflow-scorecard.md](workflow-scorecard.md))
 - [x] Modules no longer stack inside each other: snaps join only facing each other ([workflow-joined-snaps.md](workflow-joined-snaps.md)); Place all asks before a partial build ([workflow-placement-partial.md](workflow-placement-partial.md))
 - [ ] Re-tune auto-placement for honest layouts: break up sealed stations, connectors inside for internal modules ([workflow-retune-placement.md](workflow-retune-placement.md))
 
