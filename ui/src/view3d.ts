@@ -84,6 +84,8 @@ const SNAP_COLOR = 0x37d0c0;
 const SNAP_HOVER = 0xffe066;
 const OWN_COLOR = 0x9a5a2a;
 const OWN_CHOSEN = 0xff9a3d;
+/** How much faster the camera moves and turns while Shift is held. */
+const BOOST = 3;
 
 export class View3D {
   private renderer: THREE.WebGLRenderer;
@@ -104,6 +106,8 @@ export class View3D {
   /** Navigation keys held down: WASD pan like a right-mouse drag, Q/E move
    * down/up, the arrow keys rotate the camera around its target. */
   private panKeys = new Set<string>();
+  /** Shift is held (`setBoost`). */
+  private boost = false;
   private clock = new THREE.Clock();
   /** Something on screen changed: draw the next frame. The view draws only then,
    * so an idle view costs (almost) no GPU time. */
@@ -138,6 +142,8 @@ export class View3D {
     this.controls.addEventListener("change", () => (this.dirty = true));
     // A left drag turns the view too: around what is in the middle (before the controls see the press).
     container.addEventListener("pointerdown", (ev) => ev.button === 0 && this.pivotOnView(), true);
+    container.addEventListener("pointerdown", (ev) => this.setBoost(ev.shiftKey), true);
+    container.addEventListener("wheel", (ev) => this.setBoost(ev.shiftKey), true);
     this.scene.add(new THREE.HemisphereLight(0xdde6ff, 0x202430, 1.6));
     const sun = new THREE.DirectionalLight(0xffffff, 1.6);
     sun.position.set(1, 2, 1.5);
@@ -208,14 +214,33 @@ export class View3D {
       ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.target instanceof HTMLTextAreaElement;
     const turns = ["KeyQ", "KeyE", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"];
     window.addEventListener("keydown", (ev) => {
+      this.setBoost(ev.shiftKey);
       if (codes.includes(ev.code) && !typing(ev) && !ev.ctrlKey && !ev.altKey) {
         if (turns.includes(ev.code) && !turns.some((c) => this.panKeys.has(c))) this.pivotOnView();
         this.panKeys.add(ev.code);
         if (ev.code.startsWith("Arrow")) ev.preventDefault(); // no list scrolling
       }
     });
-    window.addEventListener("keyup", (ev) => this.panKeys.delete(ev.code));
-    window.addEventListener("blur", () => this.panKeys.clear());
+    window.addEventListener("keyup", (ev) => {
+      this.setBoost(ev.shiftKey);
+      this.panKeys.delete(ev.code);
+    });
+    window.addEventListener("blur", () => {
+      this.setBoost(false);
+      this.panKeys.clear();
+    });
+  }
+
+  /** Shift held: keys, mouse drags and the wheel move `BOOST` times faster. */
+  private setBoost(on: boolean) {
+    if (on === this.boost) return;
+    this.boost = on;
+    const k = on ? BOOST : 1;
+    this.controls.rotateSpeed = this.controls.panSpeed = this.controls.zoomSpeed = k;
+    // OrbitControls swaps left (turn) and right (pan) drags while Shift is held;
+    // swapping them here too undoes that, so Shift only speeds them up.
+    this.controls.mouseButtons.LEFT = on ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.controls.mouseButtons.RIGHT = on ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN;
   }
 
   /** Keyboard navigation while keys are held, like the game's: W/S move forward/back
@@ -225,7 +250,7 @@ export class View3D {
    * target onto what is in the middle of the view (`pivotOnView`). */
   private keyNavigate(seconds: number): boolean {
     if (this.panKeys.size === 0) return false;
-    const dt = Math.min(seconds, 0.1);
+    const dt = Math.min(seconds, 0.1) * (this.boost ? BOOST : 1);
     const held = (code: string) => (this.panKeys.has(code) ? 1 : 0);
     const right = held("KeyD") - held("KeyA");
     const ahead = held("KeyW") - held("KeyS");
