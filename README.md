@@ -84,13 +84,7 @@ Not yet confirmed in game: that equipment set here is built. It probably is: pla
 Reports from players are welcome.
 
 ## Building from source
-Rust (stable, MSVC), Node.js and the Windows SDK. Build the UI first, then the exe:
-```powershell
-npm --prefix ui install
-npm --prefix ui run build
-cargo build -p x4sd --release   # target\release\x4sd.exe
-```
-More in [docs/dev-setup.md](docs/dev-setup.md). How X4 stores construction plans, and what we found out about them, is in [docs/x4-construction-plans.md](docs/x4-construction-plans.md).
+See [BUILDING.md](BUILDING.md), or run `build.bat`. How X4 stores construction plans, and what we found out about them, is in [docs/x4-construction-plans.md](docs/x4-construction-plans.md).
 
 X4: Foundations is a game by Egosoft. This is a fan-made tool, not affiliated with Egosoft. It reads the game's files and never changes them.
 

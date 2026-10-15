@@ -17,7 +17,7 @@ What is installed on the dev machine and how to build. Installs go on H: or D:, 
 `RUSTUP_HOME` and `CARGO_HOME` are permanent user environment variables. Terminals opened before the install don't see them or the PATH change.
 
 ## Building and testing
-Use **PowerShell** (or cmd):
+For contributors on a fresh machine: [BUILDING.md](../BUILDING.md), and `build.bat` (installs missing tools with winget, then builds; verified 2026-10-15 on this machine, where it skipped the installs and built). Use **PowerShell** (or cmd):
 ```powershell
 npm --prefix ui install            # once: UI dependencies (dev only; not shipped)
 npm --prefix ui run build          # the builder UI -> ui/dist (must exist before cargo build)

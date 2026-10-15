@@ -1,2 +1,5 @@
 # Plan fixtures must keep LF: the game writes LF and the round-trip test compares bytes
 crates/x4sd-core/tests/data/*.xml -text
+
+# cmd needs CRLF in batch files (labels and goto can misbehave with LF)
+*.bat text eol=crlf
