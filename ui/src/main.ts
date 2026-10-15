@@ -994,7 +994,15 @@ async function placeAll() {
   // Sides as picked now, so they can change without planning again.
   const sides = (macro: string) => planner.extras.find((x) => x.macro.toLowerCase() === macro.toLowerCase())?.sides ?? [];
   const todo = plan.result.modules.map((m) => ({ macro: m.macro, count: m.count - placedOf(m, now), sides: sides(m.macro) })).filter((m) => m.count > 0);
-  if (todo.length) await placeModules(todo, true);
+  if (!todo.length || !(await placeModules(todo, true))) return;
+  // All placed: the wares and other modules to add are done. (With some left,
+  // they stay, so a retry still knows the sides.)
+  const after = macroCounts();
+  if (plan.result.modules.some((m) => placedOf(m, after) < m.count)) return;
+  planner.targets = [];
+  planner.extras = [];
+  savePlanner();
+  renderPlanner();
 }
 
 /** Auto-places `todo` (one undo step; the station's modules stay where they are)

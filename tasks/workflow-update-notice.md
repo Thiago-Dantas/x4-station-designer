@@ -8,7 +8,7 @@ User, 2026-10-14: "make it evergreen, when a new release shows up on github noti
 - Builder only: the UI fetches `api.github.com/repos/Thiago-Dantas/x4-station-designer/releases/latest` once per start; errors and no network show nothing.
 - Shown when the release tag is newer than `getVersion()` (tauri.conf.json) and newer than the skipped tag (`localStorage` `x4sd.skipVersion`).
 - Bar above the status line: *Download* (opens the release page, `tauri-plugin-opener`, permission `opener:default`), *Skip this version*.
-- Assumption: any later release (1.1.1 too) counts as "the next one" after a skip.
+- Any later release (1.1.1 too) counts as "the next one" after a skip (user confirmed: "anything released after").
 
 ## Steps
 - [x] Rust: `tauri-plugin-opener`, capability `opener:default`

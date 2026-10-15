@@ -23,3 +23,9 @@ User, 2026-10-14: "When we generate a plan and apply, we are running the optimiz
 
 ## Notes
 - A pier's approach follows its own axis (its 100 km zone), not the line out from the station centre: new modules may sit on that line once the pier stays put, and that's fine; the zones stay clear.
+
+## Follow-up: clear the queue after Place all (user request, 2026-10-14)
+User: "after we accept a generation plan and click Place All, we should clear the queue of things to add".
+- [x] Builder: once Place all has placed everything, the wares and other modules lists are emptied (saved); with something left (no room) they stay, so a retry keeps the sides
+- [x] Check (scratch CDP): hull parts × 1 + an L container storage, Generate, Place all → "Placed 16 modules", both lists empty, stored empty, plan rows still shown
+- [x] Docs: usage.md

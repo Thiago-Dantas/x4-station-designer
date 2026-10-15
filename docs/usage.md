@@ -60,6 +60,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - The station may outgrow the plot (up to 20 km per axis); the builder then offers to enlarge it.
     - The station's modules stay where they are, docks, piers and bays too (D-18). New dock areas, piers and bays go last, where their exclusion zones are clear (the space ships use to dock or leave; see Checks); dock areas also need a 3 km corridor out from the station. No module is ever placed in a zone or a dock's corridor, the station's own docks included. The status line warns if a dock or bay has no clear space.
     - What found no room is listed under the button. Ctrl+Z undoes the whole placement.
+    - Once everything is placed, the wares and other modules to add are cleared (the plan stays on screen). If something found no room, they stay, for another try.
   - *Buy* on a production-chain row buys that ware instead of making it; the chip above *Generate* undoes it.
     - Either way the plan is redone for the station it was made for. What is already placed keeps counting, and nothing is added twice. After Place all, buying a ware doesn't bring the plan back; its modules already placed stay in the design.
   - Sunlight and build method come from the right pane. The settings are remembered.
