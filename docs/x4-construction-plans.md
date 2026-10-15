@@ -215,7 +215,12 @@ The plan format doesn't stop modules from intersecting. The build menu has an **
   - Time for the 5 player plans: 264 ms the first time (loading meshes), 17 ms after that.
   - **Auto-placement keeps the box test alone.** It is stricter, so what it places has no overlaps either way.
   - Checking takes 16 ms for the 5 player plans, and 5 ms for a 239-module station.
-- `validate` reports them as "entry N: overlaps entry M" on the later-built module.
+- `validate` reports them on the later-built module.
+- **Most overlaps are notes (2026-10-15, D-25).** The game lets modules overlap: the user's "(9.0) Ribbed for Her Player" has 205 overlapping pairs and the build menu says "Everything is OK"; it was built in game (**verified**, user, screenshot). They are all Terran crosses whose 400 m arms meet tip to tip or lie side by side around a ring; the meshes really intersect.
+  - The user: the game refuses overlaps only for a few modules, like docks and piers (**hypothesis**, not tested here). So only an overlap with a dock area, pier or fabrication/maintenance bay (`validate::DOCKING_CLASSES`) is an issue: "entry N: overlaps entry M".
+  - Any other is `Issue::MinorOverlap`, a **note**: "entry N: overlaps entry M (the game allows it)". The CLI lists notes after the issues and leaves them out of the exit code; MCP `validate_design` returns them as `notes`; the builder lists them greyed after the issues, without counting them or painting the modules red.
+  - Auto-placement and Optimize still never create overlaps: they look bad.
+  - Library plans: all 28 mesh overlaps are notes. Player plans: both Ribbed plans 0 issues (205 and 230 notes; the "(SS)" one has a cross through an L solid storage), megashipyard 1 note.
 
 ## Clearance: exclusion zones (research 2026-10-14)
 The red volume the build menu draws in front of a pier while you move it is an **exclusion zone**: space a module keeps free for ships to dock or leave. Research tool: `cargo run -p x4sd-core --release --example zonecheck -- <plans.xml>...` (or `-- --list`).

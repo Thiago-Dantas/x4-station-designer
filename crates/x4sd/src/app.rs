@@ -693,7 +693,7 @@ fn scene_json(app: &App) -> CmdResult {
 
 /// The design's validation issues (`ops::issue_list`), with the blueprint limit of `app`.
 fn issues_json(design: &Design, catalog: &Catalog, app: &App) -> Vec<Value> {
-    ops::issue_list(design, catalog, &app.blueprints, &app.info).iter().map(|i| json!({"index": i.index(), "text": i.to_string()})).collect()
+    ops::issue_list(design, catalog, &app.blueprints, &app.info).iter().map(|i| json!({"index": i.index(), "text": i.to_string(), "note": i.is_note()})).collect()
 }
 
 /// `x4sd.exe` is a console program (the CLI and MCP need stdio). Started by

@@ -167,12 +167,15 @@ async function apply(action: Promise<Scene>, done?: string, frame = false, userE
 
 /** The Checks list and the plot summary (also live while a gizmo drag is in progress). */
 function renderChecks(list: Issue[], p: PlotStatus | null) {
+  // Notes (not problems) come after the issues and don't count.
+  const problems = list.filter((i) => !i.note).length;
+  list = [...list.filter((i) => !i.note), ...list.filter((i) => i.note)];
   const issueCount = $("issue-count");
-  issueCount.textContent = list.length ? `(${list.length})` : "";
-  issueCount.className = list.length ? "bad" : "";
+  issueCount.textContent = problems ? `(${problems})` : "";
+  issueCount.className = problems ? "bad" : "";
   const issues = $("issues");
   issues.replaceChildren();
-  if (list.length === 0) {
+  if (problems === 0) {
     const li = document.createElement("li");
     li.className = "ok";
     li.textContent = scene?.entries.length ? "No problems found" : "Empty design";
@@ -181,6 +184,10 @@ function renderChecks(list: Issue[], p: PlotStatus | null) {
   for (const issue of list) {
     const li = document.createElement("li");
     li.textContent = issue.text;
+    if (issue.note) {
+      li.className = "note";
+      li.title = "Not a problem: the game lets modules overlap, except docks, piers and fabrication bays";
+    }
     // Double click zooms to 1 km from the module. No dblclick event: the first click redraws the list.
     const index = issue.index;
     if (index !== null)

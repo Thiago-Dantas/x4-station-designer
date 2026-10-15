@@ -348,7 +348,7 @@ export class View3D {
       this.plotBox.add(box);
       this.setPlotFits(scene.plot!.fits);
     }
-    const bad = new Set(scene.issues.map((i) => i.index).filter((i) => i !== null));
+    const bad = new Set(scene.issues.filter((i) => !i.note).map((i) => i.index).filter((i) => i !== null));
     // Real models are drawn instanced: one mesh per module type, so a 300-module
     // station costs a draw call per module type and material, not per module.
     // The selected module, and modules without a model, are drawn on their own.

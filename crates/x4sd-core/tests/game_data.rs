@@ -939,7 +939,7 @@ fn validates_player_plans() {
     }
     assert!(matches!(&found[0], (name, Issue::SnapGap { index: 32, metres }) if name == "X4SD test C" && (*metres - 1000.0).abs() < 0.01));
     let rest = &found[1..];
-    assert!(!rest.is_empty() && rest.iter().all(|(name, i)| name == "X4SD test C" && matches!(i, Issue::Overlap { index, other } if *index == 32 || *other == 32)), "{found:?}");
+    assert!(!rest.is_empty() && rest.iter().all(|(name, i)| name == "X4SD test C" && matches!(i, Issue::Overlap { index, other } | Issue::MinorOverlap { index, other } if *index == 32 || *other == 32)), "{found:?}");
 }
 
 /// Library plans: of the 31 off-link entries in hand-made faction plans, the 17
@@ -947,6 +947,7 @@ fn validates_player_plans() {
 /// The faction plans also put modules in 18 exclusion zones (D-12): 17 of fabrication
 /// bays, 1 of a pier. The game builds them; the validator still reports them.
 /// 14 modules are placed apart, unattached (13 defence platforms, a scanning array).
+/// Their 28 overlaps are all minor (no dock, pier or bay; the game allows them).
 #[test]
 fn validates_library_plans() {
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/base/libraries/constructionplans.xml")) else { return };
@@ -955,13 +956,15 @@ fn validates_library_plans() {
     let overlaps = issues.iter().filter(|i| matches!(i, Issue::Overlap { .. })).count();
     let zones: Vec<&str> = issues.iter().filter_map(|i| match i { Issue::BlocksZone { owner_class, .. } => Some(owner_class.as_str()), _ => None }).collect();
     let unattached = issues.iter().filter(|i| matches!(i, Issue::Unattached { .. })).count();
-    let other: Vec<_> = issues.iter().filter(|i| !matches!(i, Issue::SnapGap { .. } | Issue::Overlap { .. } | Issue::BlocksZone { .. } | Issue::Unattached { .. })).collect();
-    eprintln!("library: {} gaps, {overlaps} overlaps, {} in exclusion zones, other {other:?}", gaps.len(), zones.len());
+    let notes = issues.iter().filter(|i| i.is_note()).count();
+    let other: Vec<_> = issues.iter().filter(|i| !i.is_note() && !matches!(i, Issue::SnapGap { .. } | Issue::Overlap { .. } | Issue::BlocksZone { .. } | Issue::Unattached { .. })).collect();
+    eprintln!("library: {} gaps, {overlaps} overlaps, {notes} minor overlaps, {} in exclusion zones, other {other:?}", gaps.len(), zones.len());
     assert_eq!(gaps.len(), 17);
     assert!(gaps.iter().all(|m| *m > 1.0), "{gaps:?}");
     assert_eq!(zones.len(), 18, "{zones:?}");
     assert_eq!(zones.iter().filter(|c| **c == "pier").count(), 1, "{zones:?}");
     assert_eq!(unattached, 14);
+    assert_eq!((overlaps, notes), (0, 28));
     assert!(other.is_empty(), "{other:?}");
 }
 

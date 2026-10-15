@@ -149,6 +149,7 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #issues { list-style: none; padding: 0; margin: 0; }
 #issues li { padding: 4px 6px; border-radius: 3px; margin-bottom: 3px; background: #3a1d1d; cursor: pointer; }
 #issues li.ok { background: #183325; cursor: default; }
+#issues li.note { background: #2a2d33; color: #9aa3ad; }
 
 #status { padding: 4px 10px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); min-height: 24px; }
 #status.error { color: var(--bad); }

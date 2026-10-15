@@ -52,7 +52,8 @@ Clearance: piers, fabrication/maintenance bays and dock areas have exclusion zon
 dock or leave: XL 4x4 km, L 1.2x1.2 km, out to 100 km). validate_design reports modules in a zone (\"blocks the \
 approach of pier N\", \"blocks the exit of bay N\"); auto_place and optimize_station keep every zone clear.
 Overlaps: validate_design reports modules whose collision shapes intersect (modules joined at a snap may \
-interlock); auto_place never creates any.
+interlock); auto_place never creates any. Only overlaps with a dock area, pier or fabrication bay are issues; others \
+come as notes (the game allows them, but avoid them: they look bad).
 Plot: a station must fit its plot (whole km per side from the station origin, at most 20 km per axis). \
 New designs start on a 4x4x4 km plot (2 km per side, the game's default), opened ones on the smallest that fits. validate_design reports modules \
 outside the plot and the size needed; set_plot / fit_plot change it (tell the user when the plot must grow).
@@ -381,7 +382,7 @@ impl Server {
         self.run(Op::Redo)
     }
 
-    #[tool(description = "Check the open design for problems the game does not catch (unknown modules, modules off their snaps, overlapping modules, missing DLC patches, modules outside the plot). An empty list means it is fine.")]
+    #[tool(description = "Check the open design for problems the game does not catch (unknown modules, modules off their snaps, overlapping modules, missing DLC patches, modules outside the plot). An empty issues list means it is fine; notes (overlaps the game allows) are not problems.")]
     fn validate_design(&self, Parameters(_): Parameters<NoArgs>) -> ToolResult {
         self.run(Op::ValidateDesign)
     }

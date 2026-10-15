@@ -344,7 +344,11 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         }
         Op::Undo => Ok(json!({"undone": ctx.design.undo()})),
         Op::Redo => Ok(json!({"redone": ctx.design.redo()})),
-        Op::ValidateDesign => Ok(json!({"issues": issue_list(ctx.design, c, ctx.blueprints, ctx.names).iter().map(|i| i.to_string()).collect::<Vec<_>>()})),
+        Op::ValidateDesign => {
+            let (notes, issues): (Vec<_>, Vec<_>) = issue_list(ctx.design, c, ctx.blueprints, ctx.names).into_iter().partition(|i| i.is_note());
+            let text = |l: Vec<Issue>| l.iter().map(|i| i.to_string()).collect::<Vec<_>>();
+            Ok(json!({"issues": text(issues), "notes": text(notes)}))
+        }
         Op::SetPlot { pos, neg } => {
             ctx.design.set_plot(Some(Plot { pos, neg })).map_err(err)?;
             Ok(plot_status(ctx.design, c))

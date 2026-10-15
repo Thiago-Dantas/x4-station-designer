@@ -153,9 +153,17 @@ fn run(cli: Cli) -> Result<ExitCode> {
                 if let Some(plot) = &plot {
                     issues.extend(validate_plot(&p, &catalog, plot));
                 }
-                println!("{} \"{}\": {}", p.id, p.name, if issues.is_empty() { "ok".to_owned() } else { format!("{} issue(s)", issues.len()) });
+                let (notes, issues): (Vec<_>, Vec<_>) = issues.into_iter().partition(|i| i.is_note());
+                let mut head = if issues.is_empty() { "ok".to_owned() } else { format!("{} issue(s)", issues.len()) };
+                if !notes.is_empty() {
+                    head += &format!(", {} note(s)", notes.len());
+                }
+                println!("{} \"{}\": {head}", p.id, p.name);
                 for issue in &issues {
                     println!("  {issue}");
+                }
+                for note in &notes {
+                    println!("  note: {note}");
                 }
                 total += issues.len();
             }

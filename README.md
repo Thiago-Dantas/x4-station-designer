@@ -15,7 +15,7 @@ Design station construction plans for **X4: Foundations** outside the game, then
 - **Production planner.** Name the wares you want to make and it works out the whole chain: production, habitats with their food and medicine, storage, docks. *Place all* attaches the modules at free snaps with no overlaps and adds connection structures where needed.
 - **Optimize a station.** Fill a station's shortfalls and re-lay it out in layers: habitats inside, modules that carry turrets and shields around them, packed into a compact plot, docks, piers and bays outermost with clear approaches, defence platforms spread over the extremities. Optionally rebuild the connection structures, and use fewer of them.
 - **Station readouts.** Production and use per hour, workforce, storage, build cost per build method, and an in-game load estimate (modules, connection structures, turrets, docks, size).
-- **Checks the game doesn't do.** Overlapping modules (on the collision meshes), modules blocking a pier's approach or a bay's exit, modules outside the plot, misaligned snaps, missing DLCs.
+- **Checks the game doesn't do.** Docks, piers and bays that overlap other modules (on the collision meshes; other overlaps are listed as notes), modules blocking a pier's approach or a bay's exit, modules outside the plot, misaligned snaps, missing DLCs.
 - **Build order.** See and change the order the game builds modules in, with build stages and a timeline.
 - **Equipment.** Turrets and shields per module group, or for the whole station at once.
 - **Blueprint limit.** Optionally read a save and offer only the modules you have blueprints for.

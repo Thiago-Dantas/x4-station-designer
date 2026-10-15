@@ -1,6 +1,6 @@
 //! Plan checks the game itself does not do: it accepts plans whose modules float
 //! away from their links (verified in game, test C), plans without the
-//! `<patches>` they need, (hypothesis) modules that overlap, and (verified on
+//! `<patches>` they need, (hypothesis) docks, piers and bays that overlap, and (verified on
 //! import, 2026-10-14) modules in the way of a pier's approach or a bay's exit,
 //! and modules not attached to the station (the game's own plans have some).
 
@@ -20,6 +20,9 @@ use crate::plot::{entry_inside, required_plot, Plot, MAX_AXIS_KM};
 pub const GAP_TOLERANCE_M: f64 = 0.05;
 /// Allowed angle between linked snap axes.
 pub const ANGLE_TOLERANCE_DEG: f64 = 0.5;
+/// Module classes whose overlaps are problems: dock areas, piers, fabrication and
+/// maintenance bays. The game lets other modules overlap (user, 2026-10-15).
+pub const DOCKING_CLASSES: [&str; 3] = ["dockarea", "pier", "buildmodule"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Issue {
@@ -42,8 +45,11 @@ pub enum Issue {
     SnapMisaligned { index: u32, degrees: f64 },
     MissingPatch { extension: String },
     /// The module's collision mesh intersects that of an earlier module it isn't
-    /// joined to at a snap.
+    /// joined to at a snap, and one of them docks or builds ships (`DOCKING_CLASSES`).
     Overlap { index: u32, other: u32 },
+    /// Like `Overlap`, between other modules: the game allows it (user, 2026-10-15).
+    /// A note: placement avoids it, the checks don't count it as a problem.
+    MinorOverlap { index: u32, other: u32 },
     /// The module reaches into an exclusion zone of `owner` (`layout::blocked_zones`),
     /// whose macro class (`pier`, `buildmodule`, `dockarea`…) is `owner_class`.
     BlocksZone { index: u32, owner: u32, owner_class: String },
@@ -74,10 +80,16 @@ impl Issue {
             | Issue::SnapMisaligned { index, .. }
             | Issue::OutsidePlot { index }
             | Issue::Overlap { index, .. }
+            | Issue::MinorOverlap { index, .. }
             | Issue::BlocksZone { index, .. }
             | Issue::NoBlueprint { index, .. } => Some(*index),
             Issue::MissingPatch { .. } | Issue::PlotTooSmall { .. } | Issue::TooBigForAnyPlot { .. } => None,
         }
+    }
+
+    /// Worth knowing, but not a problem: listed apart and not counted as a failure.
+    pub fn is_note(&self) -> bool {
+        matches!(self, Issue::MinorOverlap { .. })
     }
 }
 
@@ -97,6 +109,7 @@ impl fmt::Display for Issue {
             Issue::SnapMisaligned { index, degrees } => write!(f, "entry {index}: tilted {degrees:.1}° off its snap"),
             Issue::MissingPatch { extension } => write!(f, "plan uses {extension} but does not list it in <patches>"),
             Issue::Overlap { index, other } => write!(f, "entry {index}: overlaps entry {other}"),
+            Issue::MinorOverlap { index, other } => write!(f, "entry {index}: overlaps entry {other} (the game allows it)"),
             Issue::BlocksZone { index, owner, owner_class } => match owner_class.as_str() {
                 "pier" => write!(f, "entry {index}: blocks the approach of pier {owner}"),
                 "dockarea" => write!(f, "entry {index}: blocks the approach of dock area {owner}"),
@@ -189,7 +202,11 @@ pub fn validate(plan: &Plan, catalog: &Catalog) -> Vec<Issue> {
         }
     }
 
-    issues.extend(overlaps(plan, catalog).into_iter().map(|(other, index, _)| Issue::Overlap { index, other }));
+    let docking = |index: u32| by_index.get(&index).and_then(|e| catalog.module(&e.macro_name).ok()).is_some_and(|m| DOCKING_CLASSES.contains(&m.class.as_str()));
+    issues.extend(overlaps(plan, catalog).into_iter().map(|(other, index, _)| match docking(index) || docking(other) {
+        true => Issue::Overlap { index, other },
+        false => Issue::MinorOverlap { index, other },
+    }));
     for (index, owner) in blocked_zones(plan, catalog) {
         let owner_class = by_index.get(&owner).and_then(|e| catalog.module(&e.macro_name).ok()).map(|m| m.class.clone()).unwrap_or_default();
         issues.push(Issue::BlocksZone { index, owner, owner_class });

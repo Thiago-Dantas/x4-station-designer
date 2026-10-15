@@ -29,7 +29,8 @@ export interface Entry {
   stage_end: boolean;
   free_snaps: SnapInfo[];
 }
-export interface Issue { index: number | null; text: string }
+/** `note`: worth knowing, not a problem (an overlap the game allows). */
+export interface Issue { index: number | null; text: string; note: boolean }
 export interface PlotInfo { pos: Vec3; neg: Vec3; size: Vec3; text: string }
 /** The plot, the plot the station needs, whether it fits, whether any plot (20 km max) can hold it. */
 export interface PlotStatus { plot: PlotInfo | null; required: PlotInfo | null; fits: boolean; possible: boolean }
