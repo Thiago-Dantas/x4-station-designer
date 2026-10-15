@@ -1253,7 +1253,11 @@ fn sectors_and_sunlight() {
     assert_eq!((grand_exchange.name.as_str(), grand_exchange.sunlight), ("Grand Exchange I", 1.23));
     assert_eq!(find("Cluster_14_Sector001_macro").unwrap().name, "Argon Prime");
     if c.extensions().iter().any(|e| e.folder == "ego_dlc_boron") {
-        assert_eq!(find("Cluster_601_Sector001_macro").unwrap().sunlight, 0.41, "from its cluster");
+        // From their clusters; the game's encyclopedia shows the same (user, 2026-10-15).
+        for (m, name, sunlight) in [("Cluster_608_Sector001_macro", "Atreus' Clouds", 0.41), ("Cluster_609_Sector001_macro", "Menelaus' Oasis", 2.71), ("Cluster_606_Sector002_macro", "Reflected Stars", 1.18)] {
+            let s = find(m).unwrap();
+            assert_eq!((s.name.as_str(), s.sunlight), (name, sunlight));
+        }
     }
     for s in sectors {
         let m = s.macro_name.to_ascii_lowercase();

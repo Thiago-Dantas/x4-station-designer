@@ -195,7 +195,7 @@ The megashipyard first dropped from 240 to 68 fps with textures, because there w
 ### Sectors and sunlight (verified 2026-10-15, `sectors_and_sunlight` game-data test)
 - `libraries/mapdefaults.xml` (base, `08.cat`) and each DLC's own `extensions/ego_dlc_*/libraries/mapdefaults.xml` (`ext_03.cat`; a full `<defaults>` file, not a diff) hold one `<dataset macro="...">` per universe, cluster and sector.
   - A sector's sunlight is `<area sunlight="1.23">` (1.0 = 100%); its name is `<identification name="{20004,10011}">`, e.g. `Cluster_01_Sector001_macro` = Grand Exchange I, 123%.
-  - Boron sectors (`Cluster_601`–`609`) have no `<area>`; their cluster's dataset has it. We take the cluster's (`Cluster_601_Sector001_macro` → `Cluster_601_macro`, 41%). **Hypothesis:** the game does the same.
+  - Boron sectors (`Cluster_601`–`609`) have no `<area>`; their cluster's dataset has it. We take the cluster's (`Cluster_601_Sector001_macro` → `Cluster_601_macro`, 41%). **Verified in game** (user's encyclopedia screenshots, 2026-10-15): Atreus' Clouds 41% (`Cluster_608`), Menelaus' Oasis 271% (`Cluster_609`), Reflected Stars 118% (`Cluster_606`, its second sector), the same as our values.
   - Left out: `demo_*` sectors (no sunlight) and Timelines' mission maps (`timelines_map_*`). Timelines' `cluster_7xx` sectors are in the main galaxy (`maps/xu_ep2_universe/galaxy.xml` and the DLC diffs that add clusters), so they stay. Every one of the 150 sectors we list is in a cluster the galaxy connects.
 - `sectors::load` / `Catalog::sectors` read them; values range from 2% (Loomanckstrat's Legacy) to 408% (Matrix #101).
 
