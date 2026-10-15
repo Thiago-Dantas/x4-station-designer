@@ -10,8 +10,8 @@ User: "publish a new version" (2026-10-15)
 - [x] Build; `x4sd --version` says 1.4.0
 - [x] Docs: CLAUDE.md status, roadmap
 - [x] Commit, push
-- [ ] Publish release `v1.4.0` (target `main`, not a draft) with `x4sd.exe`
-- [ ] Check: releases/latest is v1.4.0, asset digest matches the build
+- [x] Publish release `v1.4.0` (target `main`, not a draft) with `x4sd.exe`
+- [x] Check: releases/latest is v1.4.0, asset digest matches the build
 
 ## Notes
 - Tests 2026-10-15, all pass: `cargo test --workspace --release` (24 unit, 25 game-data with 2 ignored for the placement re-tune, 2 round-trip), `npm --prefix ui run check`. Smoke tests not run.
