@@ -181,7 +181,13 @@ function renderChecks(list: Issue[], p: PlotStatus | null) {
   for (const issue of list) {
     const li = document.createElement("li");
     li.textContent = issue.text;
-    if (issue.index !== null) li.onclick = () => select(issue.index);
+    // Double click zooms to 1 km from the module. No dblclick event: the first click redraws the list.
+    const index = issue.index;
+    if (index !== null)
+      li.onclick = (ev) => {
+        select(index);
+        if (ev.detail === 2) view.frameModule(index, 1000);
+      };
     issues.append(li);
   }
   const summary = $("plot-summary");

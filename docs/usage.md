@@ -108,7 +108,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Fit plot to station* sets that minimum.
   - When an edit pushes the station outside the plot, the builder offers to enlarge it, or, if no plot could hold it (over 20 km on an axis), to undo.
   - The plot is not stored in plan files (the game keeps plots per station).
-- **Checks (right):** the validator's findings, live, including modules outside the plot and **overlapping modules**. Click one to select the module.
+- **Checks (right):** the validator's findings, live, including modules outside the plot and **overlapping modules**. Click one to select the module; double-click it to also zoom the camera to 1 km from the module (from its bounding sphere, same viewing angle).
   - An overlap means two modules' collision meshes intersect. Modules joined at a snap may interlock, and are never counted. See docs/x4-construction-plans.md, "Overlaps".
   - **Blocked approaches and exits:** "entry N: blocks the approach of pier M" (or the exit of bay M, the approach of dock area M). Piers, bays and most dock areas keep exclusion zones free for ships: boxes in front of each dock or bay end, XL 4×4 km, L 1.2×1.2 km, both 100 km long, M 180×180×500 m. A module reaching more than 1 m into one is reported, unless it is joined to that module at a snap. The game imports such plans without a word, but ships may struggle. See docs/x4-construction-plans.md, "Clearance: exclusion zones".
 - **Toolbar:**

@@ -541,8 +541,9 @@ export class View3D {
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
   }
 
-  /** Points the camera at module `index` from the current viewing direction (nothing when it isn't drawn). */
-  frameModule(index: number) {
+  /** Points the camera at module `index` from the current viewing direction (nothing when it isn't drawn);
+   * with `gap`, that many metres out from the module's bounding sphere. */
+  frameModule(index: number, gap?: number) {
     this.dirty = true;
     const box = new THREE.Box3();
     for (const o of this.station.children) {
@@ -557,7 +558,7 @@ export class View3D {
     }
     if (box.isEmpty()) return;
     const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const distance = sphere.radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.5;
+    const distance = gap !== undefined ? sphere.radius + gap : sphere.radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 1.5;
     const direction = this.camera.position.clone().sub(this.controls.target).normalize();
     this.controls.target.copy(sphere.center);
     this.camera.position.copy(sphere.center).addScaledVector(direction, distance);
