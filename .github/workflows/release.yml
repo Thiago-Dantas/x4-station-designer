@@ -38,6 +38,7 @@ jobs:
       - run: npm --prefix ui run build
       - run: cargo build -p x4sd --release --locked
       - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        id: attest
         if: github.ref_type == 'tag'
         with:
           subject-path: target/release/x4sd.exe
@@ -45,7 +46,10 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: |
           # checkout turns an annotated tag into a lightweight one; fetch it again for its message
           git fetch --force origin "refs/tags/${env:GITHUB_REF_NAME}:refs/tags/${env:GITHUB_REF_NAME}"
-          gh release create $env:GITHUB_REF_NAME target/release/x4sd.exe --verify-tag --notes-from-tag
+          # the attestation bundle next to the exe, for offline checks (and Scorecard's Signed-Releases)
+          Copy-Item $env:BUNDLE target/release/x4sd.exe.sigstore.json
+          gh release create $env:GITHUB_REF_NAME target/release/x4sd.exe target/release/x4sd.exe.sigstore.json --verify-tag --notes-from-tag

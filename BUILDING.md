@@ -44,7 +44,7 @@ Releases are built by GitHub Actions ([.github/workflows/release.yml](.github/wo
    git tag -a v1.5.0 -F release-notes.md
    git push origin v1.5.0
    ```
-The workflow stops if the tag doesn't match the versions in `Cargo.toml` and `tauri.conf.json`. Otherwise it builds `x4sd.exe` on a clean Windows runner, attests it (a signed record that this workflow built it from that commit) and publishes the release with the exe. Anyone can check a downloaded exe with `gh attestation verify x4sd.exe -R Thiago-Dantas/x4-station-designer`. Running the workflow by hand from the Actions tab only builds, as a check.
+The workflow stops if the tag doesn't match the versions in `Cargo.toml` and `tauri.conf.json`. Otherwise it builds `x4sd.exe` on a clean Windows runner, attests it (a signed record that this workflow built it from that commit) and publishes the release with the exe and the attestation bundle `x4sd.exe.sigstore.json`. Anyone can check a downloaded exe with `gh attestation verify x4sd.exe -R Thiago-Dantas/x4-station-designer` (add `--bundle x4sd.exe.sigstore.json` to use the downloaded bundle instead of fetching it). Running the workflow by hand from the Actions tab only builds, as a check.
 
 ## Troubleshooting
 - **`link: missing operand`**: you built from Git Bash. Its `/usr/bin/link.exe` hides the MSVC linker. Build from PowerShell or cmd.
