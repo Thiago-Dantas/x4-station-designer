@@ -86,6 +86,7 @@ Proposed order (each step usable on its own):
   - [x] Version 1.0.0, MIT licence, social preview image (see [workflow-release.md](workflow-release.md))
   - [x] Draft GitHub release v1.0.0 with `x4sd.exe`
   - [x] v1.1.0 published 2026-10-14: update notice, placement keeps the station's modules ([workflow-release-1.1.md](workflow-release-1.1.md))
+  - [x] v1.2.0 published 2026-10-15: view draws on demand, frame rate limit ([workflow-release-1.2.md](workflow-release-1.2.md))
   - [x] The user published it and made the repo public
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 

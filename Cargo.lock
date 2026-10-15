@@ -4971,7 +4971,7 @@ dependencies = [
 
 [[package]]
 name = "x4sd"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "clap",
  "rmcp",
@@ -4988,7 +4988,7 @@ dependencies = [
 
 [[package]]
 name = "x4sd-core"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "flate2",
  "miniz_oxide 0.9.1",
