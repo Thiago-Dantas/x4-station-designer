@@ -195,12 +195,22 @@
           <ul id="issues"></ul>
         </section>
         <section class="help">
-          <p>Left drag, Q/E or arrow keys: rotate · Right drag: pan · W/S: forward/back · A/D: left/right · Z/X: down/up · Wheel: zoom<br />Click a module to select · Middle click / Ctrl+C: copy (with Shift: the sequence) · Del removes (Shift+Del: the sequence) · R twists · C connecting snap (T twist while placing)</p>
+          <p>Left drag, Q/E or arrow keys: rotate · Right drag: pan · W/S: forward/back · A/D: left/right · Z/X: down/up · Wheel: zoom<br />Click a module to select · Right click: its menu · Middle click / Ctrl+C: copy (with Shift: the sequence) · Del removes (Shift+Del: the sequence) · R twists · C connecting snap (T twist while placing)</p>
         </section>
       </aside>
     </main>
     <div id="update" hidden><span id="update-text"></span> <button id="update-download" class="primary">Download</button> <button id="update-skip">Skip this version</button></div>
     <footer id="status">Loading game data…</footer>
+    <div id="module-menu" hidden>
+      <button id="menu-copy">Copy <kbd>Ctrl+C</kbd></button>
+      <button id="menu-copy-sequence">Copy sequence <kbd>Ctrl+Shift+C</kbd></button>
+      <hr />
+      <button id="menu-remove" class="danger">Remove <kbd>Del</kbd></button>
+      <button id="menu-remove-sequence" class="danger">Remove sequence <kbd>Shift+Del</kbd></button>
+      <hr />
+      <button id="menu-move">Move…</button>
+      <button id="menu-detach">Detach</button>
+    </div>
     <div id="modal" hidden><div class="dialog"><h3 id="modal-title"></h3><div id="modal-body"></div><button id="modal-close">Cancel</button></div></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

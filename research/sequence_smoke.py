@@ -10,6 +10,9 @@ New design: a Terran cross with a second cross on it and a third on that one
   starts the same mode for the selected module.
 - Del removes #2 alone: #3 stays, unattached, and Checks say so; undo.
 - Shift+Del removes #2 with everything attached to it.
+Before that, with only the first cross: a right click on it opens the module menu
+(it selects the module; Detach is off for the first module), Esc closes it, its
+Copy arms the type, and a right click on empty space opens nothing.
 Screenshots go to <scratch dir>.
 """
 import os
@@ -63,6 +66,13 @@ def free_cone(png, box):
     return sum(x for x, _ in best) // len(best), sum(y for _, y in best) // len(best)
 
 
+def right_click(x, y):
+    cdp.call("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y)
+    for kind in ("mousePressed", "mouseReleased"):
+        cdp.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="right", buttons=2 if kind == "mousePressed" else 0, clickCount=1)
+    time.sleep(0.6)
+
+
 def select_row(n):
     cdp.js(f"document.querySelectorAll('.order-row')[{n - 1}].click()")
     time.sleep(0.5)
@@ -77,6 +87,27 @@ try:
     cdp.wait_for("!document.getElementById('armed-panel').hidden")
     cdp.js("document.getElementById('btn-place-root').click()")
     cdp.wait_for(f"{STATUS}.startsWith('Placed')")
+    key("Escape", "Escape", 27)
+    cdp.js("document.getElementById('btn-frame').click()")
+    time.sleep(1.2)
+    vp = cdp.js("(() => { const r = document.getElementById('viewport').getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom].map(Math.round) })()")
+    MENU = "[document.getElementById('module-menu').hidden, document.getElementById('menu-detach').disabled, document.getElementById('sel-name').textContent]"
+    right_click((vp[0] + vp[2]) // 2, (vp[1] + vp[3]) // 2)
+    menu = cdp.js(MENU)
+    print("right click on the cross:", menu)
+    cdp.screenshot(os.path.join(out, "seq-menu.png"))
+    assert menu[0] is False and menu[1] is True and menu[2].startswith("Terran Cross"), menu
+    key("Escape", "Escape", 27)
+    assert cdp.js(MENU)[0] is True, "Esc closes the menu"
+    right_click((vp[0] + vp[2]) // 2, (vp[1] + vp[3]) // 2)
+    cdp.js("document.getElementById('menu-copy').click()")
+    time.sleep(0.5)
+    armed = cdp.js("[document.getElementById('armed-title').textContent, document.getElementById('armed-panel').hidden, document.getElementById('module-menu').hidden]")
+    print("menu Copy:", armed)
+    assert armed == ["Placing", False, True], armed
+    key("Escape", "Escape", 27)
+    right_click(vp[0] + 10, vp[3] - 10)
+    assert cdp.js(MENU)[0] is True, "no menu on empty space"
     macro = cdp.js(f"{SCENE}.then(s => s.entries[0].macro)")
     snaps = cdp.js(f"{SCENE}.then(s => s.entries[0].free_snaps.map(f => f.name))")
     invoke("attach_module", f"{{macroName: '{macro}', snap: '{snaps[0]}', to: 1, toSnap: '{snaps[0]}', twist: 0}}")

@@ -151,6 +151,12 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 
 #modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; }
 #modal[hidden] { display: none; }
+#module-menu { position: fixed; z-index: 20; display: flex; flex-direction: column; min-width: 200px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); }
+#module-menu[hidden] { display: none; }
+#module-menu button { display: flex; justify-content: space-between; gap: 16px; text-align: left; background: none; border-color: transparent; padding: 5px 8px; }
+#module-menu button:hover:not(:disabled) { background: var(--panel-2); border-color: var(--line); }
+#module-menu kbd { font: inherit; font-size: 12px; color: var(--muted); }
+#module-menu hr { width: 100%; margin: 3px 0; border: 0; border-top: 1px solid var(--line); }
 .dialog { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; width: 560px; max-height: 80vh; display: flex; flex-direction: column; gap: 8px; }
 .dialog h3 { margin: 0; }
 #modal-body { overflow-y: auto; }

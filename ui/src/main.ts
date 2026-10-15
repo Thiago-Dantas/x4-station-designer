@@ -1815,6 +1815,11 @@ viewport.addEventListener("pointerup", async (ev) => {
     else await copyModule(source);
     return;
   }
+  if (ev.button === 2) {
+    const pick = view.pick(ev.clientX, ev.clientY);
+    if (pick?.kind === "module" && moving === null) openModuleMenu(pick.index, ev.clientX, ev.clientY);
+    return;
+  }
   if (ev.button !== 0) return;
   const pick = view.pick(ev.clientX, ev.clientY);
   if (view.gizmoBusy()) return;
@@ -1832,6 +1837,36 @@ viewport.addEventListener("pointermove", (ev) => {
   if ((armed || moving !== null) && !ev.buttons) setHover(view.hoverSnap(ev.clientX, ev.clientY));
 });
 viewport.addEventListener("pointerleave", () => setHover(null));
+
+// Right click (not drag) on a placed module: the game's module menu. It selects the module.
+function openModuleMenu(index: number, x: number, y: number) {
+  select(index);
+  const menu = $("module-menu");
+  $<HTMLButtonElement>("menu-detach").disabled = !entry(index)?.attached;
+  $<HTMLButtonElement>("menu-move").disabled = (scene?.entries.length ?? 0) < 2;
+  menu.hidden = false;
+  const r = menu.getBoundingClientRect(); // kept inside the window
+  menu.style.left = `${Math.min(x, innerWidth - r.width - 4)}px`;
+  menu.style.top = `${Math.min(y, innerHeight - r.height - 4)}px`;
+}
+const closeModuleMenu = () => ($("module-menu").hidden = true);
+const menuActions: Record<string, () => unknown> = {
+  "menu-copy": () => copyModule(selected),
+  "menu-copy-sequence": () => startMove(selected, true),
+  "menu-remove": () => removeSelected(),
+  "menu-remove-sequence": () => removeSelected(true),
+  "menu-move": () => startMove(),
+  "menu-detach": () => $("btn-detach").click(),
+};
+for (const [id, run] of Object.entries(menuActions)) {
+  $(id).onclick = () => {
+    closeModuleMenu();
+    void run();
+  };
+}
+window.addEventListener("pointerdown", (ev) => !$("module-menu").contains(ev.target as Node) && closeModuleMenu(), true);
+window.addEventListener("blur", closeModuleMenu);
+viewport.addEventListener("wheel", closeModuleMenu);
 
 // Drag from the palette onto a snap cone (or anywhere, for the first module).
 viewport.addEventListener("dragover", (ev) => {
@@ -1854,6 +1889,7 @@ viewport.addEventListener("drop", async (ev) => {
 window.addEventListener("keydown", (ev) => {
   if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;
   const key = ev.key.toLowerCase();
+  if (key === "escape" && !$("module-menu").hidden) return closeModuleMenu();
   if (ev.ctrlKey && key === "z") void apply(ev.shiftKey ? api.redo() : api.undo());
   else if (ev.ctrlKey && key === "y") void apply(api.redo());
   else if (key === "delete") void removeSelected(ev.shiftKey);
