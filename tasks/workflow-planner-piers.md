@@ -7,3 +7,5 @@ User request (2026-10-15): add piers to the Other modules box, and list only the
 - [x] Checked in the builder over DevTools (blueprint limit off, then restored): Teladi "pier" 3 rows, any race 25, Teladi "bay" 8 (no race), Terran "bay" 14, Teladi "defence" 3; Enter adds the pier to the list. With the blueprint limit on, the user's save has no Teladi piers, bays or defence: the Teladi lists are empty, as expected
 - [x] Docs: usage.md (Other modules box), D-15
 - [x] Commit and push
+- [x] Follow-up (user, 2026-10-15): "universal" modules like *Generic* in the palette (Teladi piers serve only L/XL ships). Universal = no race, already listed with the planner race; dock areas added to the classes, since nearly all are universal. Builder check: Teladi "dock" 18 rows (universal dock areas and S/M bays, Teladi piers), Terran 24; a chosen dock area replaces the planner's own (MCP). Some universal dock areas share a display name (Argon/Teladi "1M6S Standard Dock Area"), as in the palette
+- [x] Commit and push the follow-up
