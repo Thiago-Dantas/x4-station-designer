@@ -65,6 +65,7 @@ Proposed order (each step usable on its own):
 - [x] **Race filter** in the palette (user request): chips for one or several races (e.g. Terran + Boron) or all; remembered; ui_smoke checks Terran + Boron = 85 modules (83 before dock areas took the race in their macro name)
 - [x] **Plot size** (user request): plot per side in km, drawn as a box; modules outside are flagged; an enlarge (or undo) prompt; MCP `set_plot`/`fit_plot`; CLI `show` (plot needed) and `validate --plot`. See [workflow-plot-size.md](workflow-plot-size.md).
 - [x] **Build order viewer and editor** (user request; see [workflow-build-order.md](workflow-build-order.md)): list with stage dividers, drag to reorder, build first/last, stage ends, timeline slider, MCP tools. Verified in game (user, 2026-10-14, light testing): player builds follow the order.
+  - [x] Search in the build order (user request, 2026-10-15): matches highlighted; Enter / Shift+Enter select the next / previous match and frame it in the view. Checked in the builder over DevTools (scratch test).
 - [x] Keyboard navigation (user requests): WASD pan, Q/E down/up, arrow keys rotate
 - [x] Palette in the game's build-menu category order (user request)
 - [x] **x4ep_planner functionality** (user request; our own version from the game files; see [workflow-production-planner.md](workflow-production-planner.md)). Verified in game (user, 2026-10-14, light testing): an auto-placed station builds and ships reach its docks.

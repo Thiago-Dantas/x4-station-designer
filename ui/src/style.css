@@ -56,6 +56,10 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .order-row.selected { background: #3a2a14; }
 .order-row.later { opacity: 0.4; }
 .order-row.drop { border-top: 2px solid var(--accent); }
+.order-row.match { box-shadow: inset 3px 0 var(--accent); color: #ffd9a8; }
+.order-find { display: flex; align-items: center; gap: 6px; }
+.order-find input { flex: 1; min-width: 0; }
+#order-search-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
 .stage-divider { padding: 2px 8px; font-size: 11px; color: #ffd9a8; background: #2a2010; text-transform: uppercase; letter-spacing: 0.05em; }
 .order-actions { margin-top: 6px; }
 #module-list { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }

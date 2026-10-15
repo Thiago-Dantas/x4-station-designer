@@ -36,6 +36,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - **Drag a row onto another** to move it to that step. A module can't come before the module it attaches to, so impossible moves are refused with a message.
   - Click a row to select the module; double-click it to also point the camera at it (same viewing angle, closer).
   - *Show up to step* previews the station built up to that step; later rows are dimmed.
+  - **Find in build order** (the box above the list) highlights the rows whose name or macro has every typed word, e.g. `cross ter`. Enter selects the next match and points the camera at it, Shift+Enter the previous one; the count shows which match is selected. Esc clears the box. All rows stay listed, so a found module can be dragged anywhere.
   - Reordering renumbers the modules; the selection follows the moved module.
 - **Planner (left, third tab):** our own take on the x4ep_planner mod. Name the wares to make and how many production modules of each (e.g. Hull Parts × 2), then *Generate plan*.
   - Each target shows **≈ N/h**: what its modules make per hour, before planning. It uses the module the plan would use (race, blueprints), fully staffed when *House the workforce* is on, at the right pane's sunlight. *no blueprint* (red) means the blueprint limit leaves no module that makes it.

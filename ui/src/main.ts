@@ -379,9 +379,36 @@ function renderPalette() {
   $("module-count").textContent = `${shown.length} of ${all.length} modules${owned ? " with blueprints" : ""}`;
 }
 
+/** Build order rows matching the search box: every typed word is in the name or macro. Empty: none. */
+function orderMatches(): number[] {
+  const words = $<HTMLInputElement>("order-search").value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!scene || !words.length) return [];
+  return scene.entries
+    .filter((e) => {
+      const text = `${e.name ?? ""} ${e.macro}`.toLowerCase();
+      return words.every((w) => text.includes(w));
+    })
+    .map((e) => e.index);
+}
+
+/** Selects the next (or previous) build order match after the selected module, scrolls to it and frames it in the view. */
+function jumpToMatch(direction: 1 | -1) {
+  const matches = orderMatches();
+  if (!matches.length) return;
+  const after = direction === 1 ? matches.find((i) => i > (selected ?? 0)) : [...matches].reverse().find((i) => i < (selected ?? Infinity));
+  const index = after ?? (direction === 1 ? matches[0] : matches[matches.length - 1]);
+  select(index);
+  view.frameModule(index);
+  $("order-list").querySelector(".order-row.selected")?.scrollIntoView({ block: "nearest" });
+}
+
 /** The build order list: one row per module in build order, stage dividers, drag to reorder. */
 function renderOrder() {
   if (!scene) return;
+  const matches = new Set(orderMatches());
+  const searching = $<HTMLInputElement>("order-search").value.trim() !== "";
+  const at = selected !== null && matches.has(selected) ? [...matches].indexOf(selected) + 1 : 0;
+  $("order-search-count").textContent = !searching ? "" : !matches.size ? "no match" : at ? `${at} of ${matches.size}` : `${matches.size} found`;
   const total = scene.entries.length;
   const slider = $<HTMLInputElement>("build-step");
   slider.max = String(total);
@@ -391,7 +418,8 @@ function renderOrder() {
   let stage = 1;
   for (const e of scene.entries) {
     const row = document.createElement("div");
-    row.className = "order-row" + (e.index === selected ? " selected" : "") + (buildStep !== null && e.index > buildStep ? " later" : "");
+    row.className =
+      "order-row" + (e.index === selected ? " selected" : "") + (buildStep !== null && e.index > buildStep ? " later" : "") + (matches.has(e.index) ? " match" : "");
     row.draggable = true;
     row.innerHTML = `<span class="num"></span><span class="n"></span>`;
     row.querySelector(".num")!.textContent = `${e.index}.`;
@@ -1810,6 +1838,17 @@ async function exportToGame() {
 // ---------------------------------------------------------------- wiring
 
 $("search").oninput = renderPalette;
+$("order-search").oninput = () => {
+  renderOrder();
+  $("order-list").querySelector(".order-row.match")?.scrollIntoView({ block: "nearest" });
+};
+$("order-search").onkeydown = (ev) => {
+  if (ev.key === "Enter") jumpToMatch(ev.shiftKey ? -1 : 1);
+  else if (ev.key === "Escape") {
+    $<HTMLInputElement>("order-search").value = "";
+    renderOrder();
+  }
+};
 $("class-filter").onchange = renderPalette;
 $("btn-new").onclick = async () => {
   if (!(await confirmDiscard())) return;
