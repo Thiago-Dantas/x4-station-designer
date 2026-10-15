@@ -51,7 +51,7 @@ try:
     two = cdp.js("document.getElementById('module-count').textContent")
     cdp.js(chip % "All")
     print("   races Terran+Boron:", two, "| All:", cdp.js("document.getElementById('module-count').textContent"))
-    assert two.startswith("83 of"), two
+    assert two.startswith("85 of"), two  # 83 until dock areas without a maker race took the race in their macro name (f2d4fdd)
     cdp.screenshot(os.path.join(out, "ui-1-empty.png"))
 
     cdp.js("document.getElementById('btn-open-game').click()")

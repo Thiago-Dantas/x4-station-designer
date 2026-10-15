@@ -62,7 +62,7 @@ Proposed order (each step usable on its own):
 - [x] **Equipment** (user request; shields and turrets per module group; see [workflow-equipment.md](workflow-equipment.md)): per-group editing, plus bulk by picks, loadout level or copying; MCP tools; validation. Still to check in game: an equipped plan builds (likely: in-game plans with equipment load correctly).
 - [x] Real module meshes from `.xmf` instead of boxes (user request, done first; see [workflow-module-meshes.md](workflow-module-meshes.md))
 - [x] Textures on the models as an on/off setting (user request; on by default after measuring; see [workflow-module-meshes.md](workflow-module-meshes.md))
-- [x] **Race filter** in the palette (user request): chips for one or several races (e.g. Terran + Boron) or all; remembered; ui_smoke checks Terran + Boron = 83 modules
+- [x] **Race filter** in the palette (user request): chips for one or several races (e.g. Terran + Boron) or all; remembered; ui_smoke checks Terran + Boron = 85 modules (83 before dock areas took the race in their macro name)
 - [x] **Plot size** (user request): plot per side in km, drawn as a box; modules outside are flagged; an enlarge (or undo) prompt; MCP `set_plot`/`fit_plot`; CLI `show` (plot needed) and `validate --plot`. See [workflow-plot-size.md](workflow-plot-size.md).
 - [x] **Build order viewer and editor** (user request; see [workflow-build-order.md](workflow-build-order.md)): list with stage dividers, drag to reorder, build first/last, stage ends, timeline slider, MCP tools. Verified in game (user, 2026-10-14, light testing): player builds follow the order.
 - [x] Keyboard navigation (user requests): WASD pan, Q/E down/up, arrow keys rotate
@@ -90,6 +90,7 @@ Proposed order (each step usable on its own):
   - [x] Draft GitHub release v1.0.0 with `x4sd.exe`
   - [x] v1.1.0 published 2026-10-14: update notice, placement keeps the station's modules ([workflow-release-1.1.md](workflow-release-1.1.md))
   - [x] v1.2.0 published 2026-10-15: view draws on demand, frame rate limit ([workflow-release-1.2.md](workflow-release-1.2.md))
+  - [x] v1.3.0 published 2026-10-15: copy / remove sequence, right-click menu, turns on what you look at, planner piers and dock areas ([workflow-release-1.3.md](workflow-release-1.3.md))
   - [x] The user published it and made the repo public
 - [ ] Automated checks (CI) for the parts that don't need the game installed
 
