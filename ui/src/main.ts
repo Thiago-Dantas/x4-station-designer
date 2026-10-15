@@ -7,7 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BufferGeometry } from "three";
-import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type Issue, type ModuleInfo, type PlannedModule, type PlanRef, type PlotStatus, type ProductionPlan, type Quality, type Quat, type Scene, type Shape, type SnapInfo, type Vec3 } from "./api";
+import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type Issue, type ModuleInfo, type PlannedModule, type PlanRef, type PlotStatus, type ProductionPlan, type Quality, type Quat, type Scene, type Sector, type Shape, type SnapInfo, type Vec3 } from "./api";
 import { attachMatrix, CLASS_COLORS, type DiffuseTexture, modelGeometry, poseMatrix, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -512,7 +512,40 @@ let sunlight = (() => {
     return 100;
   }
 })();
+/** The sector chosen for the sunlight (its macro), or "" when the % was typed; remembered. */
+let sector = (() => {
+  try {
+    return localStorage.getItem("x4sd.sector") ?? "";
+  } catch {
+    return "";
+  }
+})();
+let sectors: Sector[] = [];
 let analyzed: { scene: Scene; sunlight: number } | null = null;
+
+/** Sets the sunlight (percent) and the sector it comes from ("" for a typed %), remembers both, and updates the figures. */
+function setSunlight(value: number, from: string) {
+  sunlight = value;
+  sector = from;
+  $<HTMLInputElement>("sunlight").value = String(value);
+  $<HTMLSelectElement>("sector").value = from;
+  try {
+    localStorage.setItem("x4sd.sunlight", String(value));
+    localStorage.setItem("x4sd.sector", from);
+  } catch {
+    // Remembering the choice is a convenience only.
+  }
+  void refreshAnalysis();
+}
+
+/** Fills the Sector list; a remembered sector sets the sunlight again (game data may have changed). */
+async function loadSectors() {
+  sectors = await api.listSectors();
+  $("sector").append(...sectors.map((s) => new Option(`${s.name} (${Math.round(s.sunlight)}%)`, s.macro)));
+  const chosen = sectors.find((s) => s.macro === sector);
+  if (chosen) setSunlight(Math.round(chosen.sunlight * 100) / 100, chosen.macro);
+  else if (sector) setSunlight(sunlight, "");
+}
 
 /** Right pane: what the whole station makes and uses per hour, its workforce, storage and docks. */
 async function refreshAnalysis() {
@@ -1781,16 +1814,16 @@ $<HTMLSelectElement>("build-method").onchange = (ev) => {
   }
   void refreshCost();
 };
+// A typed % wins over the sector; picking a sector sets its %.
 $<HTMLInputElement>("sunlight").onchange = (ev) => {
   const value = Number((ev.target as HTMLInputElement).value);
   if (!Number.isFinite(value) || value < 0) return;
-  sunlight = value;
-  try {
-    localStorage.setItem("x4sd.sunlight", String(sunlight));
-  } catch {
-    // Remembering the choice is a convenience only.
-  }
-  void refreshAnalysis();
+  setSunlight(value, "");
+};
+$<HTMLSelectElement>("sector").onchange = (ev) => {
+  const chosen = sectors.find((s) => s.macro === (ev.target as HTMLSelectElement).value);
+  if (chosen) setSunlight(Math.round(chosen.sunlight * 100) / 100, chosen.macro);
+  else setSunlight(sunlight, "");
 };
 $<HTMLInputElement>("sunlight").value = String(sunlight);
 $("btn-move").onclick = () => startMove();
@@ -1991,6 +2024,7 @@ void listen<Blueprints>("blueprints-changed", (ev) => {
     profileDir = catalog.profile;
     void loadPlanner().catch((e) => status(`Planner: ${e}`));
     void loadEquipment().catch((e) => status(`Equipment: ${e}`));
+    void loadSectors().catch((e) => status(`Sectors: ${e}`));
     // Game order: by build-menu category, then by name.
     modules.sort((a, b) => categoryOf(a) - categoryOf(b) || a.name.localeCompare(b.name));
     const used = new Set(modules.map(categoryOf));

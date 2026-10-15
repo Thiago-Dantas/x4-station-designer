@@ -99,6 +99,9 @@ export interface EquipmentGroup {
   /** Equipment macros that fit every slot. */
   fits: string[];
 }
+/** A sector and its sunlight in percent. */
+export interface Sector { macro: string; name: string; sunlight: number }
+
 export interface PlanRef { file: string; source?: string; id: string; name: string; modules: number }
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -156,6 +159,7 @@ export const api = {
   /** Checks as if the module were dropped where the gizmo is now; the design doesn't change. */
   previewGizmo: (index: number, position: Vec3, rotation: Quat) => invoke<{ issues: Issue[]; plot: PlotStatus | null }>("preview_gizmo", { index, position, rotation }),
   buildCost: (index: number | null, method: string) => serial<BuildCost>("build_cost", { index, method }),
+  listSectors: () => invoke<Sector[]>("list_sectors"),
   analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
   listWares: () => serial<{ ware: string; name: string }[]>("list_wares"),
   /** `baseline`: plan for a station with these modules instead of the open design. */

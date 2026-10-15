@@ -9,6 +9,7 @@ use crate::game::{find_extensions, load_vfs, Extension};
 use crate::geometry::{Quat, Transform};
 use crate::mesh::{self, Mesh};
 use crate::plan::{Patch, Plan};
+use crate::sectors::Sector;
 use crate::text::Texts;
 use crate::texture::{self, Texture};
 use crate::wares::Wares;
@@ -246,6 +247,8 @@ pub struct Catalog {
     equipment: OnceLock<Result<Vec<Equipment>>>,
     /// Ship class tag -> exclusion zone size (x, y, z) in metres; read on first use.
     exclusion_sizes: OnceLock<HashMap<String, [f64; 3]>>,
+    /// Sectors with their sunlight, by name; read on first use.
+    sectors: OnceLock<Vec<Sector>>,
 }
 
 impl Catalog {
@@ -267,6 +270,7 @@ impl Catalog {
             wares: OnceLock::new(),
             equipment: OnceLock::new(),
             exclusion_sizes: OnceLock::new(),
+            sectors: OnceLock::new(),
         };
         let text_files = std::iter::once("t/0001-l044.xml".to_owned())
             .chain(catalog.extensions.iter().map(|e| format!("extensions/{}/t/0001-l044.xml", e.folder)));
@@ -309,6 +313,7 @@ impl Catalog {
             wares: OnceLock::new(),
             equipment: OnceLock::new(),
             exclusion_sizes: OnceLock::new(),
+            sectors: OnceLock::new(),
         }
     }
 
@@ -362,6 +367,12 @@ impl Catalog {
         let module = Arc::new(self.read_module(&key)?);
         self.cache.lock().unwrap().insert(key, module.clone());
         Ok(module)
+    }
+
+    /// Sectors of the base game and enabled extensions with their sunlight, by name.
+    pub fn sectors(&self) -> &[Sector] {
+        let folders: Vec<String> = self.extensions.iter().map(|e| e.folder.clone()).collect();
+        self.sectors.get_or_init(|| crate::sectors::load(&self.vfs, &folders, &self.texts))
     }
 
     /// Wares with their build recipes (base game and enabled extensions), for costs.

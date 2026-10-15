@@ -192,6 +192,13 @@ The megashipyard first dropped from 240 to 68 fps with textures, because there w
 - **Maker races:** most producers are generic (no `makerrace`). Food, medicine and race-specific wares have one module per race, e.g. medical supplies ×6. Habitats, storage and piers exist per race, but most dock areas have no maker race; their race shows only in the macro name (`dockarea_arg_…`).
 - **Player's plans:** TerranScrapyard: 10,000 of 11,665 workers housed (bonus 86%), hull parts +12,645 per hour, energy cells −758,820 per hour (the scrap recyclers).
 
+### Sectors and sunlight (verified 2026-10-15, `sectors_and_sunlight` game-data test)
+- `libraries/mapdefaults.xml` (base, `08.cat`) and each DLC's own `extensions/ego_dlc_*/libraries/mapdefaults.xml` (`ext_03.cat`; a full `<defaults>` file, not a diff) hold one `<dataset macro="...">` per universe, cluster and sector.
+  - A sector's sunlight is `<area sunlight="1.23">` (1.0 = 100%); its name is `<identification name="{20004,10011}">`, e.g. `Cluster_01_Sector001_macro` = Grand Exchange I, 123%.
+  - Boron sectors (`Cluster_601`–`609`) have no `<area>`; their cluster's dataset has it. We take the cluster's (`Cluster_601_Sector001_macro` → `Cluster_601_macro`, 41%). **Hypothesis:** the game does the same.
+  - Left out: `demo_*` sectors (no sunlight) and Timelines' mission maps (`timelines_map_*`). Timelines' `cluster_7xx` sectors are in the main galaxy (`maps/xu_ep2_universe/galaxy.xml` and the DLC diffs that add clusters), so they stay. Every one of the 150 sectors we list is in a cluster the galaxy connects.
+- `sectors::load` / `Catalog::sectors` read them; values range from 2% (Loomanckstrat's Legacy) to 408% (Matrix #101).
+
 ### Savegames: the player's blueprints (verified 2026-10-14)
 - **Files:** `<profile>\save\*.xml.gz` (`save_NNN`, `autosave_NN`, `quicksave`). They are gzip; the game can also write plain `.xml`. `save_001` is 120 MB gzipped and 1.0 GB of XML. The header has `<info><save name date/><game version build start …/><player name location money/>`.
 - **Blueprints:** one `<blueprints>` block of `<blueprint ware="…"/>` lines, one per line. It is the player's: a full scan of `save_001` found exactly one, 447 wares, 113 of them `module_*`, the rest paint, clothing, equipment and so on.

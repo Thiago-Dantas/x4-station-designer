@@ -1239,3 +1239,25 @@ fn blueprints_from_save_limit_the_planner() {
     assert!(!r.connectors.is_empty());
     assert!(r.connectors.iter().all(|(_, m)| teladi.contains(&m.to_ascii_lowercase())), "{:?}", r.connectors);
 }
+
+/// Sectors and their sunlight (`mapdefaults.xml`): the base game's own value,
+/// a Boron sector taking its cluster's, names resolved, no demo or Timelines
+/// mission maps.
+#[test]
+fn sectors_and_sunlight() {
+    let Some(c) = catalog() else { return };
+    let sectors = c.sectors();
+    eprintln!("{} sectors", sectors.len());
+    let find = |m: &str| sectors.iter().find(|s| s.macro_name.eq_ignore_ascii_case(m));
+    let grand_exchange = find("Cluster_01_Sector001_macro").unwrap();
+    assert_eq!((grand_exchange.name.as_str(), grand_exchange.sunlight), ("Grand Exchange I", 1.23));
+    assert_eq!(find("Cluster_14_Sector001_macro").unwrap().name, "Argon Prime");
+    if c.extensions().iter().any(|e| e.folder == "ego_dlc_boron") {
+        assert_eq!(find("Cluster_601_Sector001_macro").unwrap().sunlight, 0.41, "from its cluster");
+    }
+    for s in sectors {
+        let m = s.macro_name.to_ascii_lowercase();
+        assert!(!m.starts_with("demo_") && !m.starts_with("timelines_map_"), "{m}");
+        assert!(!s.name.contains('{') && s.sunlight >= 0.0, "{s:?}");
+    }
+}

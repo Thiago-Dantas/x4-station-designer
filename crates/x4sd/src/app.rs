@@ -83,6 +83,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             straighten,
             build_cost,
             analyze_station,
+            list_sectors,
             list_wares,
             plan_production,
             auto_place,
@@ -385,6 +386,13 @@ fn analyze_station(state: State<'_, Shared>, sunlight: f64) -> CmdResult {
     let app = state.lock().unwrap();
     let catalog = catalog(&app)?;
     ops::analyze_station(&catalog, &app.design, sunlight)
+}
+
+/// Sectors with their sunlight in percent, by name: [{macro, name, sunlight}].
+#[tauri::command]
+fn list_sectors(state: State<'_, Shared>) -> CmdResult {
+    let catalog = catalog(&state.lock().unwrap())?;
+    Ok(json!(catalog.sectors().iter().map(|s| json!({"macro": s.macro_name, "name": s.name, "sunlight": s.sunlight * 100.0})).collect::<Vec<_>>()))
 }
 
 /// Wares some buildable module makes.

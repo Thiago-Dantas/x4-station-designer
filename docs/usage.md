@@ -101,7 +101,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - notes on what is missing (housing, a storage type, a dock).
   - Workers' food and medicine count as use.
   - Raw materials are marked *(raw)*: ore, ice, silicon, nividium, methane, helium, hydrogen, and scrap metal (salvaged). A shortfall of any other ware is noted as "Not self-sufficient".
-  - *Sunlight %* is the sector's sunlight, which solar output (energy cells) follows. It is remembered.
+  - *Sunlight %* is the sector's sunlight, which solar output (energy cells) follows. *Sector* above it lists the game's sectors (base and enabled DLCs) with their sunlight: picking one sets the %; typing a % sets the sector back to *Any*. Both are remembered.
   - The rules and which parts are still hypotheses are in [tasks/workflow-production-planner.md](../tasks/workflow-production-planner.md).
 - **Plot (right):** the plot the station must fit, in whole km per side from the station origin (+X, −X, +Y, −Y, +Z, −Z; each axis 1–20 km, as in the game), drawn as a box (green when everything fits, red when not).
   - New designs start at 2 km on every side (4×4×4 km), the game's default; opened plans start on the smallest plot that holds them.
