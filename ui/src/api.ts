@@ -123,6 +123,8 @@ function serial<T>(command: string, args?: Record<string, unknown>): Promise<T> 
 
 export const api = {
   loadCatalog: () => invoke<{ modules: ModuleInfo[]; profile: string | null; game: string | null }>("load_catalog"),
+  /** Checks and remembers the X4 folder the player picked; fails if it has no game data. */
+  setGameDir: (dir: string) => invoke<null>("set_game_dir", { dir }),
   moduleShape: (macroName: string) => invoke<Shape>("module_shape", { macroName }),
   /** Raw model bytes; see `module_model` in app.rs. */
   moduleModel: (macroName: string, quality: Quality) => invoke<ArrayBuffer>("module_model", { macroName, quality }),

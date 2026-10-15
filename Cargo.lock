@@ -4993,6 +4993,7 @@ dependencies = [
  "flate2",
  "miniz_oxide 0.9.1",
  "roxmltree",
+ "winreg",
 ]
 
 [[package]]

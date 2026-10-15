@@ -2210,7 +2210,10 @@ void listen<Blueprints>("blueprints-changed", (ev) => {
   try {
     if (blueprints.save) await api.setBlueprints(blueprints);
     renderBlueprints();
-    const catalog = await api.loadCatalog();
+    const catalog = await api.loadCatalog().catch(async (e) => {
+      if (!String(e).startsWith("X4 install not found") || !(await chooseGameDir("X4: Foundations wasn't found."))) throw e;
+      return api.loadCatalog();
+    });
     modules = catalog.modules;
     profileDir = catalog.profile;
     void loadPlanner().catch((e) => status(`Planner: ${e}`));
@@ -2227,6 +2230,16 @@ void listen<Blueprints>("blueprints-changed", (ev) => {
     status(String(e), "error");
   }
 })();
+
+/** Asks for the X4 folder until the player picks one with game data (true) or cancels. */
+async function chooseGameDir(problem: string): Promise<boolean> {
+  const go = await ask(`${problem}
+
+Choose the X4: Foundations folder (the one with X4.exe)?`, { title: "X4 Station Designer", kind: "warning" });
+  const dir = go ? await open({ directory: true, title: "X4: Foundations folder" }) : null;
+  if (typeof dir !== "string") return false;
+  return api.setGameDir(dir).then(() => true, (e) => chooseGameDir(String(e)));
+}
 
 /** "1.10.0" > "1.9.2": numeric parts, a leading "v" ignored. */
 function newerVersion(a: string, b: string): boolean {

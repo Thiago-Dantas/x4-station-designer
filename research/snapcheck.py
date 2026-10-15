@@ -6,6 +6,8 @@ stored offset. The yaw/pitch/roll convention is unknown, so every axis order and
 sign combination is tried and ranked by error.
 
     python -I research/snapcheck.py <constructionplans.xml>
+
+The game folder comes from X4_GAME_DIR.
 """
 import itertools
 import math
@@ -17,7 +19,7 @@ import xml.etree.ElementTree as ET
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
 from x4cat import read_cat  # noqa: E402
 
-GAME = r"F:\SteamLibrary\steamapps\common\X4 Foundations"
+GAME = os.environ.get("X4_GAME_DIR") or sys.exit("set X4_GAME_DIR to the X4: Foundations folder")
 DLCS = ["ego_dlc_boron", "ego_dlc_pirate", "ego_dlc_split", "ego_dlc_terran", "ego_dlc_timelines", "ego_dlc_ventures"]
 
 

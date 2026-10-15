@@ -8,19 +8,17 @@
 //!     cargo run -p x4sd-core --release --example zonecheck -- <plans.xml>...
 //!     cargo run -p x4sd-core --release --example zonecheck -- --list   # modules with zones
 //!
-//! Game dir: `X4_GAME_DIR` or the dev machine's; the profile's extensions are loaded.
-
-use std::path::Path;
+//! Game and profile are found like the app finds them; the profile's extensions are loaded.
 
 use x4sd_core::catalog::{Catalog, ShapeBox};
+use x4sd_core::game::{find_game_dir, find_profile_dir};
 use x4sd_core::geometry::{Quat, Transform};
 use x4sd_core::layout::{penetration, WorldBox};
 use x4sd_core::plan::parse_plans;
 
 fn main() {
-    let game = std::env::var("X4_GAME_DIR").unwrap_or_else(|_| r"F:\SteamLibrary\steamapps\common\X4 Foundations".to_owned());
-    let profile = std::env::var("USERPROFILE").map(|u| format!(r"{u}\Documents\Egosoft\X4\104494216")).unwrap();
-    let catalog = Catalog::load(Path::new(&game), Some(Path::new(&profile))).unwrap();
+    let game = find_game_dir().expect("X4 install not found; set X4_GAME_DIR");
+    let catalog = Catalog::load(&game, find_profile_dir().as_deref()).unwrap();
     if std::env::args().nth(1).as_deref() == Some("--list") {
         for info in catalog.station_modules().unwrap() {
             let m = catalog.module(&info.macro_name).unwrap();

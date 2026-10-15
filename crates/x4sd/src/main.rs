@@ -11,7 +11,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use x4sd_core::catalog::Catalog;
-use x4sd_core::game::{find_game_dir, find_profile_dir};
+use x4sd_core::game::{find_game_dir, find_profile_dir, is_game_dir};
 use x4sd_core::import::{new_plan_id, write_import_file};
 use x4sd_core::plan::{parse_plans, Plan};
 use x4sd_core::plot::{required_plot, Plot};
@@ -21,7 +21,7 @@ use x4sd_core::{Error, Result};
 #[derive(Parser)]
 #[command(version, about = "X4 station designer")]
 struct Cli {
-    /// X4 install folder (default: X4_GAME_DIR, else found through Steam)
+    /// X4 install folder (default: X4_GAME_DIR, else the folder picked in the builder, else found through Steam or GOG)
     #[arg(long, global = true)]
     game_dir: Option<PathBuf>,
     /// Player profile folder (default: the most recently used Documents\Egosoft\X4\<id>)
@@ -90,13 +90,14 @@ fn run(cli: Cli) -> Result<ExitCode> {
     let profile = cli.profile_dir.clone().or_else(find_profile_dir);
     let catalog = || -> Result<Catalog> {
         let game = cli.game_dir.clone().or_else(find_game_dir).ok_or_else(|| {
-            Error("X4 install not found; pass --game-dir or set X4_GAME_DIR".to_owned())
+            Error("X4 install not found; pass --game-dir, set X4_GAME_DIR, or pick the folder once in the builder".to_owned())
         })?;
         Catalog::load(&game, profile.as_deref())
     };
 
     let Some(command) = cli.command else {
-        app::run(cli.game_dir.clone().or_else(find_game_dir), profile)?;
+        // A folder without game data counts as not found: the builder then offers to pick one.
+        app::run(cli.game_dir.clone().or_else(find_game_dir).filter(|g| is_game_dir(g)), profile)?;
         return Ok(ExitCode::SUCCESS);
     };
     match command {

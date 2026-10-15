@@ -10,6 +10,11 @@ Root: `F:\SteamLibrary\steamapps\common\X4 Foundations`
 | `extensions/ego_dlc_*` | Official DLCs: `boron`, `pirate`, `split`, `terran`, `timelines`, `ventures`. Each has `content.xml` and `ext_NN.cat/.dat`. |
 | `extensions/<mod>` | Installed mods (about 80), same layout. Some ship loose files. |
 | `ui/core`, `ui/lualibs` | Loose UI files. Most UI is inside the archives (`ui/addons/**`). |
+
+### Finding the install on a player's machine (`game::find_game_dir`, D-24)
+Order: `--game-dir`, then `X4_GAME_DIR`, then the folder picked in the builder (`%APPDATA%\x4sd\game-dir.txt`), then Steam, then GOG. Only a folder with `01.cat` counts (the env var and `--game-dir` are taken as given, except that the builder offers the picker when they have no `01.cat`).
+- **Steam (verified 2026-10-15 on the dev machine):** `HKCU\Software\Valve\Steam` value `SteamPath` (here `c:/program files (x86)/steam`, forward slashes) names Steam's folder; `<Steam>\steamapps\libraryfolders.vdf` lists every library (`"path"` lines, `\` escaped); X4 is `<library>\steamapps\common\X4 Foundations`. Without the registry value, `C:\Program Files (x86)\Steam`. Steam also writes `HKLM\...\Uninstall\Steam App 392160` with `InstallLocation` (not used).
+- **GOG (key layout verified 2026-10-15 with another GOG game; X4 from GOG not tested, hypothesis):** `HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\<id>` holds `gameName` and `path`. Every game key is tried, so X4's GOG id isn't needed; we assume a GOG install has `01.cat` in its root like the Steam one.
 | `t/` | Loose localisation files (`0002-lNNN.xml`) |
 | `X4.exe` | Native engine. Use REA on it only if the data files don't answer a question. |
 | `version.dat` | `900` |

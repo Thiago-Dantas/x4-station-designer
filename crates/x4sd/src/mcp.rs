@@ -13,6 +13,7 @@ use serde::Deserialize;
 use serde_json::json;
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
+use x4sd_core::game::find_game_dir;
 
 use crate::link::Client;
 use crate::ops::{self, Ctx, ModuleNames, Op};
@@ -525,7 +526,12 @@ impl Server {
             };
         }
         if state.local.is_none() {
-            let game = state.game_dir.clone().ok_or("X4 install not found; start with --game-dir or set X4_GAME_DIR")?;
+            // Looked up again: the player may have picked the folder in the builder since.
+            let game = state
+                .game_dir
+                .clone()
+                .or_else(find_game_dir)
+                .ok_or("X4 install not found; start with --game-dir, set X4_GAME_DIR, or pick the folder once in the builder")?;
             state.local = Some(ops::load(&game, state.profile_dir.as_deref()).map_err(|e| e.to_string())?);
         }
         let State { local: Some((catalog, names)), design, profile_dir, blueprints, .. } = &mut *state else { unreachable!() };

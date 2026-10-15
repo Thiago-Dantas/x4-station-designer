@@ -51,6 +51,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
         })
         .invoke_handler(tauri::generate_handler![
             load_catalog,
+            set_game_dir,
             module_shape,
             module_model,
             material_maps,
@@ -105,7 +106,7 @@ async fn load_catalog(state: State<'_, Shared>) -> CmdResult {
         let app = state.lock().unwrap();
         (app.game_dir.clone(), app.profile_dir.clone())
     };
-    let game = game.ok_or("X4 install not found; start x4sd with --game-dir or set X4_GAME_DIR")?;
+    let game = game.ok_or(GAME_NOT_FOUND)?;
     let loaded = tauri::async_runtime::spawn_blocking(move || -> x4sd_core::Result<(Catalog, Vec<_>)> {
         let catalog = Catalog::load(&game, profile.as_deref())?;
         let modules = catalog.station_modules()?;
@@ -123,6 +124,17 @@ async fn load_catalog(state: State<'_, Shared>) -> CmdResult {
         .map(|m| json!({"macro": m.macro_name, "class": m.class, "race": m.race, "source": m.source, "name": m.name}))
         .collect();
     Ok(json!({"modules": palette, "profile": app.profile_dir, "game": app.game_dir}))
+}
+
+/// The UI offers to pick the folder when `load_catalog` fails with this.
+const GAME_NOT_FOUND: &str = "X4 install not found";
+
+/// The X4 folder the player picked: checked, remembered for later starts, used from now on.
+#[tauri::command]
+fn set_game_dir(state: State<'_, Shared>, dir: PathBuf) -> CmdResult {
+    x4sd_core::game::save_game_dir(&dir).map_err(|e| e.to_string())?;
+    state.lock().unwrap().game_dir = Some(dir);
+    Ok(Value::Null)
 }
 
 /// Snaps (position, facing, rotation) and boxes of a module, in its own frame.

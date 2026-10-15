@@ -113,19 +113,80 @@ fn catalogs(dir: &Path, prefix: &str) -> Result<Vec<PathBuf>> {
     Ok(cats)
 }
 
-/// The X4 install: `X4_GAME_DIR` if set, else the Steam library that has it
-/// (libraries are listed in `<Steam>\steamapps\libraryfolders.vdf`).
+/// The X4 install: `X4_GAME_DIR` if set, else the folder the player picked in the
+/// builder (`save_game_dir`), else a Steam library that has it, else a GOG install.
 pub fn find_game_dir() -> Option<PathBuf> {
     if let Some(dir) = std::env::var_os("X4_GAME_DIR") {
         return Some(PathBuf::from(dir));
     }
-    let steam = PathBuf::from(std::env::var_os("ProgramFiles(x86)")?).join("Steam");
-    let vdf = std::fs::read_to_string(steam.join("steamapps/libraryfolders.vdf")).ok()?;
+    let saved = saved_game_dir_file().and_then(|f| std::fs::read_to_string(f).ok()).map(|s| PathBuf::from(s.trim()));
+    saved.into_iter().chain(steam_game_dirs()).chain(gog_game_dirs()).find(|dir| is_game_dir(dir))
+}
+
+/// A folder with the game's data catalogs.
+pub fn is_game_dir(dir: &Path) -> bool {
+    dir.join("01.cat").is_file()
+}
+
+/// Remembers the X4 folder the player picked, for `find_game_dir`.
+pub fn save_game_dir(dir: &Path) -> Result<()> {
+    if !is_game_dir(dir) {
+        return Err(crate::Error(format!("{} has no X4 game data (01.cat); pick the folder with X4.exe", dir.display())));
+    }
+    let file = saved_game_dir_file().ok_or_else(|| crate::Error("APPDATA is not set".to_owned()))?;
+    std::fs::create_dir_all(file.parent().unwrap())?;
+    std::fs::write(file, dir.to_string_lossy().as_bytes())?;
+    Ok(())
+}
+
+fn saved_game_dir_file() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("APPDATA")?).join("x4sd/game-dir.txt"))
+}
+
+/// `X4 Foundations` in every Steam library (listed in `<Steam>\steamapps\libraryfolders.vdf`).
+/// Steam's folder comes from the registry, else the default under Program Files.
+fn steam_game_dirs() -> Vec<PathBuf> {
+    let steam = steam_registry_dir().or_else(|| Some(PathBuf::from(std::env::var_os("ProgramFiles(x86)")?).join("Steam")));
+    let Some(vdf) = steam.and_then(|s| std::fs::read_to_string(s.join("steamapps/libraryfolders.vdf")).ok()) else {
+        return Vec::new();
+    };
     vdf.lines()
         .filter(|l| l.trim_start().starts_with("\"path\""))
         .filter_map(|l| l.trim_end().strip_suffix('"')?.rsplit_once('"').map(|(_, p)| p.replace("\\\\", "\\")))
         .map(|lib| PathBuf::from(lib).join("steamapps/common/X4 Foundations"))
-        .find(|dir| dir.join("X4.exe").exists())
+        .collect()
+}
+
+/// Install folders of every GOG game (`HKLM\SOFTWARE\WOW6432Node\GOG.com\Games\<id>`, value `path`).
+#[cfg(windows)]
+fn gog_game_dirs() -> Vec<PathBuf> {
+    use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
+    let Ok(games) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(r"SOFTWARE\WOW6432Node\GOG.com\Games") else {
+        return Vec::new();
+    };
+    games
+        .enum_keys()
+        .filter_map(|id| games.open_subkey(id.ok()?).ok()?.get_value::<String, _>("path").ok())
+        .map(PathBuf::from)
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn gog_game_dirs() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+/// Steam's folder (`HKCU\Software\Valve\Steam`, value `SteamPath`).
+#[cfg(windows)]
+fn steam_registry_dir() -> Option<PathBuf> {
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+    let path: String = RegKey::predef(HKEY_CURRENT_USER).open_subkey(r"Software\Valve\Steam").ok()?.get_value("SteamPath").ok()?;
+    Some(PathBuf::from(path))
+}
+
+#[cfg(not(windows))]
+fn steam_registry_dir() -> Option<PathBuf> {
+    None
 }
 
 /// The most recently used profile folder, `Documents\Egosoft\X4\<id>`.

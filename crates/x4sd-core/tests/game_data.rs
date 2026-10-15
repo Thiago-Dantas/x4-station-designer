@@ -1,5 +1,5 @@
-//! Tests against a real X4 install (`X4_GAME_DIR`, default: the dev machine's
-//! Steam path) and the extracted samples in `research/extracted/`. Skipped when
+//! Tests against a real X4 install (found like the app finds it: `X4_GAME_DIR`,
+//! the folder picked in the builder, Steam, GOG) and the extracted samples in `research/extracted/`. Skipped when
 //! those are missing.
 
 use std::path::{Path, PathBuf};
@@ -8,25 +8,22 @@ use std::time::Instant;
 
 use x4sd_core::catalog::Catalog;
 use x4sd_core::design::Design;
-use x4sd_core::game::find_profile_dir;
+use x4sd_core::game::{find_game_dir, find_profile_dir, is_game_dir};
 use x4sd_core::geometry::{attach, fit, Transform};
 use x4sd_core::import::write_import_file;
 use x4sd_core::plan::{parse_plans, Plan};
 use x4sd_core::validate::{validate, Issue};
 
-const DEFAULT_GAME_DIR: &str = r"F:\SteamLibrary\steamapps\common\X4 Foundations";
-
 fn catalog() -> Option<&'static Catalog> {
     static CATALOG: OnceLock<Option<Catalog>> = OnceLock::new();
     CATALOG
         .get_or_init(|| {
-            let game = std::env::var("X4_GAME_DIR").unwrap_or_else(|_| DEFAULT_GAME_DIR.to_owned());
-            if !Path::new(&game).join("01.cat").exists() {
-                eprintln!("skipped: no X4 install at {game}");
+            let Some(game) = find_game_dir().filter(|g| is_game_dir(g)) else {
+                eprintln!("skipped: no X4 install found");
                 return None;
-            }
+            };
             let start = Instant::now();
-            let c = Catalog::load(Path::new(&game), find_profile_dir().as_deref()).unwrap();
+            let c = Catalog::load(&game, find_profile_dir().as_deref()).unwrap();
             eprintln!("catalog loaded in {:?}, {} enabled extensions", start.elapsed(), c.extensions().len());
             Some(c)
         })

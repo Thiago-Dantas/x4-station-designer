@@ -45,7 +45,7 @@ Open a plan you saved in game, check its production, cost and load, and step thr
 **You need:** Windows 10 or 11 (the builder needs the WebView2 runtime, which comes with Windows 11 and current Windows 10), and X4: Foundations installed. Tested with game version 9.00.
 
 1. Download `x4sd.exe` from the [latest release](https://github.com/Thiago-Dantas/x4-station-designer/releases/latest) and put it anywhere. There is nothing to install. The exe isn't signed, so Windows SmartScreen may warn the first time you run it.
-2. Double-click it. It finds the game through Steam and your player profile under `Documents\Egosoft\X4\<id>`. If it doesn't, start it from a terminal with `--game-dir "<X4 folder>"` and/or `--profile-dir "<profile folder>"`.
+2. Double-click it. It finds the game through Steam or GOG and your player profile under `Documents\Egosoft\X4\<id>`. If it can't find the game, it asks you for the X4 folder (the one with `X4.exe`) and remembers it. A profile it doesn't find can be given from a terminal with `--profile-dir "<profile folder>"`.
 3. Build a station, or open one of yours with *Open game plan…*.
 4. Click **Export to game**. This writes the plan into your profile's `constructionplan` folder.
 5. In game, open the station build menu and click **Import**. The plan appears with your other plans; the game doesn't need a restart.

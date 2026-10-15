@@ -1,6 +1,6 @@
 # Using x4sd
 
-`x4sd.exe` is one self-contained program (about 15 MB, the builder's UI included; nothing to install; it needs the WebView2 runtime, which comes with Windows 11 and current Windows 10). It finds the game through Steam and the player profile under `Documents\Egosoft\X4\<id>` by itself. Override with `--game-dir` / `X4_GAME_DIR` and `--profile-dir`.
+`x4sd.exe` is one self-contained program (about 15 MB, the builder's UI included; nothing to install; it needs the WebView2 runtime, which comes with Windows 11 and current Windows 10). It finds the game through Steam (any library) or GOG, and the player profile under `Documents\Egosoft\X4\<id>`, by itself. If the game isn't found, the builder asks for its folder and remembers it (`%APPDATA%\x4sd\game-dir.txt`); the CLI and MCP server use that folder too. Override with `--game-dir` / `X4_GAME_DIR` and `--profile-dir`.
 
 ## Visual builder
 Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game data in about half a second and opens the builder.
