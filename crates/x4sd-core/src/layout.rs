@@ -449,7 +449,8 @@ pub struct Options {
 /// free snap nearest the station's centre where it fits, with whichever of its own snaps and twists keeps it most compact; or,
 /// when that is `HUB_PENALTY_M` nearer (with `Options::fewer_connectors`:
 /// `FEWER_HUBS_PENALTY_M`), onto a new hub (or a straight connection structure and
-/// a hub) on a free snap.
+/// a hub) on a free snap. A placement keeps the station room to grow (a free
+/// snap a hub fits on, `Placer::leaves_exit`) while there is a way to.
 ///
 /// Docks and bays stay reachable: the modules that need clear space (`outer`) go
 /// last, where their exclusion zones (`zones`) and, for dock areas and piers, their
@@ -732,6 +733,11 @@ struct Fit {
 /// The best way to attach a module to one snap: (own snap, twist, fit).
 type Choice = (String, f64, Fit);
 
+/// A hub placed on a free snap (on a strut, maybe) with a module on it: (hub snap,
+/// hub twist, hub snap the module takes, the module's choice, the hub's fit, the
+/// strut's fit, where the hub goes).
+type Unit = (String, f64, String, Choice, Fit, Option<Fit>, Transform);
+
 /// A placed module's index, and the connection structures added for it: (index, macro).
 type Placed = (u32, Vec<(u32, String)>);
 
@@ -779,6 +785,8 @@ struct Placer<'a> {
     shell: f64,
     /// How much nearer the centre a new hub has to put a module (see `Options::fewer_connectors`).
     hub_penalty: f64,
+    /// Free snaps (entry, snap) a hub doesn't fit on: they stay that way.
+    closed: HashSet<(u32, String)>,
 }
 
 impl<'a> Placer<'a> {
@@ -803,6 +811,7 @@ impl<'a> Placer<'a> {
             layers: Vec::new(),
             shell: 0.0,
             hub_penalty: HUB_PENALTY_M,
+            closed: HashSet::new(),
         };
         for e in &design.plan().entries {
             if catalog.module(&e.macro_name).is_ok() {
@@ -993,7 +1002,12 @@ impl<'a> Placer<'a> {
         };
         for &(outward, half) in tries {
             (self.outward, self.half) = (outward, half);
-            let placed = self.place_with(design, conn, module)?;
+            // Keep room to grow (`leaves_exit`) while there is a way to; then fill anyway.
+            let exits = !outward && self.side.is_none();
+            let mut placed = self.place_with(design, conn, module, exits)?;
+            if placed.is_none() && exits {
+                placed = self.place_with(design, conn, module, false)?;
+            }
             (self.outward, self.half) = (false, false);
             if let Some((index, _)) = &placed {
                 if self.side.is_some() && !half {
@@ -1013,7 +1027,9 @@ impl<'a> Placer<'a> {
         Ok(None)
     }
 
-    fn place_with(&mut self, design: &mut Design, conn: &Connectors, module: &Module) -> Result<Option<Placed>> {
+    /// Places the module at the best free snap; with `keep_exit`, only where the
+    /// station keeps a free snap a hub fits on (`leaves_exit`).
+    fn place_with(&mut self, design: &mut Design, conn: &Connectors, module: &Module, keep_exit: bool) -> Result<Option<Placed>> {
         let boxes = self.catalog.collision_boxes(&module.macro_name)?;
         let name = &module.macro_name;
         // Ways to place it, nearest the station's centre first: directly on a free
@@ -1032,17 +1048,36 @@ impl<'a> Placer<'a> {
                 continue;
             }
             if !through_hub {
-                if let Some((snap, twist, _)) = self.best_at(module, &boxes, &f.world, &[]) {
+                if let Some((snap, twist, fit)) = self.best_at(module, &boxes, &f.world, &[]) {
+                    let new = beyond(module, &[&snap], &attach(&f.world, &Transform::IDENTITY, &module.snap(&snap).unwrap().transform, twist));
+                    if keep_exit && !self.leaves_exit(&conn.hub, &f, &new, &[&fit]) {
+                        continue; // not a failure: it may be fine once the station has other exits
+                    }
                     let index = design.attach(self.catalog, name, &snap, f.entry, &f.snap, twist)?;
                     self.take(f.entry, &f.snap);
                     self.add(design, index)?;
                     return Ok(Some((index, Vec::new())));
                 }
             } else {
+                let mut closes = false;
                 for strut in std::iter::once(None).chain(conn.struts.iter().map(Some)) {
                     if let Some(unit) = self.unit_at(&f, strut, &conn.hub, module, &boxes) {
+                        if keep_exit {
+                            let (hub_snap, _, on, (snap, twist, fit), hub_fit, strut_fit, hub_at) = &unit;
+                            let module_at = attach(&hub_at.then(&conn.hub.module.snap(on).unwrap().transform), &Transform::IDENTITY, &module.snap(snap).unwrap().transform, *twist);
+                            let mut new = beyond(&conn.hub.module, &[hub_snap, on], hub_at);
+                            new.extend(beyond(module, &[snap], &module_at));
+                            let extra: Vec<&Fit> = [Some(fit), Some(hub_fit), strut_fit.as_ref()].into_iter().flatten().collect();
+                            if !self.leaves_exit(&conn.hub, &f, &new, &extra) {
+                                closes = true;
+                                continue;
+                            }
+                        }
                         return self.commit(design, &f, strut, &conn.hub, module, unit).map(Some);
                     }
+                }
+                if closes {
+                    continue; // as above
                 }
             }
             self.failed.insert(key);
@@ -1050,9 +1085,37 @@ impl<'a> Placer<'a> {
         Ok(None)
     }
 
-    /// A hub at free snap `f` (on a strut, if given) that the module fits on:
-    /// (hub snap, hub twist, hub snap the module takes, the module's choice).
-    fn unit_at(&self, f: &FreeSnap, strut: Option<&Piece>, hub: &Piece, module: &Module, boxes: &[ShapeBox]) -> Option<(String, f64, String, Choice)> {
+    /// Whether the station still has room to grow once `module` takes free snap `f`
+    /// with its snap `snap`, twisted `twist` (at `fit`): a free snap left, its own or
+    /// another, that a hub fits on. Without one, modules with a single snap (dead
+    /// ends) can cap every way out of a compact station, and nothing more fits.
+    fn leaves_exit(&mut self, hub: &Piece, f: &FreeSnap, new: &[Transform], extra: &[&Fit]) -> bool {
+        let hub_at = |world: &Transform| attach(world, &Transform::IDENTITY, &hub.module.snaps[0].transform, 0.0);
+        if new.iter().any(|w| self.fits(&hub.module, &hub.boxes, &hub_at(w), extra).is_some()) {
+            return true;
+        }
+        let mut closed = Vec::new();
+        let mut found = false;
+        for g in self.free.iter().filter(|g| !(g.entry == f.entry && g.snap == f.snap)) {
+            let key = (g.entry, g.snap.clone());
+            if self.closed.contains(&key) {
+                continue;
+            }
+            match self.fits(&hub.module, &hub.boxes, &hub_at(&g.world), &[]) {
+                None => closed.push(key),
+                Some(h) if extra.iter().all(|x| overlap(&h.body, &x.body).is_none()) => {
+                    found = true;
+                    break;
+                }
+                Some(_) => {}
+            }
+        }
+        self.closed.extend(closed);
+        found
+    }
+
+    /// A hub at free snap `f` (on a strut, if given) that the module fits on.
+    fn unit_at(&self, f: &FreeSnap, strut: Option<&Piece>, hub: &Piece, module: &Module, boxes: &[ShapeBox]) -> Option<Unit> {
         let mut base = f.world;
         let strut_fit = match strut {
             Some(s) => {
@@ -1087,7 +1150,7 @@ impl<'a> Placer<'a> {
                         rank(&a.1).total_cmp(&rank(&b.1))
                     });
                 if let Some((on, choice)) = best {
-                    return Some((hs.name.clone(), twist, on, choice));
+                    return Some((hs.name.clone(), twist, on, choice, hub_fit, strut_fit, at));
                 }
             }
         }
@@ -1101,7 +1164,7 @@ impl<'a> Placer<'a> {
         strut: Option<&Piece>,
         hub: &Piece,
         module: &Module,
-        (hub_snap, hub_twist, on, (snap, twist, _)): (String, f64, String, Choice),
+        (hub_snap, hub_twist, on, (snap, twist, _), ..): Unit,
     ) -> Result<Placed> {
         let mut added = Vec::new();
         let (mut to, mut to_snap) = (f.entry, f.snap.clone());
@@ -1122,6 +1185,11 @@ impl<'a> Placer<'a> {
         self.add(design, placed)?;
         Ok((placed, added))
     }
+}
+
+/// Where the snaps of a module at `at` are, but those named `used`.
+fn beyond(module: &Module, used: &[&str], at: &Transform) -> Vec<Transform> {
+    module.snaps.iter().filter(|s| !used.contains(&s.name.as_str())).map(|s| at.then(&s.transform)).collect()
 }
 
 /// Squared distance of the bounds' centre from `from`.

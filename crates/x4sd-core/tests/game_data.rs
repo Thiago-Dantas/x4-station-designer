@@ -481,6 +481,35 @@ fn auto_place_planned_stations() {
     assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
 }
 
+/// A big station whose modules are mostly dead ends (one snap: Teladi-planned
+/// claytronics, microchips, water) keeps room to grow and places everything (user
+/// report 2026-10-15: 38 of 461 placed, every free snap capped), also with fewer
+/// connection structures.
+#[test]
+fn auto_place_keeps_room_to_grow() {
+    use x4sd_core::layout::Options;
+    use x4sd_core::planner::{plan_production, Request};
+    let Some(c) = catalog() else { return };
+    let req = Request {
+        targets: vec![("claytronics".to_owned(), 50)],
+        modules: Vec::new(),
+        race: Some("teladi".to_owned()),
+        workforce: true,
+        storage_hours: 6.0,
+        storage: Vec::new(),
+        buy: Vec::new(),
+        sunlight: 1.0,
+        method: "default".to_owned(),
+        owned: None,
+    };
+    let modules: Vec<(String, u32)> = plan_production(c, &[], &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
+    for fewer_connectors in [false, true] {
+        let mut d = Design::new(if fewer_connectors { "50 claytronics, fewer connectors" } else { "50 claytronics" });
+        let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: true, race: Some("teladi".to_owned()), fewer_connectors, ..Default::default() });
+        assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
+    }
+}
+
 /// "Fewer connection structures": a new station ("100 solar") and a rebuilt one
 /// (TerranScrapyard, Optimize without keeping its shape) need fewer of them than
 /// with the default placement, and still place everything without overlaps.

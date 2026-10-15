@@ -280,6 +280,9 @@ The red volume the build menu draws in front of a pier while you move it is an *
     | | 4 km | 1 (288 modules) | 14×16×12 km |
 
     4 km roughly halves them while the station stays well inside the largest plot; past that the station sprawls (also a load, see "In-game load").
+  - **Room to grow** (user report 2026-10-15; verified with game-data test `auto_place_keeps_room_to_grow`): a placement may not close the station's last **exit**, a free snap a hub fits on (on the new module, or anywhere else). Placements that would close it are skipped (not cached as failures), and the next option is tried: another snap, or a new hub, which brings its own snaps. Only when no placement keeps an exit does the module fill one anyway, so a fixed plot still fills up.
+    - **Why:** modules with one snap are dead ends (e.g. `prod_gen_water`, `prod_gen_microchips`, `prod_gen_claytronics`). Nearest-first put them on every outward snap, until the only free snaps left were the side snaps of small hubs (Teladi cross: 200 m arms), boxed in by big neighbours. A Teladi station for 50 claytronics modules (461 modules) stopped at 38 placed, 3 km across.
+    - **Now:** all 461 placed, no overlaps, docks clear; 179 connection structures (1.0% of the cost), 14×17×12 km, 6 s; with fewer connection structures 115, 17×17×16 km. The stations in `auto_place_planned_stations` come out exactly as before (the rule never had to act).
   - **Docks stay reachable** (user request, 2026-10-14):
     - A dock area or pier needs a **clear corridor**: its own box swept 3 km straight out from the station's centre, clear of other modules' collision boxes.
     - No module (or connection structure) may enter the corridor of a dock already on the station.
