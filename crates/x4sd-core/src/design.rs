@@ -2,8 +2,9 @@
 //!
 //! Every operation keeps the plan valid by construction: attached modules are
 //! placed with the snap math, moving or twisting a module carries everything
-//! attached to it along, and removing a module removes its descendants and
-//! renumbers the entries `1..n` like the game writes them.
+//! attached to it along, and removing a module removes its descendants (or,
+//! removed alone, leaves them unattached) and renumbers the entries `1..n` like
+//! the game writes them.
 //!
 //! Entry order is the build order: a module always comes after the module it
 //! attaches to. `bookmark="1"` on an entry ends a build stage (see
@@ -282,6 +283,69 @@ impl Design {
         self.renumber();
         self.plan.patches = catalog.required_patches(&self.plan);
         Ok(doomed.len())
+    }
+
+    /// Removes entry `index` alone, like the game's *Remove*: the modules attached
+    /// to it stay where they are, unattached (each keeps what is attached to it).
+    /// The rest is renumbered `1..n`.
+    pub fn remove_single(&mut self, catalog: &Catalog, index: u32) -> Result<()> {
+        self.entry(index)?;
+        self.checkpoint();
+        self.plan.entries.retain(|e| e.index != index);
+        for e in self.plan.entries.iter_mut().filter(|e| e.predecessor.as_ref().is_some_and(|p| p.index == index)) {
+            e.connection = None;
+            e.predecessor = None;
+        }
+        self.renumber();
+        self.plan.patches = catalog.required_patches(&self.plan);
+        Ok(())
+    }
+
+    /// Copies entry `index` and everything attached to it (its sequence, with
+    /// equipment, in build order) so the copy's snap `snap` connects to snap
+    /// `to_snap` of entry `to`, twisted by `twist_degrees`. The copies go to the end
+    /// of the build order, without stage ends. Returns the copy's index.
+    pub fn copy_sequence(&mut self, catalog: &Catalog, index: u32, snap: &str, to: u32, to_snap: &str, twist_degrees: f64) -> Result<u32> {
+        let sequence = self.subtree(index);
+        let child_snap = find_snap(&catalog.module(&self.entry(index)?.macro_name)?, snap)?;
+        let pred_snap = find_snap(&catalog.module(&self.entry(to)?.macro_name)?, to_snap)?;
+        if self.snap_in_use(to, &pred_snap.name) {
+            return Err(Error(format!("snap {} of entry {to} is already in use", pred_snap.name)));
+        }
+        let used_by_children = self.plan.entries.iter().any(|e| {
+            e.predecessor.as_ref().is_some_and(|p| p.index == index && p.connection.eq_ignore_ascii_case(&child_snap.name))
+        });
+        if used_by_children {
+            return Err(Error(format!("snap {} of module {index} holds an attached module", child_snap.name)));
+        }
+        let target = attach_transform(&self.world(to)?, &pred_snap.transform, &child_snap.transform, twist_degrees);
+        let delta = target.then(&self.world(index)?.inverse());
+        let first = self.next_index();
+        let copies: Vec<Entry> = self.plan.entries.iter().filter(|e| sequence.contains(&e.index)).cloned().collect();
+        let new_index = |old: u32| first + copies.iter().position(|e| e.index == old).unwrap() as u32;
+        let copies: Vec<Entry> = copies
+            .iter()
+            .map(|e| {
+                let (connection, predecessor) = if e.index == index {
+                    (Some(child_snap.name.clone()), Some(Predecessor { index: to, connection: pred_snap.name.clone() }))
+                } else {
+                    let p = e.predecessor.as_ref().unwrap();
+                    (e.connection.clone(), Some(Predecessor { index: new_index(p.index), connection: p.connection.clone() }))
+                };
+                Entry {
+                    index: new_index(e.index),
+                    connection,
+                    predecessor,
+                    bookmark: None,
+                    offset: Some(delta.then(&Transform::from_offset(e.offset.as_ref())).to_offset()),
+                    ..e.clone()
+                }
+            })
+            .collect();
+        self.checkpoint();
+        self.plan.entries.extend(copies);
+        self.plan.patches = catalog.required_patches(&self.plan);
+        Ok(first)
     }
 
     /// Moves entry `index` to `position` (1-based) in the build order. Fails when
@@ -873,5 +937,41 @@ mod tests {
         assert_eq!(d.plan(), &before);
         assert!(d.redo());
         assert_eq!(d.plan().entries.len(), 2);
+    }
+
+    #[test]
+    fn remove_single_leaves_the_attached_modules_unattached() {
+        let c = catalog();
+        let mut d = small_station(&c);
+        let side = d.world(3).unwrap();
+        d.remove_single(&c, 2).unwrap();
+        assert_eq!(order(&d), [(1, "beam".to_owned(), None), (2, "beam".to_owned(), None), (3, "beam".to_owned(), Some(1))]);
+        assert_eq!(d.plan().entries[1].connection, None);
+        assert!(close(d.world(2).unwrap().position, side.position), "the side beam stays where it was");
+        assert_attached(&d, &c, 3);
+        use crate::validate::{validate, Issue};
+        assert_eq!(validate(d.plan(), &c), [Issue::Unattached { index: 2 }]);
+        assert!(d.undo());
+        assert_eq!(d.plan().entries.len(), 4);
+        assert_eq!(validate(d.plan(), &c), []);
+    }
+
+    #[test]
+    fn copy_sequence_copies_the_subtree_onto_a_snap() {
+        let c = catalog();
+        let mut d = small_station(&c);
+        d.set_stage_end(3, true).unwrap();
+        // The cross (at z 600) and the beam on its east side, copied onto the cross's own north snap.
+        assert_eq!(d.copy_sequence(&c, 2, "s", 2, "n", 0.0).unwrap(), 5);
+        assert_eq!(order(&d)[4..], [(5, "cross".to_owned(), Some(2)), (6, "beam".to_owned(), Some(5))]);
+        assert!(close(d.world(5).unwrap().position, [0.0, 0.0, 1000.0]));
+        assert!(close(d.world(6).unwrap().position, [600.0, 0.0, 1000.0]));
+        assert_attached(&d, &c, 5);
+        assert_attached(&d, &c, 6);
+        assert_eq!(d.plan().entries[5].bookmark, None, "stage ends aren't copied");
+        assert!(d.copy_sequence(&c, 2, "s", 1, "s1", 0.0).is_err(), "snap s1 of the root is taken");
+        assert!(d.copy_sequence(&c, 2, "e", 5, "w", 0.0).is_err(), "the cross's e snap holds the side beam");
+        assert!(d.undo());
+        assert_eq!(d.plan().entries.len(), 4);
     }
 }

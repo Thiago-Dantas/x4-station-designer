@@ -133,7 +133,11 @@ export const api = {
   attachModule: (macroName: string, snap: string, to: number, toSnap: string, twist: number) =>
     serial<Scene>("attach_module", { macroName, snap, to, toSnap, twist }),
   setTwist: (index: number, twist: number) => serial<Scene>("set_twist", { index, twist }),
-  removeModule: (index: number) => serial<Scene>("remove_module", { index }),
+  /** Removes a module alone (what was on it stays, unattached) or, with `sequence`, with everything on it. */
+  removeModule: (index: number, sequence: boolean) => serial<Scene>("remove_module", { index, sequence }),
+  /** Copies a module and everything on it onto a free snap; `focus` is the copy. */
+  copySequence: (index: number, snap: string, to: number, toSnap: string, twist: number) =>
+    serial<Scene>("copy_sequence", { index, snap, to, toSnap, twist }),
   setPlot: (pos: Vec3, neg: Vec3) => serial<Scene>("set_plot", { pos, neg }),
   fitPlot: (growOnly: boolean) => serial<Scene>("fit_plot", { growOnly }),
   moveInBuildOrder: (index: number, position: number) => serial<Scene>("move_in_build_order", { index, position }),

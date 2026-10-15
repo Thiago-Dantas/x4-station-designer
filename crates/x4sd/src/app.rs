@@ -67,6 +67,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             attach_module,
             set_twist,
             remove_module,
+            copy_sequence,
             set_plot,
             fit_plot,
             move_in_build_order,
@@ -314,9 +315,18 @@ fn set_twist(state: State<'_, Shared>, index: u32, twist: f64) -> CmdResult {
     edit(&state, |d, c| d.set_twist(c, index, twist))
 }
 
+/// Removes a module alone (what was attached to it stays, unattached) or, with
+/// `sequence`, with everything attached to it.
 #[tauri::command]
-fn remove_module(state: State<'_, Shared>, index: u32) -> CmdResult {
-    edit(&state, |d, c| d.remove(c, index).map(|_| ()))
+fn remove_module(state: State<'_, Shared>, index: u32, sequence: bool) -> CmdResult {
+    edit(&state, |d, c| if sequence { d.remove(c, index).map(|_| ()) } else { d.remove_single(c, index) })
+}
+
+/// Copies a module and everything attached to it onto a free snap; `focus` is the copy.
+#[tauri::command]
+fn copy_sequence(state: State<'_, Shared>, index: u32, snap: String, to: u32, to_snap: String, twist: f64) -> CmdResult {
+    let catalog = catalog(&state.lock().unwrap())?;
+    reorder(&state, |d| d.copy_sequence(&catalog, index, &snap, to, &to_snap, twist))
 }
 
 /// Plot reach per side in whole km: `pos` = +X, +Y, +Z, `neg` = −X, −Y, −Z.

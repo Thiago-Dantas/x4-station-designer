@@ -109,7 +109,8 @@
           <div class="row">
             <button id="btn-twist-left" title="Twist -90° (Shift+R)">⟲ 90°</button>
             <button id="btn-twist-right" title="Twist +90° (R)">⟳ 90°</button>
-            <button id="btn-remove" class="danger" title="Remove with everything attached (Del)">Remove</button>
+            <button id="btn-remove" class="danger" title="Remove it alone; what is attached to it stays where it is, unattached (Del)">Remove</button>
+            <button id="btn-remove-sequence" class="danger" title="Remove it with everything attached to it (Shift+Del)">Remove sequence</button>
           </div>
           <label id="sel-snap-row" hidden>Connected by <select id="sel-snap" title="Which of its snaps joins the module it is attached to; it stays on the same spot with the same twist (C / Shift+C)"></select></label>
           <div id="sel-position" class="pos-grid" hidden title="Where the free-standing module sits, in metres from the station origin (game coordinates); everything attached to it moves along">
@@ -124,6 +125,7 @@
           </div>
           <div class="row order-actions">
             <button id="btn-move" title="Move it (with everything attached) onto another free snap">Move…</button>
+            <button id="btn-copy-sequence" title="Copy it with everything attached onto free snaps (Ctrl+Shift+C, Shift+middle click). Ctrl+C or a middle click copies just the module.">Copy sequence…</button>
             <button id="btn-detach" title="Make it free-standing where it is">Detach</button>
           </div>
           <div class="row order-actions">
@@ -193,7 +195,7 @@
           <ul id="issues"></ul>
         </section>
         <section class="help">
-          <p>Left drag, Q/E or arrow keys: rotate · Right drag: pan · W/S: forward/back · A/D: left/right · Z/X: down/up · Wheel: zoom<br />Click a module to select · Middle click: place more of that type · Del removes · R twists · C connecting snap (T twist while placing)</p>
+          <p>Left drag, Q/E or arrow keys: rotate · Right drag: pan · W/S: forward/back · A/D: left/right · Z/X: down/up · Wheel: zoom<br />Click a module to select · Middle click / Ctrl+C: copy (with Shift: the sequence) · Del removes (Shift+Del: the sequence) · R twists · C connecting snap (T twist while placing)</p>
         </section>
       </aside>
     </main>

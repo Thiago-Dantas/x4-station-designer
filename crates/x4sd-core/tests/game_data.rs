@@ -922,13 +922,18 @@ fn overlap_calibration() {
 
 /// Player plans: the only real problem is the deliberately moved casino of test C
 /// (entry 32, 1 km up), which also overlaps the modules it was moved into. The
-/// plans as built have no overlaps (see `overlap_calibration`).
+/// plans as built have no overlaps (see `overlap_calibration`). The megashipyard's
+/// observation deck (173) is placed apart, unattached; the other modules without a
+/// link meet a later module at a snap.
 #[test]
 fn validates_player_plans() {
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/constructionplans-20261013-1501.xml")) else { return };
     let mut found = Vec::new();
     for plan in &plans {
         for issue in validate(plan, c) {
+            if plan.name == "megashipyard terran" && issue == (Issue::Unattached { index: 173 }) {
+                continue;
+            }
             eprintln!("[{}] {issue}", plan.name);
             found.push((plan.name.clone(), issue));
         }
@@ -942,6 +947,7 @@ fn validates_player_plans() {
 /// that are metres off (2.4 m to 400 m); 14 more are 1-3.5 cm off, within tolerance.
 /// The faction plans also put modules in 18 exclusion zones (D-12): 17 of fabrication
 /// bays, 1 of a pier. The game builds them; the validator still reports them.
+/// 14 modules are placed apart, unattached (13 defence platforms, a scanning array).
 #[test]
 fn validates_library_plans() {
     let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/base/libraries/constructionplans.xml")) else { return };
@@ -949,12 +955,14 @@ fn validates_library_plans() {
     let gaps: Vec<f64> = issues.iter().filter_map(|i| match i { Issue::SnapGap { metres, .. } => Some(*metres), _ => None }).collect();
     let overlaps = issues.iter().filter(|i| matches!(i, Issue::Overlap { .. })).count();
     let zones: Vec<&str> = issues.iter().filter_map(|i| match i { Issue::BlocksZone { owner_class, .. } => Some(owner_class.as_str()), _ => None }).collect();
-    let other: Vec<_> = issues.iter().filter(|i| !matches!(i, Issue::SnapGap { .. } | Issue::Overlap { .. } | Issue::BlocksZone { .. })).collect();
+    let unattached = issues.iter().filter(|i| matches!(i, Issue::Unattached { .. })).count();
+    let other: Vec<_> = issues.iter().filter(|i| !matches!(i, Issue::SnapGap { .. } | Issue::Overlap { .. } | Issue::BlocksZone { .. } | Issue::Unattached { .. })).collect();
     eprintln!("library: {} gaps, {overlaps} overlaps, {} in exclusion zones, other {other:?}", gaps.len(), zones.len());
     assert_eq!(gaps.len(), 17);
     assert!(gaps.iter().all(|m| *m > 1.0), "{gaps:?}");
     assert_eq!(zones.len(), 18, "{zones:?}");
     assert_eq!(zones.iter().filter(|c| **c == "pier").count(), 1, "{zones:?}");
+    assert_eq!(unattached, 14);
     assert!(other.is_empty(), "{other:?}");
 }
 

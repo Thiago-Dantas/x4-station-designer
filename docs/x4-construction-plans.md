@@ -74,6 +74,7 @@ What we know about how X4 stores station plans, and the ways we could inject one
 - `plan@name` / `@description` can be text references such as `{20102,1241}` (page, id in `t/`).
 - `entry@bookmark` (165 entries) and `entry@fixed` (2 entries) exist. The build-map struct has matching `bookmarknum` and `isfixed` fields.
 - Several entries per plan can lack a `connection`/`predecessor` (164 such entries across 116 plans), so **a plan can have several unconnected roots** (floating modules placed by offset only).
+  - Most of them are joined anyway (**verified** 2026-10-15 by checking every snap pair, gap ≤ 5 cm and ≤ 0.5°): of the 58 unlinked entries that aren't first in the library and the player's plans, 43 meet another module at a snap, usually one built later (e.g. TerranScrapyard #10 on #11). The other 15 stand apart: 13 disc defence platforms (0.8-3 km off), a scanning array and the megashipyard's observation deck. `validate` reports only those 15 (*not attached to the station*, D-20).
 - 3 entries have no `<offset>` at all.
 
 ### How `connection` names map to module geometry (verified for one module)

@@ -42,6 +42,8 @@ let selected: number | null = null;
 let armed: ModuleInfo | null = null;
 /** Module being moved onto another snap (with everything attached to it), if any. */
 let moving: number | null = null;
+/** Copy sequence: `moving` is copied (with everything attached to it) instead of moved, onto each snap clicked. */
+let copying = false;
 /** While placing or moving: the free snap under the cursor, previewed there. */
 let hoverTarget: { index: number; snap: string } | null = null;
 /** Build-order preview: show modules up to this step (null: all). */
@@ -247,7 +249,9 @@ function moduleName(macro: string) {
 function redraw() {
   if (!scene) return;
   if (buildStep !== null && buildStep >= scene.entries.length) buildStep = null;
-  view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null || moving !== null, buildStep, moving !== null ? subtree(moving) : null);
+  // A copy may go onto the copied modules, but not onto the source's own snaps (picked to connect by).
+  const noSnaps = moving === null ? null : copying ? new Set([moving]) : subtree(moving);
+  view.render(scene, shapes, models, showTextures ? textures : null, selected, armed !== null || moving !== null, buildStep, noSnaps);
   hoverTarget = null; // the cones were redrawn
   refreshPlacing();
   renderOrder();
@@ -301,7 +305,7 @@ function redraw() {
     const a = sel.attached;
     $("sel-details").textContent =
       `#${sel.index} · ${sel.macro}\n` +
-      (a ? `attached to #${a.to} (${a.to_snap}) by ${a.snap}, twist ${a.twist ?? "?"}°${a.tilt ? `, tilted ${a.tilt}°` : ""}` : "not attached (root)") +
+      (a ? `attached to #${a.to} (${a.to_snap}) by ${a.snap}, twist ${a.twist ?? "?"}°${a.tilt ? `, tilted ${a.tilt}°` : ""}` : sel.index === scene.entries[0]?.index ? "not attached (root)" : "not attached: it floats (Move… re-attaches it)") +
       `\n${sel.free_snaps.length} free snap(s)`;
     $<HTMLButtonElement>("btn-twist-left").disabled = !a;
     $<HTMLButtonElement>("btn-twist-right").disabled = !a;
@@ -1315,26 +1319,33 @@ $<HTMLSelectElement>("sel-snap").addEventListener("change", (ev) => {
   void changeSnap(list.value);
 });
 
-/** Move mode: the selected module (with everything on it) goes onto the next free snap clicked. */
-async function startMove() {
-  const e = entry(selected);
+/** Move mode: the module (with everything on it) goes onto the next free snap
+ * clicked. With `copy` (Copy sequence), copies of it go onto each snap clicked. */
+async function startMove(index = selected, copy = false) {
+  const e = entry(index);
   if (!e) return;
   armed = null;
   moving = e.index;
+  copying = copy;
   $("armed-panel").hidden = false;
-  $("armed-title").textContent = "Moving";
-  $("armed-name").textContent = e.name ?? e.macro;
+  $("armed-title").textContent = copy ? "Copying sequence" : "Moving";
+  $("armed-name").textContent = (e.name ?? e.macro) + (copy ? ` + ${subtree(e.index).size - 1} attached` : "");
   $("btn-place-root").hidden = true;
   await shapeOf(e.macro);
   $<HTMLSelectElement>("armed-snap").replaceChildren(...connectableSnaps(e).map(snapOption));
   if (e.attached) $<HTMLSelectElement>("armed-snap").value = e.attached.snap;
-  status("Pick the snap it connects by (orange cones; C cycles, T twists), then click a free snap (cone) to move it there. Esc cancels.");
+  status(
+    copy
+      ? "Pick the snap the copy connects by (orange cones; C cycles, T twists), then click free snaps (cones) to place copies. Esc stops."
+      : "Pick the snap it connects by (orange cones; C cycles, T twists), then click a free snap (cone) to move it there. Esc cancels.",
+  );
   renderPalette();
   redraw();
 }
 
 function stopMove() {
   moving = null;
+  copying = false;
   $("armed-panel").hidden = !armed;
   $("armed-title").textContent = "Placing";
 }
@@ -1343,8 +1354,20 @@ async function moveOnto(to: number, toSnap: string) {
   const index = moving!;
   const snap = $<HTMLSelectElement>("armed-snap").value;
   const twist = Number($<HTMLSelectElement>("armed-twist").value);
+  if (copying) {
+    const count = subtree(index).size;
+    await apply(api.copySequence(index, snap, to, toSnap, twist), `Copied ${count} module${count === 1 ? "" : "s"} onto #${to}`, false, true);
+    return;
+  }
   stopMove();
   await apply(api.reattachModule(index, snap, to, toSnap, twist), `Moved onto #${to}`, false, true);
+}
+
+/** Copy: place more of a module's type, like a palette click. */
+async function copyModule(index: number | null) {
+  const source = entry(index);
+  const info = source && modules.find((m) => m.macro.toLowerCase() === source.macro.toLowerCase());
+  if (info) await arm(info);
 }
 
 // ---------------------------------------------------------------- actions
@@ -1493,10 +1516,12 @@ $("btn-gizmo-mode").onclick = () => {
   redraw();
 };
 
-async function removeSelected() {
+/** Removes the selected module alone (what was on it stays, unattached), or with `sequence` everything on it too. */
+async function removeSelected(sequence = false) {
   if (selected === null) return;
   const index = selected;
-  await apply(api.removeModule(index), `Removed #${index} and everything attached to it`);
+  const done = sequence ? `Removed #${index} and everything attached to it` : `Removed #${index}; what was attached to it is now unattached (see Checks)`;
+  await apply(api.removeModule(index, sequence), done);
 }
 
 function choosePlan(title: string, plans: PlanRef[]): Promise<PlanRef | null> {
@@ -1697,7 +1722,8 @@ $<HTMLSelectElement>("quality").onchange = async (ev) => {
 };
 $("btn-twist-left").onclick = () => twistSelected(-1);
 $("btn-twist-right").onclick = () => twistSelected(1);
-$("btn-remove").onclick = removeSelected;
+$("btn-remove").onclick = () => removeSelected();
+$("btn-remove-sequence").onclick = () => removeSelected(true);
 $<HTMLSelectElement>("build-method").onchange = (ev) => {
   buildMethod = (ev.target as HTMLSelectElement).value;
   try {
@@ -1719,7 +1745,8 @@ $<HTMLInputElement>("sunlight").onchange = (ev) => {
   void refreshAnalysis();
 };
 $<HTMLInputElement>("sunlight").value = String(sunlight);
-$("btn-move").onclick = startMove;
+$("btn-move").onclick = () => startMove();
+$("btn-copy-sequence").onclick = () => startMove(selected, true);
 $("btn-detach").onclick = () => selected !== null && apply(api.detachModule(selected), "Detached: it now stands on its own");
 $("btn-build-first").onclick = () => selected !== null && apply(api.buildFirst(selected), "Moved to the front of the build order");
 $("btn-build-last").onclick = () => selected !== null && apply(api.buildLast(selected), "Moved to the end of the build order");
@@ -1772,8 +1799,9 @@ async function placeFirst(macro: string, at: Vec3) {
 }
 
 // Click (not drag) in the view: attach to a snap, or select a module. A middle
-// click picks a module type to place, like the palette: the one under the cursor,
-// else the selected one (middle drag still zooms).
+// click copies a module, like the game: its type to place, like the palette (with
+// Shift its sequence); the one under the cursor, else the selected one (middle
+// drag still zooms).
 const viewport = $("viewport");
 let down: { x: number; y: number } | null = null;
 viewport.addEventListener("pointerdown", (ev) => (down = { x: ev.clientX, y: ev.clientY }));
@@ -1782,9 +1810,9 @@ viewport.addEventListener("pointerup", async (ev) => {
   if (!down || Math.hypot(ev.clientX - down.x, ev.clientY - down.y) > 5) return;
   if (ev.button === 1) {
     const pick = view.pick(ev.clientX, ev.clientY);
-    const source = entry(pick?.kind === "module" ? pick.index : selected);
-    const info = source && modules.find((m) => m.macro.toLowerCase() === source.macro.toLowerCase());
-    if (info) await arm(info);
+    const source = pick?.kind === "module" ? pick.index : selected;
+    if (ev.shiftKey) await startMove(source, true);
+    else await copyModule(source);
     return;
   }
   if (ev.button !== 0) return;
@@ -1828,7 +1856,8 @@ window.addEventListener("keydown", (ev) => {
   const key = ev.key.toLowerCase();
   if (ev.ctrlKey && key === "z") void apply(ev.shiftKey ? api.redo() : api.undo());
   else if (ev.ctrlKey && key === "y") void apply(api.redo());
-  else if (key === "delete") void removeSelected();
+  else if (key === "delete") void removeSelected(ev.shiftKey);
+  else if (ev.ctrlKey && key === "c") void (ev.shiftKey ? startMove(selected, true) : copyModule(selected));
   else if (key === "c" && (armed || moving !== null)) cycle("armed-snap", ev.shiftKey ? -1 : 1);
   else if (key === "t" && (armed || moving !== null)) cycle("armed-twist", ev.shiftKey ? -1 : 1);
   else if (key === "c" && entry(selected)?.attached) {
@@ -1840,9 +1869,10 @@ window.addEventListener("keydown", (ev) => {
   else if (key === "f") view.frame();
   else if (key === "escape") {
     if (moving !== null) {
+      const done = copying ? "Copying stopped" : "Move cancelled";
       stopMove();
       redraw();
-      status("Move cancelled");
+      status(done);
       return;
     }
     void arm(null);

@@ -1,7 +1,8 @@
 //! Plan checks the game itself does not do: it accepts plans whose modules float
 //! away from their links (verified in game, test C), plans without the
 //! `<patches>` they need, (hypothesis) modules that overlap, and (verified on
-//! import, 2026-10-14) modules in the way of a pier's approach or a bay's exit.
+//! import, 2026-10-14) modules in the way of a pier's approach or a bay's exit,
+//! and modules not attached to the station (the game's own plans have some).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -33,6 +34,10 @@ pub enum Issue {
     EquipmentTooMany { index: u32, group: String, kind: String, count: u32, slots: u32 },
     UnknownSnap { index: u32, macro_name: String, snap: String },
     MissingPredecessor { index: u32, predecessor: u32 },
+    /// A module without a link, not first in the build order and not meeting
+    /// another module at a snap: it floats, with whatever is attached to it (left
+    /// behind by removing what held it, or placed apart like some defence platforms).
+    Unattached { index: u32 },
     SnapGap { index: u32, metres: f64 },
     SnapMisaligned { index: u32, degrees: f64 },
     MissingPatch { extension: String },
@@ -62,6 +67,7 @@ impl Issue {
             | Issue::EquipmentTooMany { index, .. }
             | Issue::UnknownSnap { index, .. }
             | Issue::MissingPredecessor { index, .. }
+            | Issue::Unattached { index }
             | Issue::SnapGap { index, .. }
             | Issue::SnapMisaligned { index, .. }
             | Issue::OutsidePlot { index }
@@ -83,6 +89,7 @@ impl fmt::Display for Issue {
             Issue::EquipmentTooMany { index, group, kind, count, slots } => write!(f, "entry {index}: {count} {kind} in {group}, which has {slots} slots"),
             Issue::UnknownSnap { index, macro_name, snap } => write!(f, "entry {index}: {macro_name} has no snap {snap}"),
             Issue::MissingPredecessor { index, predecessor } => write!(f, "entry {index}: predecessor {predecessor} does not exist"),
+            Issue::Unattached { index } => write!(f, "entry {index}: not attached to the station"),
             Issue::SnapGap { index, metres } => write!(f, "entry {index}: {metres:.3} m away from its linked snap"),
             Issue::SnapMisaligned { index, degrees } => write!(f, "entry {index}: tilted {degrees:.1}° off its snap"),
             Issue::MissingPatch { extension } => write!(f, "plan uses {extension} but does not list it in <patches>"),
@@ -170,6 +177,14 @@ pub fn validate(plan: &Plan, catalog: &Catalog) -> Vec<Issue> {
         }
     }
 
+    // The game joins modules that meet at a snap: in its own plans most modules
+    // without a link sit on a snap of a later one (43 of 58, 2026-10-15).
+    for e in plan.entries.iter().skip(1).filter(|e| e.predecessor.is_none()) {
+        if !meets_a_snap(plan, catalog, e) {
+            issues.push(Issue::Unattached { index: e.index });
+        }
+    }
+
     issues.extend(overlaps(plan, catalog).into_iter().map(|(other, index, _)| Issue::Overlap { index, other }));
     for (index, owner) in blocked_zones(plan, catalog) {
         let owner_class = by_index.get(&owner).and_then(|e| catalog.module(&e.macro_name).ok()).map(|m| m.class.clone()).unwrap_or_default();
@@ -182,6 +197,22 @@ pub fn validate(plan: &Plan, catalog: &Catalog) -> Vec<Issue> {
         }
     }
     issues
+}
+
+/// Whether a snap of `e` meets a snap of another module (within the link tolerances).
+fn meets_a_snap(plan: &Plan, catalog: &Catalog, e: &Entry) -> bool {
+    let Ok(module) = catalog.module(&e.macro_name) else { return true }; // reported as unknown
+    let world = Transform::from_offset(e.offset.as_ref());
+    plan.entries.iter().filter(|o| o.index != e.index).any(|o| {
+        let Ok(other) = catalog.module(&o.macro_name) else { return false };
+        let other_world = Transform::from_offset(o.offset.as_ref());
+        other.snaps.iter().any(|os| {
+            module.snaps.iter().any(|s| {
+                let f = fit(&other_world, &os.transform, &world, &s.transform);
+                f.gap <= GAP_TOLERANCE_M && f.misalignment <= ANGLE_TOLERANCE_DEG
+            })
+        })
+    })
 }
 
 /// Plot checks: modules outside `plot`, the plot needed, and whether any plot
