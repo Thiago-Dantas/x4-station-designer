@@ -36,6 +36,8 @@ npm --prefix ui run check  # TypeScript type check
 ```
 The game-data tests need X4: Foundations installed. They find it like the builder does (`X4_GAME_DIR` overrides) and skip when it isn't there. The smoke tests that drive the built exe are in [docs/dev-setup.md](docs/dev-setup.md).
 
+GitHub Actions runs both on every push to `main` and on pull requests ([.github/workflows/ci.yml](.github/workflows/ci.yml)), without the game, and lints the workflow files with actionlint.
+
 ## Releases
 Releases are built by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)), only when a tag `vX.Y.Z` is pushed:
 1. Set the version in `crates/x4sd/Cargo.toml`, `crates/x4sd-core/Cargo.toml`, `crates/x4sd/tauri.conf.json` and `ui/package.json` (and their lock files), commit, push.
