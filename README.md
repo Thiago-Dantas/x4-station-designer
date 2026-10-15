@@ -2,6 +2,8 @@
 
 # X4 Station Designer
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Thiago-Dantas/x4-station-designer/badge)](https://scorecard.dev/viewer/?uri=github.com/Thiago-Dantas/x4-station-designer)
+
 Design station construction plans for **X4: Foundations** outside the game, then import them in game like any other plan.
 
 `x4sd.exe` is one Windows program: a 3D station builder, a command line and an MCP server for AI agents. It reads the module catalogue, models and textures straight from your game install, including DLCs and enabled mods, so what you build uses the real modules and snap points.

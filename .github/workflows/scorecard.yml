@@ -1,0 +1,30 @@
+# OpenSSF Scorecard: rates the repo's security practices. Results go to the Security tab and to the public
+# Scorecard API (README badge). Upstream example: ossf/scorecard .github/workflows/scorecard-analysis.yml
+name: Scorecard
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '30 1 * * 6'   # weekly, Saturday
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # upload to code scanning
+      id-token: write          # publish_results
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          sarif_file: results.sarif

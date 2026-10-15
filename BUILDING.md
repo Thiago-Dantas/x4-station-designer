@@ -36,6 +36,16 @@ npm --prefix ui run check  # TypeScript type check
 ```
 The game-data tests need X4: Foundations installed. They find it like the builder does (`X4_GAME_DIR` overrides) and skip when it isn't there. The smoke tests that drive the built exe are in [docs/dev-setup.md](docs/dev-setup.md).
 
+## Releases
+Releases are built by GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)), only when a tag `vX.Y.Z` is pushed:
+1. Set the version in `crates/x4sd/Cargo.toml`, `crates/x4sd-core/Cargo.toml`, `crates/x4sd/tauri.conf.json` and `ui/package.json` (and their lock files), commit, push.
+2. Tag with the release notes as the tag message, and push the tag:
+   ```powershell
+   git tag -a v1.5.0 -F release-notes.md
+   git push origin v1.5.0
+   ```
+The workflow stops if the tag doesn't match the versions in `Cargo.toml` and `tauri.conf.json`. Otherwise it builds `x4sd.exe` on a clean Windows runner, attests it (a signed record that this workflow built it from that commit) and publishes the release with the exe. Anyone can check a downloaded exe with `gh attestation verify x4sd.exe -R Thiago-Dantas/x4-station-designer`. Running the workflow by hand from the Actions tab only builds, as a check.
+
 ## Troubleshooting
 - **`link: missing operand`**: you built from Git Bash. Its `/usr/bin/link.exe` hides the MSVC linker. Build from PowerShell or cmd.
 - **`LINK : fatal error LNK1181: cannot open input file 'kernel32.lib'`**: the Windows SDK is missing. Install it (see the table) and build again.

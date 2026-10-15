@@ -12,6 +12,7 @@ What is installed on the dev machine and how to build. Installs go on H: or D:, 
 | Node.js | 24.18 | system | already present (for bundling the UI in Phase 3) |
 | Python | 3.11 | system | already present (research scripts only) |
 | gifski | 1.34.0 | `H:\dev\gifski\gifski.exe` (not on PATH) | `win/gifski.exe` from the GitHub release tarball, 2026-10-14 (README GIFs; the `ffmpeg` on PATH is a 2013 build without `palettegen`) |
+| actionlint | 1.7.12 | `H:\dev\actionlint\actionlint.exe` (not on PATH) | Windows zip from the GitHub release, 2026-10-15 (lints `.github/workflows/`; run it from the repo root) |
 | GitHub CLI (`gh`) | 2.102.0 | `H:\dev\gh\bin\gh.exe` (not on PATH) | portable zip from the GitHub release, 2026-10-14 (creating releases; the user signs in once with `gh auth login`) |
 
 `RUSTUP_HOME` and `CARGO_HOME` are permanent user environment variables. Terminals opened before the install don't see them or the PATH change.
