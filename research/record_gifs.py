@@ -3,7 +3,7 @@ builder over DevTools and turns the frames into GIFs with gifski.
 
     python -I research/record_gifs.py <x4sd.exe> <out dir> [scene ...] [--gifski PATH]
 
-Scenes: build, planner, agent, analysis, optimize (default: all). Each starts a fresh
+Scenes: build, planner, agent, analysis, optimize, spire (default: all). Each starts a fresh
 builder (no unsaved-changes dialog can block it) with the page fixed at
 1440x810, and writes <out dir>/<scene>.gif. A second DevTools connection grabs
 JPEG frames in a thread while the scene runs. Input is synthetic, so a drawn
@@ -26,6 +26,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
 from cdp import PORT, Cdp, link_port_in_use, start_builder  # noqa: E402
+import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
 W, H = 1440, 810
@@ -99,8 +100,8 @@ class Recorder:
         return self.frames
 
 
-def encode(frames, gif, gifski, fps=FPS, width=GIF_WIDTH, quality=80):
-    """Resamples the timed frames to a steady fps and writes the GIF."""
+def encode(frames, gif, gifski, fps=FPS, width=GIF_WIDTH, quality=80, speed=1.0):
+    """Resamples the timed frames to a steady fps (played `speed` times as fast) and writes the GIF."""
     start, end = frames[0][0], frames[-1][0]
     tmp = tempfile.mkdtemp(prefix="x4sd-gif-")
     try:
@@ -109,9 +110,10 @@ def encode(frames, gif, gifski, fps=FPS, width=GIF_WIDTH, quality=80):
             while i + 1 < len(frames) and frames[i + 1][0] <= t:
                 i += 1
             Image.open(io.BytesIO(frames[i][1])).convert("RGB").save(os.path.join(tmp, f"f{n:05d}.png"))
-            n, t = n + 1, t + 1 / fps
+            n, t = n + 1, t + speed / fps
         subprocess.run([gifski, "--fps", str(fps), "--width", str(width), "--quality", str(quality),
-                        "-o", gif, *sorted(glob.glob(os.path.join(tmp, "f*.png")))], check=True, capture_output=True)
+                        "-o", os.path.abspath(gif), *sorted(glob.glob("f*.png", root_dir=tmp))],
+                       check=True, capture_output=True, cwd=tmp)  # relative names: Windows caps the command line
     finally:
         shutil.rmtree(tmp)
     print(f"   {os.path.basename(gif)}: {n} frames, {n / fps:.1f} s, {os.path.getsize(gif) / 1e6:.1f} MB "
@@ -183,9 +185,9 @@ class Scene:
     def viewport(self):
         return self.js("(() => { const r = document.getElementById('viewport').getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom].map(Math.round) })()")
 
-    def cone(self):
-        """The free snap cone nearest the view's centre: each cone is one connected blob of
-        its colour (zoomed out, several cones sit close together, so a radius would merge them)."""
+    def cones(self):
+        """Screen centres of the free snap cones: each cone is one connected blob of its
+        colour (zoomed out, several cones sit close together, so a radius would merge them)."""
         vp = self.viewport()
         im = Image.open(io.BytesIO(self.cdp.screenshot(None))).convert("RGB").crop(vp)
         w, h = im.size
@@ -202,10 +204,22 @@ class Scene:
                         mask.remove(n)
                         todo.append(n)
             if len(blob) >= 6:
-                blobs.append((sum(x for x, _ in blob) / len(blob), sum(y for _, y in blob) / len(blob)))
-        cx, cy = w / 2, h / 2
-        x, y = min(blobs, key=lambda b: (b[0] - cx) ** 2 + (b[1] - cy) ** 2)
-        return vp[0] + x, vp[1] + y
+                blobs.append((vp[0] + sum(x for x, _ in blob) / len(blob), vp[1] + sum(y for _, y in blob) / len(blob)))
+        return blobs
+
+    def cone(self):
+        """The free snap cone nearest the view's centre."""
+        vp = self.viewport()
+        cx, cy = (vp[0] + vp[2]) / 2, (vp[1] + vp[3]) / 2
+        return min(self.cones(), key=lambda b: (b[0] - cx) ** 2 + (b[1] - cy) ** 2)
+
+    def zoom(self, notches):
+        """Mouse wheel at the view's middle: positive zooms out."""
+        vp = self.viewport()
+        x, y = (vp[0] + vp[2]) / 2, (vp[1] + vp[3]) / 2
+        for _ in range(abs(notches)):
+            self.cdp.call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=100 if notches > 0 else -100)
+            time.sleep(0.12)
 
     def caption(self, text):
         self.js("""(() => { let c = document.getElementById('rec-caption');
@@ -480,6 +494,131 @@ def scene_optimize(s):
     time.sleep(1.5)
 
 
+ENTRIES = "window.__TAURI_INTERNALS__.invoke('scene').then(s => s.entries)"
+
+
+def probe_cones(s, accept, order, first=False):
+    """Which free snap each cone on screen is: the view doesn't say, so each cone (in
+    `order`) is tried with a click and undone, with the recorder paused. Returns
+    [((x, y), (to, to_snap))] for the snaps `accept(to, to_snap)` likes (only the
+    first one when `first`); the cursor is back where it was."""
+    time.sleep(0.3)
+    vp = s.viewport()
+    count = len(s.js(ENTRIES))
+    s.rec.pause(True)
+    found = []
+    for x, y in sorted(s.cones(), key=lambda c: order(c, vp)):
+        s.mouse("mouseMoved", x, y)
+        s.mouse("mousePressed", x, y, 1, "left")
+        s.mouse("mouseReleased", x, y, 0, "left")
+        try:
+            s.wait("%s.then(e => e.length > %d)" % (ENTRIES, count), 3)
+        except Exception:
+            continue  # missed the cone
+        a = s.js(ENTRIES)[-1]["attached"]
+        s.cdp.call("Input.dispatchKeyEvent", type="keyDown", key="z", code="KeyZ", windowsVirtualKeyCode=90, modifiers=2)
+        s.cdp.call("Input.dispatchKeyEvent", type="keyUp", key="z", code="KeyZ", windowsVirtualKeyCode=90, modifiers=2)
+        s.wait("%s.then(e => e.length === %d)" % (ENTRIES, count))
+        if accept(a["to"], a["to_snap"]):
+            found.append(((x, y), (a["to"], a["to_snap"])))
+            if first:
+                break
+    s.mouse("mouseMoved", s.x, s.y)
+    time.sleep(0.6)  # the click rings fade
+    s.rec.pause(False)
+    return found
+
+
+def cone_point(s, index, snap):
+    """Where a free snap's cone shows, in the game's frame: 40 m out from the snap (the
+    cone's centroid, view3d's snapGeometry)."""
+    e = next(e for e in s.js(ENTRIES) if e["index"] == index)
+    sn = next(x for x in s.js("window.__TAURI_INTERNALS__.invoke('module_shape', { macroName: %r })" % e["macro"])["snaps"] if x["name"] == snap)
+    w, x, y, z = e["rotation"]
+    r = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                  [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                  [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]])
+    facing = np.array(sn["facing"], float)
+    return np.array(e["position"]) + r @ (np.array(sn["position"]) + 40 * facing / np.linalg.norm(facing))
+
+
+def fit_camera(world, screen):
+    """Projective camera fitted (DLT) to points seen on screen; returns world point -> (x, y)."""
+    rows = []
+    for k, (X, Y, Z) in world.items():
+        u, v = screen[k]
+        rows.append([X, Y, Z, 1, 0, 0, 0, 0, -u * X, -u * Y, -u * Z, -u])
+        rows.append([0, 0, 0, 0, X, Y, Z, 1, -v * X, -v * Y, -v * Z, -v])
+    P = np.linalg.svd(np.array(rows))[2][-1].reshape(3, 4)
+
+    def project(p):
+        h = P @ np.append(p, 1)
+        return h[0] / h[2], h[1] / h[2]
+    worst = max(np.hypot(*np.subtract(project(world[k]), screen[k])) for k in world)
+    print(f"   camera fitted to {len(world)} cones, worst miss {worst:.1f} px")
+    return project
+
+
+def scene_spire(s):
+    """A spire on a 20 km plot: six Terran cross connection structures stacked, each by its
+    bottom snap and twisted 15° from the one below, then Terran L Living Quarters on every
+    side snap of the crosses (four stairs)."""
+    s.caption("Six cross connection structures, each twisted 15°")
+    s.click_module("cross", "Terran Cross Connection Structure 01")
+    s.click_el("#btn-place-root")
+    s.wait(status_starts("Placed"))
+    s.key("f")
+    time.sleep(0.4)
+    s.click_module("cross", "Terran Cross Connection Structure 01")  # placing the first one disarmed it
+    s.set_select("#armed-panel .rot-step", "15")
+    time.sleep(0.3)
+    for _ in range(5):
+        top = s.js(ENTRIES)[-1]["index"]
+        found = probe_cones(s, lambda to, snap: to == top and snap == "connectionsnap006", lambda c, vp: c[1], first=True)
+        assert found, "the top snap isn't on screen"
+        (x, y), _ = found[0]
+        s.move(x, y, 0.35)
+        time.sleep(0.3)
+        for _ in range(6):  # connect by its bottom snap
+            if s.js("document.getElementById('armed-snap').value") == "connectionsnap005":
+                break
+            s.key("c")
+            time.sleep(0.3)
+        if s.js("document.getElementById('armed-twist').value") != "15":
+            s.key("t")  # the preview turns 15° (on the one below, so each level adds 15°)
+            time.sleep(0.5)
+        s.click(x, y, 0.05)
+        s.wait("%s.then(e => e.length > 1 && e.at(-1).attached?.to === %d)" % (ENTRIES, top))
+        a = s.js(ENTRIES)[-1]["attached"]
+        assert a["snap"] == "connectionsnap005" and round(a["twist"]) == 15, a
+        s.key("f")
+        time.sleep(0.4)
+    levels = [e["index"] for e in s.js(ENTRIES)]
+    s.caption("L Living Quarters on every side snap")
+    s.click_module("living quarters", "Terran L Living Quarters")
+    s.key("f")
+    s.js("{ const t = document.getElementById('armed-twist'); t.value = '0'; t.dispatchEvent(new Event('change')); }")  # flat rings
+    s.zoom(5)
+    # The camera stays put from here: find the crosses' side cones once, before any habitat.
+    # The ones behind the spire are hidden: fit the camera to the visible ones and work out
+    # where those are (a click there still picks the cone, as picking ignores the station).
+    sides = ["connectionsnap00%d" % k for k in range(1, 5)]
+    found = dict((snap, at) for at, snap in probe_cones(s, lambda to, snap: to in levels and snap in sides, lambda c, vp: 0))
+    project = fit_camera({snap: cone_point(s, *snap) for snap in found}, found)
+    for (to, snap) in sorted({(to, snap) for to in levels for snap in sides}, key=lambda f: (levels.index(f[0]), f[1])):  # bottom level first
+        x, y = found.get((to, snap)) or project(cone_point(s, to, snap))
+        s.move(x, y, 0.25)
+        time.sleep(0.15)
+        s.click(x, y, 0.02)
+        s.wait("%s.then(e => e.at(-1).attached?.to === %d && e.at(-1).attached.to_snap === %r)" % (ENTRIES, to, snap))
+    s.key("Escape", "Escape", 27)
+    s.caption("")
+    s.key("f")
+    time.sleep(0.8)
+    s.orbit(300, 2.5)
+    time.sleep(1.0)
+
+
 # name: (play, setup)
 SCENES = {
     "build": (scene_build, lambda cdp: new_design(cdp, 5)),
@@ -487,10 +626,13 @@ SCENES = {
     "agent": (scene_agent, None),
     "analysis": (scene_analysis, None),
     "optimize": (scene_optimize, setup_optimize),
+    "spire": (scene_spire, lambda cdp: new_design(cdp, 10)),
 }
 
 # gifski quality per scene (default 80): big textured stations in motion make large GIFs.
 QUALITY = {"optimize": 60}
+# Playback speed per scene (default 1): long builds play faster.
+SPEED = {"spire": 1.5}
 
 SETUP_JS = """(() => {
   const st = document.createElement('style'); st.textContent = '#viewport .fps { display: none }'; document.head.appendChild(st);
@@ -534,7 +676,7 @@ def run(exe, out, name, gifski):
             raise
         finally:
             frames = rec.stop()
-        encode(frames, os.path.join(out, name + ".gif"), gifski, quality=QUALITY.get(name, 80))
+        encode(frames, os.path.join(out, name + ".gif"), gifski, quality=QUALITY.get(name, 80), speed=SPEED.get(name, 1.0))
     finally:
         app.terminate()
         app.wait(10)
