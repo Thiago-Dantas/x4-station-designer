@@ -1141,18 +1141,20 @@ const wareSearch = searchBox(
 );
 
 /** Classes the planner's Other modules box offers: end uses, not production (wares go in the ware box). */
-const EXTRA_CLASSES = ["defencemodule", "storage", "buildmodule"];
-/** Other modules the planner can add: defence, storage and ship-building modules, by macro. */
+const EXTRA_CLASSES = ["defencemodule", "storage", "buildmodule", "pier"];
+/** Other modules the planner can add: defence, storage, ship-building modules and piers
+ * of the planner's race (and those of no race, e.g. the plain ship bays), by macro. */
+const extraModules = () => offered().filter((m) => EXTRA_CLASSES.includes(m.class) && (!planner.race || !m.race || m.race === planner.race));
 const moduleSearch = searchBox(
   $<HTMLInputElement>("planner-module"),
   $("planner-module-list"),
-  () => offered().filter((m) => EXTRA_CLASSES.includes(m.class)).map((m) => [m.macro, m.name]),
+  () => extraModules().map((m) => [m.macro, m.name]),
   (id) => addExtra(id),
   () => {
     const text = $<HTMLInputElement>("planner-module").value.trim().toLowerCase();
-    const found = offered().find((m) => EXTRA_CLASSES.includes(m.class) && (m.name.toLowerCase() === text || m.macro.toLowerCase() === text));
+    const found = extraModules().find((m) => m.name.toLowerCase() === text || m.macro.toLowerCase() === text);
     if (found) addExtra(found.macro);
-    else status(`No defence, storage or ship-building module "${$<HTMLInputElement>("planner-module").value}"`);
+    else status(`No defence, storage, ship-building module or pier "${$<HTMLInputElement>("planner-module").value}"${planner.race ? ` for ${planner.race}` : ""}`);
   },
 );
 $("planner-module-add").onclick = () => $<HTMLInputElement>("planner-module").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
