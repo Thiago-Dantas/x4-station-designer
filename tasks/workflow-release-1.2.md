@@ -1,6 +1,6 @@
 # Workflow: release v1.2.0
 
-Status: in progress (2026-10-15)
+Status: **done** (2026-10-15; published 00:39Z UTC)
 
 User: "publish 1.2" (straight to publish, as for 1.1)
 
@@ -8,9 +8,9 @@ User: "publish 1.2" (straight to publish, as for 1.1)
 - [x] Version 1.2.0: `crates/x4sd/Cargo.toml`, `crates/x4sd-core/Cargo.toml`, `crates/x4sd/tauri.conf.json`, `ui/package.json` (+ lock files)
 - [x] Build; `x4sd --version` says 1.2.0; start-up check
 - [x] Docs: CLAUDE.md status, roadmap
-- [ ] Commit, push
-- [ ] Publish release `v1.2.0` (target `main`, not a draft) with `x4sd.exe`
-- [ ] Check: releases/latest is v1.2.0, asset digest matches
+- [x] Commit, push
+- [x] Publish release `v1.2.0` (target `main`, not a draft) with `x4sd.exe`
+- [x] Check: releases/latest is v1.2.0, tag on 488c6ba, asset digest sha256:171dcabe… matches the build
 
 ## Notes
 - Release exe SHA-256 171DCABE…5E91CDF7; start-up check loads 287 modules, no update bar.
