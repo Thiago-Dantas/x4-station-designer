@@ -7,7 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BufferGeometry } from "three";
-import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type Issue, type ModuleInfo, type PlannedModule, type PlanRef, type PlotStatus, type ProductionPlan, type Quality, type Quat, type Scene, type Sector, type Shape, type SnapInfo, type Vec3 } from "./api";
+import { api, type Blueprints, type Entry, type EquipmentGroup, type EquipmentItem, type Issue, type ModuleInfo, type PlannedModule, type PlanRef, type PlotStatus, type PlanArgs, type ProductionPlan, type Quality, type Quat, type Scene, type Sector, type Shape, type SnapInfo, type TargetRate, type Vec3 } from "./api";
 import { attachMatrix, CLASS_COLORS, type DiffuseTexture, modelGeometry, poseMatrix, View3D } from "./view3d";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -536,6 +536,7 @@ function setSunlight(value: number, from: string) {
     // Remembering the choice is a convenience only.
   }
   void refreshAnalysis();
+  void refreshRates();
 }
 
 /** Fills the Sector list; a remembered sector sets the sunlight again (game data may have changed). */
@@ -813,13 +814,14 @@ function renderPlanner() {
   $("planner-targets").replaceChildren(
     ...planner.targets.map((t, i) => {
       const li = document.createElement("li");
-      li.innerHTML = `<span></span><input type="number" min="1" /><button title="Remove">✕</button>`;
+      li.innerHTML = `<span></span><span class="rate"></span><input type="number" min="1" /><button title="Remove">✕</button>`;
       li.querySelector("span")!.textContent = wareNames.get(t.ware) ?? t.ware;
       const count = li.querySelector("input")!;
       count.value = String(t.modules);
       count.onchange = () => {
         t.modules = Math.max(1, Math.round(Number(count.value)) || 1);
         savePlanner();
+        void refreshRates();
       };
       li.querySelector("button")!.onclick = () => {
         planner.targets.splice(i, 1);
@@ -829,6 +831,8 @@ function renderPlanner() {
       return li;
     }),
   );
+  renderRates();
+  void refreshRates();
   $("planner-extras").replaceChildren(
     ...planner.extras.map((x, i) => {
       const li = document.createElement("li");
@@ -879,6 +883,7 @@ function renderPlanner() {
       return b;
     }),
   );
+  renderBlueprintWarning();
   if (!plan) return;
   const { result } = plan;
   if (plan.optimize) {
@@ -934,12 +939,75 @@ function renderPlanner() {
       .map((f) => `${f.name} ${n(-f.net)}`)
       .join(", ");
   $("planner-summary").textContent =
-    (total ? `${total} modules to add, ${left} still to place · ≈ ${n(result.cost.value)} Cr` : "Nothing to add: the station covers its needs") +
+    (total ? `${total} modules to add, ${left} still to place · ≈ ${n(result.cost.value)} Cr` : result.no_blueprint.length ? "Nothing to add" : "Nothing to add: the station covers its needs") +
     (result.analysis.self_sufficient ? " · self-sufficient" : "") +
     (short(true) ? `\nRaw materials to bring in per hour: ${short(true)}` : "") +
     (short(false) ? `\nTo buy per hour: ${short(false)}` : "") +
-    (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "") +
-    (result.no_blueprint.length ? `\nNo blueprint for a module that makes: ${result.no_blueprint.map((w) => wareNames.get(w) ?? w).join(", ")}` : "");
+    (result.unknown_targets.length ? `\nNo module makes: ${result.unknown_targets.join(", ")}` : "");
+}
+
+/** The plan's wares that only modules without the player's blueprint make (empty without a plan or the limit). */
+function blockedWares(): string[] {
+  return plan && blueprints.on ? plan.result.no_blueprint.map((w) => wareNames.get(w) ?? w) : [];
+}
+
+/** Warns, above the plan, when the blueprint limit keeps the planner from making something. */
+function renderBlueprintWarning() {
+  const blocked = blockedWares();
+  $("planner-warning").hidden = !blocked.length;
+  $("planner-warning").textContent = blocked.length
+    ? `No blueprint for a module that makes ${blocked.join(", ")}, so the plan can't make ${blocked.length > 1 ? "them" : "it"}: "Only modules I have blueprints for" is on (Modules tab). Untick it to plan with every module, or read a newer save.`
+    : "";
+}
+
+/** What each target's modules make per hour (`refreshRates`), by ware. */
+let rates = new Map<string, TargetRate>();
+let ratesAsked = 0;
+
+/** Planner settings as the core takes them (the right pane's sunlight and build method). */
+function planArgs(targets: { ware: string; modules: number }[], extras: { macro: string; count: number }[]): PlanArgs {
+  return {
+    targets,
+    extra_modules: extras.map(({ macro, count }) => ({ macro, count })),
+    race: planner.race || null,
+    workforce: planner.workforce,
+    storage_hours: planner.hours,
+    storage: planner.storage,
+    buy: planner.buy,
+    sunlight,
+    method: buildMethod,
+  };
+}
+
+/** Asks the core what the targets make per hour (it depends on race, workforce, sunlight and blueprints). */
+async function refreshRates() {
+  const asked = ++ratesAsked;
+  let list: TargetRate[] = [];
+  try {
+    list = planner.targets.length ? await api.targetRates(planArgs(planner.targets, [])) : [];
+  } catch {
+    // Rates are a hint; the plan itself reports problems.
+  }
+  if (asked !== ratesAsked) return; // a newer request is on its way
+  rates = new Map(list.map((r) => [r.ware, r]));
+  renderRates();
+}
+
+/** Each target row's "≈ N/h", or "no blueprint" in red. */
+function renderRates() {
+  const n = (x: number) => Math.round(x).toLocaleString("en-US");
+  $("planner-targets").querySelectorAll("li").forEach((li, i) => {
+    const r = rates.get(planner.targets[i]?.ware);
+    const el = li.querySelector<HTMLElement>(".rate")!;
+    el.classList.toggle("bad", !!r?.no_blueprint);
+    if (r?.per_hour !== undefined) {
+      el.textContent = `≈ ${n(r.per_hour)}/h`;
+      el.title = `${r.name}: ${n(r.per_module!)}/h each` + (planner.workforce ? ", fully staffed" : ", no workforce bonus") + `, at ${sunlight}% sunlight where it applies`;
+    } else {
+      el.textContent = r?.no_blueprint ? "no blueprint" : "";
+      el.title = r?.no_blueprint ? `"Only modules I have blueprints for" is on, and you have no blueprint for a module that makes it` : "";
+    }
+  });
 }
 
 /** An Optimize plan: the modules it adds (chain rows can be bought instead, the
@@ -1011,17 +1079,7 @@ async function generatePlan(fresh: boolean, optimize = false) {
   let result;
   try {
     result = await api.planProduction(
-      {
-        targets: mode ? [] : asked.targets,
-        extra_modules: mode ? [] : asked.extras.map(({ macro, count }) => ({ macro, count })),
-        race: planner.race || null,
-        workforce: planner.workforce,
-        storage_hours: planner.hours,
-        storage: planner.storage,
-        buy: planner.buy,
-        sunlight,
-        method: buildMethod,
-      },
+      planArgs(mode ? [] : asked.targets, mode ? [] : asked.extras),
       [...baseline].map(([macro, count]) => ({ macro, count })),
     );
   } catch (e) {
@@ -1031,6 +1089,8 @@ async function generatePlan(fresh: boolean, optimize = false) {
   if (fresh || !plan) $("planner-placed").textContent = "";
   plan = { result, baseline, asked, optimize: mode };
   renderPlanner();
+  const blocked = blockedWares();
+  if (blocked.length) status(`No blueprint for a module that makes ${blocked.join(", ")}: see the Planner`, "error");
 }
 
 /** Places every planned module still to place (auto-placement; the plot may grow). */
@@ -1236,10 +1296,12 @@ for (const t of ["container", "solid", "liquid"]) {
 $<HTMLSelectElement>("planner-race").onchange = (ev) => {
   planner.race = (ev.target as HTMLSelectElement).value;
   savePlanner();
+  void refreshRates();
 };
 $<HTMLInputElement>("planner-workforce").onchange = (ev) => {
   planner.workforce = (ev.target as HTMLInputElement).checked;
   savePlanner();
+  void refreshRates();
 };
 $<HTMLInputElement>("planner-fewer").onchange = (ev) => {
   planner.fewerConnectors = (ev.target as HTMLInputElement).checked;
@@ -1710,7 +1772,8 @@ function setBlueprints(b: Blueprints, tellCore = true) {
   } catch {
     // Remembering it is a convenience only.
   }
-  if (tellCore) void api.setBlueprints(b);
+  // The core's limit changes what the planner can make.
+  void (tellCore ? api.setBlueprints(b) : Promise.resolve()).then(refreshRates, refreshRates);
   renderBlueprints();
   renderRaceFilter();
   renderPalette();

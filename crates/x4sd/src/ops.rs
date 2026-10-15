@@ -618,6 +618,22 @@ pub fn plan_production(catalog: &Catalog, design: &Design, args: PlanArgs, exist
     plan_json(catalog, &p, sunlight)
 }
 
+/// What the targets' modules make, before planning: per target ware, the module
+/// the planner picks, its output per hour and the target's (its module count
+/// times that), or `no_blueprint` when only modules without the player's blueprint make it.
+pub fn target_rates(catalog: &Catalog, args: PlanArgs, blueprints: &Blueprints) -> Result<Value, String> {
+    let req = request(args, blueprints);
+    let rates = planner::target_rates(catalog, &req).map_err(|e| e.to_string())?;
+    Ok(json!(rates
+        .iter()
+        .zip(&req.targets)
+        .map(|(r, (_, modules))| match &r.producer {
+            Some((m, name, per_module)) => json!({"ware": r.ware, "macro": m, "name": name, "per_module": per_module, "per_hour": per_module * f64::from(*modules)}),
+            None => json!({"ware": r.ware, "no_blueprint": r.no_blueprint}),
+        })
+        .collect::<Vec<_>>()))
+}
+
 /// Places modules (a list, or what a plan lists) with `layout::auto_place`: the new
 /// indices, the connection structures added, what didn't fit, and the plot.
 pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs, blueprints: &Blueprints) -> Result<Value, String> {

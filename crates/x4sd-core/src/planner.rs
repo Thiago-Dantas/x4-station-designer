@@ -250,6 +250,38 @@ pub fn plan_production(catalog: &Catalog, existing: &[(String, u32)], req: &Requ
     Ok(ProductionPlan { modules, analysis, cost, unknown_targets, no_blueprint })
 }
 
+/// What the target modules of a request make, before planning: per target ware,
+/// the module the planner picks for it and what one makes per hour (fully staffed
+/// when the request houses the workforce; at the request's sunlight).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TargetRate {
+    pub ware: String,
+    /// The module (macro, name) and its output per hour; `None` when no module the
+    /// player can build makes the ware.
+    pub producer: Option<(String, String, f64)>,
+    /// Only modules without the player's blueprint make it.
+    pub no_blueprint: bool,
+}
+
+pub fn target_rates(catalog: &Catalog, req: &Request) -> Result<Vec<TargetRate>> {
+    let wares = catalog.wares()?;
+    let all = candidates(catalog)?;
+    let fill = if req.workforce { 1.0 } else { 0.0 };
+    Ok(req
+        .targets
+        .iter()
+        .map(|(ware, _)| {
+            let makes = |c: &&Candidate| producer_ware(c) == Some(ware.as_str());
+            let c = best(all.iter().filter(makes).filter(|c| owns(req.owned.as_ref(), &c.info.macro_name)), req.race.as_deref(), |_| 0.0);
+            let producer = c.map(|c| {
+                let per_hour = module_flows(wares, &c.module, fill, req.sunlight).into_iter().flatten().filter(|(w, ..)| w == ware).map(|(_, made, _)| made).sum();
+                (c.info.macro_name.clone(), c.info.name.clone(), per_hour)
+            });
+            TargetRate { ware: ware.clone(), no_blueprint: producer.is_none() && all.iter().any(|c| makes(&c)), producer }
+        })
+        .collect())
+}
+
 /// Adds `count` modules of a candidate (a macro keeps the role it was first added with).
 fn add(added: &mut BTreeMap<String, Planned>, c: &Candidate, count: u32, role: Role) {
     let p = added.entry(c.info.macro_name.clone()).or_insert_with(|| Planned {

@@ -86,6 +86,8 @@ export interface PlanArgs {
   sunlight: number;
   method: string;
 }
+/** What a planner target's modules make per hour (`per_hour`), or why nothing does (`no_blueprint`). */
+export interface TargetRate { ware: string; macro?: string; name?: string; per_module?: number; per_hour?: number; no_blueprint?: boolean }
 export interface ProductionPlan { modules: PlannedModule[]; analysis: StationAnalysis; cost: { lines: CostLine[]; value: number; unknown: string[] }; unknown_targets: string[]; no_blueprint: string[] }
 /** The player's blueprints from a save (`ops::Blueprints`): while `on`, only `modules` are offered. */
 export interface Blueprints { on: boolean; save: string | null; read_at: number | null; modules: string[] }
@@ -163,6 +165,7 @@ export const api = {
   analyzeStation: (sunlight: number) => serial<StationAnalysis>("analyze_station", { sunlight }),
   listWares: () => serial<{ ware: string; name: string }[]>("list_wares"),
   /** `baseline`: plan for a station with these modules instead of the open design. */
+  targetRates: (args: PlanArgs) => invoke<TargetRate[]>("target_rates", { args }),
   planProduction: (args: PlanArgs, baseline: { macro: string; count: number }[] | null) =>
     serial<ProductionPlan>("plan_production", { args, baseline }),
   /** Places the modules at free snaps without overlaps (the plot may grow); one undo step. */

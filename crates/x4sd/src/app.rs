@@ -84,6 +84,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             build_cost,
             analyze_station,
             list_sectors,
+            target_rates,
             list_wares,
             plan_production,
             auto_place,
@@ -409,6 +410,14 @@ fn plan_production(state: State<'_, Shared>, args: ops::PlanArgs, baseline: Opti
     let app = state.lock().unwrap();
     let catalog = catalog(&app)?;
     ops::plan_production(&catalog, &app.design, args, baseline, &app.blueprints)
+}
+
+/// What the planner's target modules make per hour, before planning (`ops::target_rates`).
+#[tauri::command]
+fn target_rates(state: State<'_, Shared>, args: ops::PlanArgs) -> CmdResult {
+    let app = state.lock().unwrap();
+    let catalog = catalog(&app)?;
+    ops::target_rates(&catalog, args, &app.blueprints)
 }
 
 /// Runs a shared operation (`ops::Op`, as MCP agents do) on the open design: its

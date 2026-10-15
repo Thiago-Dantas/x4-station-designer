@@ -1265,3 +1265,39 @@ fn sectors_and_sunlight() {
         assert!(!s.name.contains('{') && s.sunlight >= 0.0, "{s:?}");
     }
 }
+
+/// Target rates (the planner's "≈ N/h" per target): the module the plan uses and
+/// its output, the same as the plan's; solar output follows the sunlight; without
+/// a blueprint, no producer and `no_blueprint`.
+#[test]
+fn target_rates() {
+    use std::collections::HashSet;
+    use x4sd_core::planner::{plan_production, target_rates, Request};
+    let Some(c) = catalog() else { return };
+    let req = |targets: &[(&str, u32)], sunlight: f64, owned: Option<HashSet<String>>| Request {
+        targets: targets.iter().map(|(w, n)| (w.to_string(), *n)).collect(),
+        modules: Vec::new(),
+        race: Some("argon".to_owned()),
+        workforce: true,
+        storage_hours: 6.0,
+        storage: Vec::new(),
+        buy: Vec::new(),
+        sunlight,
+        method: "default".to_owned(),
+        owned,
+    };
+    let r = req(&[("hullparts", 2), ("energycells", 3), ("ore", 1)], 1.0, None);
+    let rates = target_rates(c, &r).unwrap();
+    eprintln!("{rates:?}");
+    let (macro_name, _, per_hour) = rates[0].producer.clone().unwrap();
+    let p = plan_production(c, &[], &r).unwrap();
+    assert!(p.modules.iter().any(|m| m.macro_name == macro_name && m.count == 2), "the plan's module");
+    let made = p.analysis.flows.iter().find(|f| f.ware == "hullparts").unwrap().produced;
+    assert!((made - 2.0 * per_hour).abs() < 1e-6, "{made} vs 2 x {per_hour}");
+    assert!(rates[2].producer.is_none() && !rates[2].no_blueprint, "ore is mined");
+    let sunny = target_rates(c, &req(&[("energycells", 1)], 1.23, None)).unwrap();
+    let solar = |r: &[x4sd_core::planner::TargetRate]| r.iter().find(|t| t.ware == "energycells").unwrap().producer.clone().unwrap().2;
+    assert!((solar(&sunny) - 1.23 * solar(&rates)).abs() < 1e-6, "solar follows the sunlight");
+    let none = target_rates(c, &req(&[("hullparts", 1)], 1.0, Some(HashSet::new()))).unwrap();
+    assert!(none[0].producer.is_none() && none[0].no_blueprint);
+}

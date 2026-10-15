@@ -116,6 +116,9 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 #planner-targets li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
 #planner-targets li span { flex: 1; }
 #planner-targets li input { width: 52px; }
+#planner-targets li .rate { flex: none; color: var(--muted); }
+#planner-targets li .rate.bad { color: var(--bad); }
+#planner-warning { padding: 4px 6px; border-radius: 3px; margin: 4px 0; background: #3a1d1d; font-size: 12px; }
 #sel-equipment h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; color: var(--muted); }
 .equip-group { font-size: 11px; color: var(--muted); margin: 6px 0 2px; }
 .equip-row { display: flex; align-items: center; gap: 4px; font-size: 12px; margin: 2px 0; }
