@@ -38,6 +38,8 @@ export interface Scene {
   name: string;
   patches: string[];
   can_undo: boolean;
+  /** Undo steps available. */
+  history: number;
   can_redo: boolean;
   entries: Entry[];
   issues: Issue[];
@@ -57,6 +59,8 @@ export interface Placement {
   docks_blocked: number;
   /** Modules with sides that found no spot on their side with a clear view out. */
   sides_blocked: number;
+  /** Modules placed by breaking the station up (a connection hub put into a joint). */
+  broken_up: number;
 }
 export interface CostLine { ware: string; name: string; amount: number; value: number | null }
 export interface BuildCost { method: string; methods: { id: string; name: string }[]; lines: CostLine[]; value: number; unknown: string[] }

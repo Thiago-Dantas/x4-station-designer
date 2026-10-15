@@ -60,6 +60,9 @@ const FEWER_HUBS_PENALTY_M: f64 = 4000.0;
 /// past the station's bounds (see `Placer::lane`).
 const SIDE_LANE_M: f64 = 3_000.0;
 
+/// Joints `Placer::break_up` tries for one module before it gives up.
+const BREAK_UP_TRIES: usize = 40;
+
 /// A side of the station, for modules that face out that way (defence platforms):
 /// front +Z, back −Z, left −X, right +X, top +Y, bottom −Y.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -417,6 +420,8 @@ pub struct Placement {
     /// of the station with a clear lane out (a tightly packed station may have no
     /// free snaps there): they went where their lane is clear, else wherever they fit.
     pub sides_blocked: u32,
+    /// Modules placed by breaking the station up (`Options::break_up`).
+    pub broken_up: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -442,6 +447,9 @@ pub struct Options {
     /// The station modules the player has blueprints for (lowercase macros);
     /// `None`: all. Connection structures are added only from these.
     pub owned: Option<HashSet<String>>,
+    /// When a module finds no place, break the station up to make one
+    /// (`Placer::break_up`): modules already on the station may move.
+    pub break_up: bool,
 }
 
 /// Attaches the modules (macro, count) to the open design at exact snap
@@ -503,10 +511,29 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, modules: &[(String, u3
             placer.shell = if options.layered && layer(module) == 1 { placer.core_radius() } else { 0.0 };
         }
         placer.side = *side;
-        match placer.place(design, &connectors, module)? {
-            Some((index, added)) => {
+        // Docks, piers and bays get clear space by any way there is, breaking the
+        // station up if need be, before they go where their approach is blocked.
+        let passes: &[bool] = if options.break_up && side.is_none() && outer(module) { &[true, false] } else { &[false] };
+        let mut result = None;
+        for &clear_only in passes {
+            result = match placer.place(design, &connectors, module, clear_only)? {
+                Some(placed) => Some((placed, Vec::new(), false)),
+                None if options.break_up => placer.break_up(design, &connectors, module, clear_only)?.map(|(placed, renumbered)| (placed, renumbered, true)),
+                None => None,
+            };
+            if result.is_some() {
+                break;
+            }
+        }
+        match result {
+            Some(((index, added), renumbered, broke)) => {
+                let new = |i: u32| renumbered.iter().find(|(old, _)| *old == i).map_or(i, |(_, n)| *n);
+                for (i, _) in out.placed.iter_mut().chain(out.connectors.iter_mut()) {
+                    *i = new(*i);
+                }
                 out.placed.push((index, module.macro_name.clone()));
                 out.connectors.extend(added);
+                out.broken_up += u32::from(broke);
             }
             None => *unplaced.entry(module.macro_name.clone()).or_default() += 1,
         }
@@ -587,6 +614,9 @@ pub struct OptimizeOptions {
     pub fewer_connectors: bool,
     /// See `Options::owned`.
     pub owned: Option<HashSet<String>>,
+    /// Keep a partial result when only modules of `fixes` find no place (they are
+    /// in `placement.unplaced`); the station's own modules are never left out.
+    pub partial: bool,
 }
 
 /// Re-lays a station out in layers (see `auto_place`) and adds `fixes` (macro,
@@ -644,9 +674,11 @@ pub fn optimize(catalog: &Catalog, design: &mut Design, fixes: &[(String, u32)],
         catalog,
         design,
         &modules,
-        &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true, fewer_connectors: options.fewer_connectors, sides: Vec::new(), owned: options.owned.clone() },
+        &Options { grow_plot: options.grow_plot, race: options.race.clone(), layered: true, fewer_connectors: options.fewer_connectors, sides: Vec::new(), owned: options.owned.clone(), break_up: true },
     )?;
-    if !placement.unplaced.is_empty() {
+    // Only added modules may stay out, and only when a partial result is wanted.
+    let fixes_only = placement.unplaced.iter().all(|(m, n)| fixes.iter().filter(|(f, _)| f.eq_ignore_ascii_case(m)).map(|f| f.1).sum::<u32>() >= *n);
+    if !placement.unplaced.is_empty() && !(options.partial && fixes_only) {
         if design.history_len() > history {
             design.squash_history(history);
             design.undo();
@@ -959,6 +991,162 @@ impl<'a> Placer<'a> {
         Ok(())
     }
 
+    /// Takes the design in again after modules on it moved (`break_up`): bodies,
+    /// free snaps, zones and corridors anew; what this run decided (the heart, the
+    /// shell, lanes, counts) stays.
+    fn reload(&mut self, design: &Design) -> Result<()> {
+        let fresh = Placer::new(self.catalog, design, self.plot)?;
+        let lanes = std::mem::take(&mut self.lanes);
+        *self = Placer {
+            heart: self.heart,
+            shell: self.shell,
+            hub_penalty: self.hub_penalty,
+            side: self.side,
+            lanes,
+            blocked: self.blocked,
+            sides_blocked: self.sides_blocked,
+            ..fresh
+        };
+        Ok(())
+    }
+
+    /// When nothing else fits: breaks the station up at a joint to make connection
+    /// points (user, 2026-10-15). A hub goes between a module and its predecessor;
+    /// that module, with everything on it, moves out along the joint by the hub's
+    /// length, and the hub's other snaps are new places. Joints nearest the centre
+    /// come first for modules without turret/shield slots (they belong inside),
+    /// the outermost first for the rest. The move must leave everything clear (no
+    /// overlaps, zones, inside the plot), and `module` must then fit on the hub, or
+    /// the design goes back as it was. Returns the placement and the entries the
+    /// new hub renumbered: (old, new).
+    fn break_up(&mut self, design: &mut Design, conn: &Connectors, module: &Module, clear_only: bool) -> Result<Option<(Placed, Vec<(u32, u32)>)>> {
+        let catalog = self.catalog;
+        let plan = design.plan().clone();
+        let hub = &conn.hub;
+        // Joints: (where the snaps meet, child entry).
+        let mut joints: Vec<(f64, u32)> = Vec::new();
+        for e in &plan.entries {
+            let Some(p) = &e.predecessor else { continue };
+            let Some(pred) = plan.entries.iter().find(|x| x.index == p.index) else { continue };
+            let Some(snap) = catalog.module(&pred.macro_name)?.snap(&p.connection).cloned() else { continue };
+            let at = design.world(pred.index)?.then(&snap.transform).position;
+            joints.push((dot(sub(at, self.heart), sub(at, self.heart)).sqrt(), e.index));
+        }
+        if layer(module) == 0 {
+            joints.sort_by(|a, b| a.0.total_cmp(&b.0));
+        } else {
+            joints.sort_by(|a, b| b.0.total_cmp(&a.0));
+        }
+        let facing = |s: &Snap| s.transform.rotation.rotate([0.0, 0.0, 1.0]);
+        let mut tried = 0;
+        for (_, child) in joints {
+            if tried >= BREAK_UP_TRIES {
+                break;
+            }
+            let Some(way) = self.opening(design, &plan, conn, child, &facing)? else { continue };
+            tried += 1;
+            let (hs, ht, ho, ct) = way;
+            let history = design.history_len();
+            let (hub_index, renumbered) = design.insert_between(catalog, child, &hub.module.macro_name, &hs, ht, &ho, ct)?;
+            self.reload(design)?;
+            let boxes = catalog.collision_boxes(&module.macro_name)?;
+            let spots: Vec<FreeSnap> = self.free.iter().filter(|f| f.entry == hub_index).cloned().collect();
+            let mut choice = None;
+            for outward in if clear_only { vec![true] } else if outer(module) { vec![true, false] } else { vec![false] } {
+                self.outward = outward;
+                choice = spots.iter().find_map(|f| self.best_at(module, &boxes, &f.world, &[]).map(|c| (f.clone(), c)));
+                self.outward = false;
+                if choice.is_some() {
+                    break;
+                }
+            }
+            if let Some((f, (snap, twist, _))) = choice {
+                let index = design.attach(catalog, &module.macro_name, &snap, f.entry, &f.snap, twist)?;
+                self.take(f.entry, &f.snap);
+                self.add(design, index)?;
+                if outer(module) {
+                    self.protect(design, index)?;
+                }
+                return Ok(Some(((index, vec![(hub_index, hub.module.macro_name.clone())]), renumbered)));
+            }
+            while design.history_len() > history {
+                design.undo();
+            }
+            self.reload(design)?;
+        }
+        Ok(None)
+    }
+
+    /// A way to put the hub between entry `child` and its predecessor that keeps
+    /// everything clear: (hub snap taking the predecessor's, its twist, hub snap
+    /// `child` moves onto, `child`'s twist there). Checked before anything moves.
+    fn opening(&self, design: &Design, plan: &Plan, conn: &Connectors, child: u32, facing: &dyn Fn(&Snap) -> [f64; 3]) -> Result<Option<(String, f64, String, f64)>> {
+        let catalog = self.catalog;
+        let hub = &conn.hub;
+        let e = plan.entries.iter().find(|x| x.index == child).unwrap();
+        let (Some(conn_snap), Some(p)) = (&e.connection, &e.predecessor) else { return Ok(None) };
+        let pred = plan.entries.iter().find(|x| x.index == p.index).unwrap();
+        let (Some(pred_snap), Some(child_snap)) = (catalog.module(&pred.macro_name)?.snap(&p.connection).cloned(), catalog.module(&e.macro_name)?.snap(conn_snap).cloned()) else {
+            return Ok(None);
+        };
+        let joint = design.world(pred.index)?.then(&pred_snap.transform);
+        let child_world = design.world(child)?;
+        // `child` and everything on it.
+        let mut moved = vec![child];
+        let mut i = 0;
+        while i < moved.len() {
+            let parent = moved[i];
+            moved.extend(plan.entries.iter().filter(|x| x.predecessor.as_ref().is_some_and(|q| q.index == parent)).map(|x| x.index));
+            i += 1;
+        }
+        let others: Vec<usize> = (0..self.bodies.len()).filter(|&b| !moved.contains(&self.owners[b])).collect();
+        for hs in &hub.module.snaps {
+            for ho in hub.module.snaps.iter().filter(|o| dot(facing(o), facing(hs)) < -0.999) {
+                for ht in TWISTS {
+                    let at = attach(&joint, &Transform::IDENTITY, &hs.transform, ht);
+                    let out = at.then(&ho.transform);
+                    let d = sub(out.position, joint.position);
+                    let target = Transform { position: [0, 1, 2].map(|k| child_world.position[k] + d[k]), rotation: child_world.rotation };
+                    let f = crate::geometry::fit(&at, &ho.transform, &target, &child_snap.transform);
+                    if f.gap > 0.05 || f.misalignment > 0.5 {
+                        continue;
+                    }
+                    // The hub and the moved modules, where they would be.
+                    let mut new: Vec<(Body, Bounds, Vec<WorldBox>)> = Vec::new();
+                    let hub_bounds = module_bounds(&hub.module, &at);
+                    new.push((Body::new(&hub.boxes, &hub.module.snaps, &at), hub_bounds.unwrap_or(([0.0; 3], [0.0; 3])), Vec::new()));
+                    for &m in &moved {
+                        let x = plan.entries.iter().find(|x| x.index == m).unwrap();
+                        let mm = catalog.module(&x.macro_name)?;
+                        let w = design.world(m)?;
+                        let w = Transform { position: [0, 1, 2].map(|k| w.position[k] + d[k]), rotation: w.rotation };
+                        let b = module_bounds(&mm, &w).unwrap_or(([0.0; 3], [0.0; 3]));
+                        new.push((Body::new(&catalog.collision_boxes(&x.macro_name)?, &mm.snaps, &w), b, zones(catalog, &mm, &w)));
+                    }
+                    // The hub against what moves past it, and everything moved against what stays.
+                    let (hub_body, moving) = (&new[0].0, &new[1..]);
+                    let hub_clear = moving.iter().all(|(body, _, own_zones)| overlap(body, hub_body).is_none() && !own_zones.iter().any(|z| hub_body.blocks(z) && !hub_body.joined(body)));
+                    let clear = hub_clear && new.iter().all(|(body, _, own_zones)| {
+                        others.iter().all(|&o| overlap(&self.bodies[o], body).is_none() && !own_zones.iter().any(|z| self.bodies[o].blocks(z) && !self.bodies[o].joined(body)))
+                    }) && self.zones.iter().filter(|(owner, _)| !moved.contains(&self.owners[*owner])).all(|(owner, z)| new.iter().all(|(body, ..)| !body.blocks(z) || body.joined(&self.bodies[*owner])));
+                    if !clear {
+                        continue;
+                    }
+                    let m = PLOT_MARGIN_M;
+                    let (lo, hi) = new.iter().fold(self.bounds.unwrap_or(new[0].1), |s, n| union(s, n.1));
+                    let inside = match self.plot {
+                        Some(p) => (0..3).all(|k| hi[k] + m <= p.pos[k] as f64 * 1000.0 && m - lo[k] <= p.neg[k] as f64 * 1000.0),
+                        None => bounds_plot((lo.map(|v| v - m), hi.map(|v| v + m))).is_allowed(),
+                    };
+                    if inside {
+                        return Ok(Some((hs.name.clone(), ht, ho.name.clone(), f.twist)));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     fn take(&mut self, entry: u32, snap: &str) {
         self.free.retain(|f| !(f.entry == entry && f.snap == snap));
     }
@@ -1031,10 +1219,12 @@ impl<'a> Placer<'a> {
     /// Places one module; returns its index and the connection structures added for it.
     /// Docks, piers and bays (`outer`) go where they have clear space if they can;
     /// modules with a `side` on that half of the station with a clear lane, else
-    /// anywhere with a clear lane.
-    fn place(&mut self, design: &mut Design, conn: &Connectors, module: &Module) -> Result<Option<Placed>> {
+    /// anywhere with a clear lane. `clear_only`: only where it has clear space.
+    fn place(&mut self, design: &mut Design, conn: &Connectors, module: &Module, clear_only: bool) -> Result<Option<Placed>> {
         let tries: &[(bool, bool)] = if self.side.is_some() {
             &[(true, true), (true, false), (false, false)]
+        } else if clear_only {
+            &[(true, false)]
         } else if outer(module) {
             &[(true, false), (false, false)]
         } else {

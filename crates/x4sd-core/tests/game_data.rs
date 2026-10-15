@@ -484,9 +484,9 @@ fn auto_place_planned_stations() {
 /// A big station whose modules are mostly dead ends (one snap: Teladi-planned
 /// claytronics, microchips, water) keeps room to grow and places everything (user
 /// report 2026-10-15: 38 of 461 placed, every free snap capped), also with fewer
-/// connection structures.
+/// connection structures. Since modules no longer stack (facing rule), it seals
+/// up anyway; breaking it up (`Options::break_up`) places the last few.
 #[test]
-#[ignore = "expectations from layouts that stacked modules (before the facing rule); re-tune: tasks/workflow-retune-placement.md"]
 fn auto_place_keeps_room_to_grow() {
     use x4sd_core::layout::Options;
     use x4sd_core::planner::{plan_production, Request};
@@ -506,7 +506,7 @@ fn auto_place_keeps_room_to_grow() {
     let modules: Vec<(String, u32)> = plan_production(c, &[], &req).unwrap().modules.iter().map(|m| (m.macro_name.clone(), m.count)).collect();
     for fewer_connectors in [false, true] {
         let mut d = Design::new(if fewer_connectors { "50 claytronics, fewer connectors" } else { "50 claytronics" });
-        let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: true, race: Some("teladi".to_owned()), fewer_connectors, ..Default::default() });
+        let r = place_and_check(c, &mut d, &modules, &Options { grow_plot: true, race: Some("teladi".to_owned()), fewer_connectors, break_up: true, ..Default::default() });
         assert!(r.unplaced.is_empty(), "{:?}", r.unplaced);
     }
 }
@@ -559,7 +559,7 @@ fn fewer_connectors() {
     let mut connectors = Vec::new();
     for fewer_connectors in [false, true] {
         let mut d = Design::from_plan(yard.clone());
-        let options = OptimizeOptions { keep_shape: false, grow_plot: true, race: Some("terran".to_owned()), fewer_connectors, owned: None };
+        let options = OptimizeOptions { keep_shape: false, grow_plot: true, race: Some("terran".to_owned()), fewer_connectors, owned: None, partial: false };
         let r = optimize(c, &mut d, &fixes, &options).unwrap();
         let plot = x4sd_core::plot::required_plot(d.plan(), c).unwrap();
         let load = x4sd_core::perf::load(d.plan(), c);
@@ -1303,4 +1303,33 @@ fn target_rates() {
     assert!((solar(&sunny) - 1.23 * solar(&rates)).abs() < 1e-6, "solar follows the sunlight");
     let none = target_rates(c, &req(&[("hullparts", 1)], 1.0, Some(HashSet::new()))).unwrap();
     assert!(none[0].producer.is_none() && none[0].no_blueprint);
+}
+
+/// Breaking a sealed station up (user's "test" station, 2026-10-15: every free
+/// snap faces into a neighbour): without it nothing of the user's extras places;
+/// with it all of them, and the result has no overlaps or other problems, in one
+/// undo step.
+#[test]
+fn break_up_opens_a_sealed_station() {
+    use x4sd_core::layout::{auto_place, Options};
+    let (Some(c), Some(plans)) = (catalog(), sample("research/extracted/profile-samples/test-20261015.xml")) else { return };
+    let modules: Vec<(String, u32)> = [("dockarea_ter_m_station_01_standard_macro", 5), ("pier_ter_harbor_03_macro", 10), ("defence_ter_claim_01_macro", 1)].iter().map(|(m, n)| (m.to_string(), *n)).collect();
+    for break_up in [false, true] {
+        let mut d = Design::from_plan(plans[0].clone());
+        let before = d.plan().clone();
+        let r = auto_place(c, &mut d, &modules, &Options { grow_plot: true, race: Some("terran".to_owned()), break_up, ..Default::default() }).unwrap();
+        eprintln!("[break up: {break_up}] placed {}, connectors {}, broken up {}, unplaced {:?}", r.placed.len(), r.connectors.len(), r.broken_up, r.unplaced);
+        if !break_up {
+            assert!(r.placed.is_empty(), "sealed: nothing fits");
+            continue;
+        }
+        assert!(r.unplaced.is_empty() && r.placed.len() == 16 && r.broken_up > 0);
+        assert_eq!(validate(d.plan(), c), Vec::<Issue>::new());
+        assert_eq!(d.plan().entries.len(), before.entries.len() + r.placed.len() + r.connectors.len());
+        for (i, m) in r.placed.iter().chain(&r.connectors) {
+            assert_eq!(&d.plan().entries.iter().find(|e| e.index == *i).unwrap().macro_name, m, "indices follow the renumbering");
+        }
+        assert!(d.undo());
+        assert_eq!(d.plan(), &before, "one undo step");
+    }
 }

@@ -235,6 +235,48 @@ impl Design {
         Ok(new_index)
     }
 
+    /// Puts a new module (`macro_name`, e.g. a connection hub) between attached
+    /// entry `child` and its predecessor: its snap `in_snap` takes the predecessor's
+    /// snap, twisted `twist_degrees`, and `child` with everything attached to it
+    /// moves onto its snap `out_snap`, twisted `child_twist`. The new module comes
+    /// right before `child` in the build order. Returns its index and the entries
+    /// renumbered by that: (old index, new index).
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_between(
+        &mut self,
+        catalog: &Catalog,
+        child: u32,
+        macro_name: &str,
+        in_snap: &str,
+        twist_degrees: f64,
+        out_snap: &str,
+        child_twist: f64,
+    ) -> Result<(u32, Vec<(u32, u32)>)> {
+        let e = self.entry(child)?;
+        let (Some(conn), Some(pred)) = (e.connection.clone(), e.predecessor.clone()) else {
+            return Err(Error(format!("entry {child} is not attached to anything")));
+        };
+        let module = catalog.module(macro_name)?;
+        let (inner, outer) = (find_snap(&module, in_snap)?, find_snap(&module, out_snap)?);
+        let pred_snap = find_snap(&catalog.module(&self.entry(pred.index)?.macro_name)?, &pred.connection)?;
+        let child_snap = find_snap(&catalog.module(&e.macro_name)?, &conn)?;
+        let at = attach_transform(&self.world(pred.index)?, &pred_snap.transform, &inner.transform, twist_degrees);
+        let child_at = attach_transform(&at, &outer.transform, &child_snap.transform, child_twist);
+        self.checkpoint();
+        let index = self.next_index();
+        self.plan.entries.push(new_entry(index, &module, Some((inner.name.clone(), pred)), at));
+        self.entry_mut(child).predecessor = Some(Predecessor { index, connection: outer.name.clone() });
+        self.move_subtree(child, &child_at);
+        let mut order: Vec<u32> = self.plan.entries.iter().map(|e| e.index).filter(|&i| i != index).collect();
+        let before = order.iter().position(|&i| i == child).unwrap_or(order.len());
+        order.insert(before, index);
+        let renumbered: Vec<(u32, u32)> = order.iter().zip(1..).filter(|(old, new)| *old != new).map(|(&old, new)| (old, new)).collect();
+        let new_index = before as u32 + 1;
+        self.sort_and_renumber(&order);
+        self.plan.patches = catalog.required_patches(&self.plan);
+        Ok((new_index, renumbered))
+    }
+
     /// Makes an attached module free-standing where it is (its link is dropped;
     /// whatever is attached to it stays attached).
     pub fn detach(&mut self, index: u32) -> Result<()> {

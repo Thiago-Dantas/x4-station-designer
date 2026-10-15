@@ -1100,14 +1100,59 @@ async function placeAll() {
   // Sides as picked now, so they can change without planning again.
   const sides = (macro: string) => planner.extras.find((x) => x.macro.toLowerCase() === macro.toLowerCase())?.sides ?? [];
   const todo = plan.result.modules.map((m) => ({ macro: m.macro, count: m.count - placedOf(m, now), sides: sides(m.macro) })).filter((m) => m.count > 0);
+  const history = scene?.history ?? 0;
+  const lists = structuredClone({ targets: planner.targets, extras: planner.extras });
   if (!todo.length || !(await placeModules(todo, true))) return;
   const after = macroCounts();
-  if (plan.result.modules.some((m) => placedOf(m, after) < m.count)) return dropPlaced(after);
-  // All placed: the wares and other modules to add are done.
-  planner.targets = [];
-  planner.extras = [];
+  if (plan.result.modules.some((m) => placedOf(m, after) < m.count)) {
+    dropPlaced(after);
+  } else {
+    // All placed: the wares and other modules to add are done.
+    planner.targets = [];
+    planner.extras = [];
+    savePlanner();
+    renderPlanner();
+  }
+  // What it used up, for an undo to give back.
+  used = {
+    history,
+    targets: lists.targets.map((t) => ({ ...t, modules: t.modules - (planner.targets.find((x) => x.ware === t.ware)?.modules ?? 0) })).filter((t) => t.modules > 0),
+    extras: lists.extras.map((x) => ({ ...x, count: x.count - (planner.extras.find((y) => same(y.macro, x.macro))?.count ?? 0) })).filter((x) => x.count > 0),
+    given: false,
+  };
+}
+
+const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/** The plan items the last Place all used up, and the undo depth before it: undoing
+ * past that gives them back (added to the planner, whatever it holds by then), a
+ * redo takes them again. */
+let used: { history: number; targets: PlannerState["targets"]; extras: PlannerState["extras"]; given: boolean } | null = null;
+
+/** Undo (or redo) one step; across a Place all, its plan items come back (or go again). */
+async function stepHistory(redo: boolean) {
+  await apply(redo ? api.redo() : api.undo());
+  // Nothing to do while the plan items match the history: given back once undone past the Place all.
+  if (!used || !scene || used.given === (scene.history <= used.history)) return;
+  used.given = !used.given;
+  const sign = used.given ? 1 : -1;
+  for (const t of used.targets) {
+    const have = planner.targets.find((x) => x.ware === t.ware);
+    if (have) have.modules += sign * t.modules;
+    else if (sign > 0) planner.targets.push({ ...t });
+  }
+  for (const x of used.extras) {
+    const have = planner.extras.find((y) => same(y.macro, x.macro));
+    if (have) have.count += sign * x.count;
+    else if (sign > 0) planner.extras.push(structuredClone(x));
+  }
+  planner.targets = planner.targets.filter((t) => t.modules > 0);
+  planner.extras = planner.extras.filter((x) => x.count > 0);
   savePlanner();
-  renderPlanner();
+  // A plan on screen is made again from the lists as they are now.
+  if (plan && !plan.optimize) void generatePlan(true);
+  else renderPlanner();
+  if (used.given) status(`Undone; the plan has its ${used.targets.length + used.extras.length} items back`, "good");
 }
 
 /** After a partial build: the targets and other modules to add shrink by what was
@@ -1115,7 +1160,6 @@ async function placeAll() {
  * `macroCounts()`), so it lists only what is left, with its cost and analysis. */
 function dropPlaced(now: Map<string, number>) {
   if (!plan) return;
-  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
   // Both the planner's lists and what the plan was asked for (the re-plan uses that).
   const lists = [planner, plan.asked];
   for (const m of plan.result.modules) {
@@ -1136,43 +1180,68 @@ function dropPlaced(now: Map<string, number>) {
   void generatePlan(false);
 }
 
-/** Auto-places `todo` (one undo step; the station's modules stay where they are)
- * and reports it. When some find no place, asks whether to keep a partial build;
- * no undoes it. `offerPlot`: offer a bigger plot if the station outgrew its own.
+/** Places `todo` and reports it. With *Rebuild connection structures* off, at
+ * free snaps: the station's modules move only when nothing else fits (a hub goes
+ * into a joint). On, the whole station is laid out again with them (Optimize's
+ * rebuild). When some find no place, asks whether to keep a partial build; no
+ * undoes it. `offerPlot`: offer a bigger plot if the station outgrew its own.
  * False if nothing was kept. */
 async function placeModules(todo: { macro: string; count: number; sides?: string[] }[], offerPlot: boolean): Promise<boolean> {
+  const rebuild = $<HTMLInputElement>("optimize-rebuild").checked;
   const wanted = todo.reduce((s, m) => s + m.count, 0);
-  status(`Placing ${wanted} modules…`);
-  const before = scene?.entries.length ?? 0;
+  status(rebuild ? `Rebuilding the station with ${wanted} more modules…` : `Placing ${wanted} modules…`);
+  const history = scene?.history ?? 0;
   let s: Scene;
+  let p: { placed: number; connectors: number; unplaced: { macro: string; count: number }[]; docks_blocked: number; sides_blocked: number; broken_up: number };
+  let rebuilt: Optimized | null = null;
   try {
-    s = await api.autoPlace(todo, planner.race || null, planner.fewerConnectors);
+    if (rebuild) {
+      const r = await api.runOp<Optimized>({
+        op: "optimize_station",
+        ...planArgs([], []),
+        keep_shape: false,
+        fewer_connectors: planner.fewerConnectors,
+        modules: todo.map(({ macro, count }) => ({ macro, count })),
+        partial: true,
+      });
+      s = r.scene!;
+      rebuilt = r.result;
+      // `placed` counts the station's own modules too.
+      p = { placed: rebuilt.placed - rebuilt.moved, connectors: rebuilt.connectors_added, unplaced: rebuilt.unplaced, docks_blocked: rebuilt.docks_blocked, sides_blocked: 0, broken_up: rebuilt.broken_up };
+    } else {
+      s = await api.autoPlace(todo, planner.race || null, planner.fewerConnectors);
+      const x = s.placement!;
+      p = { placed: x.placed.length, connectors: x.connectors.length, unplaced: x.unplaced, docks_blocked: x.docks_blocked, sides_blocked: x.sides_blocked, broken_up: x.broken_up };
+    }
   } catch (e) {
     status(String(e), "error");
     return false;
   }
-  const p = s.placement!;
   const left = p.unplaced.map((u) => `${u.count} × ${moduleName(u.macro)}`).join(", ");
   if (left) {
     const keep =
-      p.placed.length > 0 &&
-      (await ask(`Only ${p.placed.length} of ${wanted} modules fit: no room for ${left}.\n\nKeep the ${p.placed.length} placed as a partial build? The plan then lists only what is left.`, {
+      p.placed > 0 &&
+      (await ask(`Only ${p.placed} of ${wanted} modules fit: no room for ${left}.\n\nKeep the ${p.placed} placed as a partial build? The plan then lists only what is left.`, {
         title: "Partial build",
         kind: "warning",
       }));
     if (!keep) {
-      // Placing is one undo step, taken only if it changed the design.
-      await apply(s.entries.length !== before ? api.undo() : Promise.resolve(s));
+      // Back to where it was: placing (and fitting the plot after a rebuild) are undo steps of their own.
+      let back = s;
+      while (back.history > history) back = await api.undo();
+      await apply(Promise.resolve(back));
       const note = `Nothing placed: no room for ${left}`;
       $("planner-placed").textContent = note;
       status(note, "error");
       return false;
     }
   }
-  await apply(Promise.resolve(s), undefined, true, offerPlot);
+  await apply(Promise.resolve(s), undefined, true, offerPlot && !rebuild);
   const note =
-    `Placed ${p.placed.length} modules` +
-    (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
+    (rebuilt
+      ? `Rebuilt the station: re-placed ${rebuilt.moved} modules, added ${p.placed}; connection structures −${rebuilt.connectors_removed} +${p.connectors}` + (rebuilt.plot.plot ? `; plot fitted: ${rebuilt.plot.plot.text}` : "")
+      : `Placed ${p.placed} modules` + (p.connectors ? ` and ${p.connectors} connection structures` : "")) +
+    (p.broken_up ? `. Opened the station up ${p.broken_up === 1 ? "once" : `${p.broken_up} times`} (a connection hub put into a joint, what hung there moved out)` : "") +
     (p.docks_blocked ? `. ${p.docks_blocked} docks or bays have no clear space` : "") +
     (p.sides_blocked ? `. ${p.sides_blocked} modules couldn't go on their side (no free snaps there with a clear view out): move them by hand` : "") +
     (left ? `. Partial build: no room for ${left}` : "");
@@ -1357,7 +1426,17 @@ $<HTMLInputElement>("planner-hours").onchange = (ev) => {
 $("planner-generate").onclick = () => void generatePlan(true);
 $("optimize-rebuild").onchange = () => plan?.optimize && renderPlanner();
 
-interface Optimized { added: { macro: string; count: number }[]; moved: number; connectors_removed: number; connectors_added: number; docks_blocked: number; plot: { plot: { text: string } | null } }
+interface Optimized {
+  added: { macro: string; count: number }[];
+  moved: number;
+  connectors_removed: number;
+  connectors_added: number;
+  placed: number;
+  unplaced: { macro: string; count: number }[];
+  broken_up: number;
+  docks_blocked: number;
+  plot: { plot: { text: string } | null };
+}
 
 /** Optimize: plan the open station's shortfall fixes (the planner's settings) for the user to trim. */
 $("planner-optimize").onclick = () => {
@@ -1373,43 +1452,10 @@ $("planner-optimize").onclick = () => {
 $("planner-apply").onclick = async () => {
   if (!plan?.optimize) return;
   const modules = optimizeModules().map((m) => ({ macro: m.macro, count: m.count }));
-  if (!$<HTMLInputElement>("optimize-rebuild").checked) {
-    if (!modules.length || !(await placeModules(modules, false))) return;
-    await apply(api.fitPlot(false));
-  } else {
-    status("Optimizing…");
-    let note = "";
-    await apply(
-      api
-        .runOp<Optimized>({
-          op: "optimize_station",
-          race: planner.race || null,
-          workforce: planner.workforce,
-          storage_hours: planner.hours,
-          buy: planner.buy,
-          sunlight,
-          method: buildMethod,
-          keep_shape: false,
-          fewer_connectors: planner.fewerConnectors,
-          modules,
-        })
-        .then((r) => {
-          const o = r.result;
-          const added = o.added.reduce((s, a) => s + a.count, 0);
-          note =
-            `Optimized: re-placed ${o.moved} modules` +
-            (added ? `, added ${added} to cover shortfalls` : ", no shortfalls to cover") +
-            `; connection structures −${o.connectors_removed} +${o.connectors_added}` +
-            (o.docks_blocked ? `. ${o.docks_blocked} docks or bays have no clear space` : "") +
-            (o.plot.plot ? `; plot fitted: ${o.plot.plot.text}` : "");
-          return r.scene!;
-        }),
-      undefined,
-      true,
-    );
-    if (!note) return;
-    status(note, note.includes("no clear approach") ? "error" : "good");
-  }
+  // Rebuild connection structures: the whole station is laid out again (with no modules, a re-layout only).
+  const rebuild = $<HTMLInputElement>("optimize-rebuild").checked;
+  if ((!rebuild && !modules.length) || !(await placeModules(modules, false))) return;
+  if (!rebuild) await apply(api.fitPlot(false));
   // The plan (if any) was for the station before: start over.
   plan = null;
   $("planner-result").replaceChildren();
@@ -1864,8 +1910,8 @@ $("bp-other").onclick = () => void pickSave();
 $("bp-reread").onclick = () => {
   if (blueprints.save) void readSave(blueprints.save);
 };
-$("btn-undo").onclick = () => apply(api.undo());
-$("btn-redo").onclick = () => apply(api.redo());
+$("btn-undo").onclick = () => stepHistory(false);
+$("btn-redo").onclick = () => stepHistory(true);
 $("btn-frame").onclick = () => view.frame();
 $<HTMLInputElement>("textures").checked = showTextures;
 $<HTMLInputElement>("textures").onchange = async (ev) => {
@@ -2077,8 +2123,8 @@ window.addEventListener("keydown", (ev) => {
   if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;
   const key = ev.key.toLowerCase();
   if (key === "escape" && !$("module-menu").hidden) return closeModuleMenu();
-  if (ev.ctrlKey && key === "z") void apply(ev.shiftKey ? api.redo() : api.undo());
-  else if (ev.ctrlKey && key === "y") void apply(api.redo());
+  if (ev.ctrlKey && key === "z") void stepHistory(ev.shiftKey);
+  else if (ev.ctrlKey && key === "y") void stepHistory(true);
   else if (key === "delete") void removeSelected(ev.shiftKey);
   else if (ev.ctrlKey && key === "c") void (ev.shiftKey ? startMove(selected, true) : copyModule(selected));
   else if (key === "c" && (armed || moving !== null)) cycle("armed-snap", ev.shiftKey ? -1 : 1);

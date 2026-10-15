@@ -451,7 +451,7 @@ async fn auto_place(handle: AppHandle, modules: Vec<ops::ModuleCount>, race: Opt
         let state = handle.state::<Shared>();
         let mut app = state.lock().unwrap();
         let catalog = catalog(&app)?;
-        let args = ops::AutoPlaceArgs { modules: Some(modules), from_plan: None, grow_plot: Some(true), race, fewer_connectors: Some(fewer_connectors) };
+        let args = ops::AutoPlaceArgs { modules: Some(modules), from_plan: None, grow_plot: Some(true), race, fewer_connectors: Some(fewer_connectors), break_up: Some(true) };
         let App { design, blueprints, .. } = &mut *app;
         let placement = ops::auto_place(&catalog, design, args, blueprints)?;
         let mut scene = scene_json(&app)?;
@@ -670,6 +670,7 @@ fn scene_json(app: &App) -> CmdResult {
         "name": plan.name,
         "patches": plan.patches.iter().map(|p| p.name.clone()).collect::<Vec<_>>(),
         "can_undo": design.can_undo(),
+        "history": design.history_len(),
         "dirty": design.is_dirty(),
         "can_redo": design.can_redo(),
         "entries": entries,

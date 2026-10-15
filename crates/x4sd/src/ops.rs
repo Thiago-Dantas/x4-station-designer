@@ -79,6 +79,8 @@ pub struct AutoPlaceArgs {
     pub race: Option<String>,
     /// Add fewer connection structures (less for the game to run, a larger station); default false
     pub fewer_connectors: Option<bool>,
+    /// When a module finds no place, break the station up to make one: a connection hub goes into a joint and what hangs there moves out by its length (the station's modules may move); default true
+    pub break_up: Option<bool>,
 }
 
 /// Optimize settings: the planner's (for the shortfall fixes) and the layout's.
@@ -93,6 +95,8 @@ pub struct OptimizeArgs {
     pub fewer_connectors: Option<bool>,
     /// The modules to add, e.g. a plan_production result (no targets) the user trimmed; default: plan the shortfall fixes with the settings
     pub modules: Option<Vec<ModuleCount>>,
+    /// Keep a partial result when some of the added modules find no place (listed in unplaced; the station's own modules always stay); default false: all or nothing
+    pub partial: Option<bool>,
 }
 
 /// How equip_modules chooses equipment, and for which modules.
@@ -516,6 +520,7 @@ pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeAr
         race: req.race,
         fewer_connectors: args.fewer_connectors.unwrap_or(false),
         owned: req.owned,
+        partial: args.partial.unwrap_or(false),
     };
     let r = layout::optimize(catalog, design, &fixes, &options).map_err(|e| e.to_string())?;
     design.fit_plot(catalog, false).map_err(|e| e.to_string())?;
@@ -524,6 +529,9 @@ pub fn optimize_station(catalog: &Catalog, design: &mut Design, args: OptimizeAr
         "moved": r.moved,
         "connectors_removed": r.connectors_removed,
         "connectors_added": r.placement.connectors.len(),
+        "placed": r.placement.placed.len(),
+        "unplaced": r.placement.unplaced.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
+        "broken_up": r.placement.broken_up,
         "docks_blocked": r.placement.docks_blocked,
         "plot": plot_status(design, catalog),
         "analysis": analyze_station(catalog, design, sunlight)?,
@@ -659,6 +667,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs, b
         fewer_connectors: args.fewer_connectors.unwrap_or(false),
         sides,
         owned: blueprints.owned(),
+        break_up: args.break_up.unwrap_or(true),
     };
     let r = layout::auto_place(catalog, design, &modules, &options).map_err(|e| e.to_string())?;
     let mut out = json!({
@@ -667,6 +676,7 @@ pub fn auto_place(catalog: &Catalog, design: &mut Design, args: AutoPlaceArgs, b
         "unplaced": r.unplaced.iter().map(|(m, n)| json!({"macro": m, "count": n})).collect::<Vec<_>>(),
         "docks_blocked": r.docks_blocked,
         "sides_blocked": r.sides_blocked,
+        "broken_up": r.broken_up,
         "plot": plot_status(design, catalog),
     });
     if !out["plot"]["fits"].as_bool().unwrap_or(true) {

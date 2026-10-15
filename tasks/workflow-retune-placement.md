@@ -1,6 +1,6 @@
 # Workflow: re-tune auto-placement for honest layouts
 
-Status: **open** (not started)
+Status: **in progress**
 
 Since the facing rule (2026-10-15, workflow-joined-snaps.md), placement can no longer stack modules inside each other. Layouts are honest but larger, and dense stations seal up: every free snap faces into a neighbouring module, so nothing more attaches (the user's "test" station, Teladi 50 claytronics).
 
@@ -25,5 +25,17 @@ Since the facing rule (2026-10-15, workflow-joined-snaps.md), placement can no l
 - Scratch examples (untracked): `crates/x4sd-core/examples/scratch_docks.rs` (place a module list on plans; `MODS`, `RACE` env), `scratch_free.rs` (free snaps, which hubs fit), `scratch_rebuild.rs` (Optimize with a module list), `scratch_clay.rs`, `scratch_opt_docks.rs`.
 - Worktree `../x4sd-prev` (detached, older HEAD) for comparisons.
 
+## Decisions (user, 2026-10-15)
+- Rebuild connection structures **off**: move the station's modules only when nothing fits otherwise. **On**: move things around and add connectors freely (Place all lays the station out again too). D-22.
+- Undoing a Place all gives its plan items back, added to the plan (user, 2026-10-15).
+
 ## Steps
-- [ ] Agree the approach with the user
+- [x] Agree the approach with the user
+- [x] `Design::insert_between` (hub into a joint, subtree moves out; returns the renumbering)
+- [x] `Placer::break_up` (joints by layer rule, checked before moving; `Options::break_up`); docks/piers/bays try it with clear space before a blocked spot
+- [x] Optimize: `OptimizeOptions::partial` (only added modules may stay out); MCP `optimize_station.partial`, `auto_place.break_up` (default true)
+- [x] Builder: Place all follows *Rebuild connection structures*; one placement routine for Place all and Apply plan (partial prompt, undo back to before); undo/redo of a Place all gives plan items back / takes them
+- [x] Tests: `break_up_opens_a_sealed_station` (new), `auto_place_keeps_room_to_grow` passes again (break-up on); full core suite passes (2 still ignored)
+- [x] Builder check (fresh builder per scenario, largest plot): "test" + 10 piers, 5 dock areas: off → 56 placed, 1 break-up, no problems; undo → extras back next to one added after; redo → taken again. On → rebuilt, 56 added, 2 break-ups, no problems. Optimize Apply (rebuild) → 42 added, no problems.
+- [ ] Still ignored: `fewer_connectors` (fewer connectors doesn't always mean fewer now), `planner_extras` (a defence disc's lane at 144 modules)
+- [ ] Exits for any race in `leaves_exit`; hub penalties re-measured
