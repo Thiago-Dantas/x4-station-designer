@@ -479,8 +479,10 @@ async fn read_blueprints(handle: AppHandle, file: String) -> CmdResult {
 
 /// Sets the blueprint limit: on/off, or the one the UI remembered at start.
 #[tauri::command]
-fn set_blueprints(state: State<'_, Shared>, blueprints: ops::Blueprints) {
-    state.lock().unwrap().blueprints = blueprints;
+fn set_blueprints(state: State<'_, Shared>, blueprints: ops::Blueprints) -> CmdResult {
+    let mut app = state.lock().unwrap();
+    app.blueprints = blueprints;
+    scene_json(&app)
 }
 
 /// Moves a placed module (and everything on it) onto another free snap; `focus` is its new index.
@@ -526,7 +528,7 @@ fn preview_gizmo(state: State<'_, Shared>, index: u32, position: [f64; 3], rotat
         d.move_root(index, Transform { position, rotation })
     };
     moved.map_err(|e| e.to_string())?;
-    Ok(json!({"issues": issues_json(&d, &catalog), "plot": ops::plot_status(&d, &catalog)}))
+    Ok(json!({"issues": issues_json(&d, &catalog, &app), "plot": ops::plot_status(&d, &catalog)}))
 }
 
 /// Turns an attached module (and everything on it) about its joint to `rotation`
@@ -661,7 +663,7 @@ fn scene_json(app: &App) -> CmdResult {
             "equipment": [e.upgrades.len().min(groups), groups],
         }));
     }
-    let issues = catalog.as_ref().map(|c| issues_json(design, c)).unwrap_or_default();
+    let issues = catalog.as_ref().map(|c| issues_json(design, c, app)).unwrap_or_default();
     let plot = catalog.as_ref().map(|c| ops::plot_status(design, c)).unwrap_or(Value::Null);
     Ok(json!({
         "id": plan.id,
@@ -676,14 +678,9 @@ fn scene_json(app: &App) -> CmdResult {
     }))
 }
 
-/// The design's validation issues, plot ones included.
-fn issues_json(design: &Design, catalog: &Catalog) -> Vec<Value> {
-    let plan = design.plan();
-    let mut all = x4sd_core::validate::validate(plan, catalog);
-    if let Some(plot) = design.plot() {
-        all.extend(x4sd_core::validate::validate_plot(plan, catalog, &plot));
-    }
-    all.iter().map(|i| json!({"index": i.index(), "text": i.to_string()})).collect()
+/// The design's validation issues (`ops::issue_list`), with the blueprint limit of `app`.
+fn issues_json(design: &Design, catalog: &Catalog, app: &App) -> Vec<Value> {
+    ops::issue_list(design, catalog, &app.blueprints, &app.info).iter().map(|i| json!({"index": i.index(), "text": i.to_string()})).collect()
 }
 
 /// `x4sd.exe` is a console program (the CLI and MCP need stdio). Started by

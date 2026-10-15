@@ -173,7 +173,7 @@ export const api = {
     serial<Scene>("auto_place", { modules, race, fewerConnectors }),
   /** Reads the blueprints from a save (about half a second) and turns the limit on. */
   readBlueprints: (file: string) => invoke<Blueprints>("read_blueprints", { file }),
-  setBlueprints: (blueprints: Blueprints) => invoke<void>("set_blueprints", { blueprints }),
+  setBlueprints: (blueprints: Blueprints) => invoke<Scene>("set_blueprints", { blueprints }),
   /** A shared operation (`ops::Op` in Rust, as MCP agents use them): its result, and the scene if it may have changed. */
   runOp: <T>(op: { op: string } & Record<string, unknown>) => serial<{ result: T; scene?: Scene }>("run_op", { op }),
   undo: () => serial<Scene>("undo"),

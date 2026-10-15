@@ -1101,41 +1101,85 @@ async function placeAll() {
   const sides = (macro: string) => planner.extras.find((x) => x.macro.toLowerCase() === macro.toLowerCase())?.sides ?? [];
   const todo = plan.result.modules.map((m) => ({ macro: m.macro, count: m.count - placedOf(m, now), sides: sides(m.macro) })).filter((m) => m.count > 0);
   if (!todo.length || !(await placeModules(todo, true))) return;
-  // All placed: the wares and other modules to add are done. (With some left,
-  // they stay, so a retry still knows the sides.)
   const after = macroCounts();
-  if (plan.result.modules.some((m) => placedOf(m, after) < m.count)) return;
+  if (plan.result.modules.some((m) => placedOf(m, after) < m.count)) return dropPlaced(after);
+  // All placed: the wares and other modules to add are done.
   planner.targets = [];
   planner.extras = [];
   savePlanner();
   renderPlanner();
 }
 
+/** After a partial build: the plan keeps only what is left to place, and the
+ * targets and other modules to add shrink by what was placed (`now`: `macroCounts()`). */
+function dropPlaced(now: Map<string, number>) {
+  if (!plan) return;
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  // Both the planner's lists and what the plan was asked for (a re-plan uses that).
+  const lists = [planner, plan.asked];
+  for (const m of plan.result.modules) {
+    const placed = placedOf(m, now);
+    for (const l of lists) {
+      const target = m.role === "target" ? l.targets.find((t) => t.ware === m.ware) : undefined;
+      if (target) target.modules -= placed;
+      const extra = m.role === "extra" ? l.extras.find((x) => same(x.macro, m.macro)) : undefined;
+      if (extra) extra.count -= placed;
+    }
+    m.count -= placed;
+  }
+  plan.result.modules = plan.result.modules.filter((m) => m.count > 0);
+  plan.baseline = now;
+  for (const l of lists) {
+    l.targets = l.targets.filter((t) => t.modules > 0);
+    l.extras = l.extras.filter((x) => x.count > 0);
+  }
+  savePlanner();
+  renderPlanner();
+}
+
 /** Auto-places `todo` (one undo step; the station's modules stay where they are)
- * and reports it. `offerPlot`: offer a bigger plot if the station outgrew its own.
- * False if it failed. */
+ * and reports it. When some find no place, asks whether to keep a partial build;
+ * no undoes it. `offerPlot`: offer a bigger plot if the station outgrew its own.
+ * False if nothing was kept. */
 async function placeModules(todo: { macro: string; count: number; sides?: string[] }[], offerPlot: boolean): Promise<boolean> {
-  status(`Placing ${todo.reduce((s, m) => s + m.count, 0)} modules…`);
-  let note = "";
-  await apply(
-    api.autoPlace(todo, planner.race || null, planner.fewerConnectors).then((s) => {
-      const p = s.placement!;
-      const left = p.unplaced.map((u) => `${u.count} × ${moduleName(u.macro)}`).join(", ");
-      note =
-        `Placed ${p.placed.length} modules` +
-        (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
-        (p.docks_blocked ? `. ${p.docks_blocked} docks or bays have no clear space` : "") +
-        (p.sides_blocked ? `. ${p.sides_blocked} modules couldn't go on their side (no free snaps there with a clear view out): move them by hand` : "") +
-        (left ? `. No room for ${left}` : "");
-      return s;
-    }),
-    undefined,
-    true,
-    offerPlot,
-  );
+  const wanted = todo.reduce((s, m) => s + m.count, 0);
+  status(`Placing ${wanted} modules…`);
+  const before = scene?.entries.length ?? 0;
+  let s: Scene;
+  try {
+    s = await api.autoPlace(todo, planner.race || null, planner.fewerConnectors);
+  } catch (e) {
+    status(String(e), "error");
+    return false;
+  }
+  const p = s.placement!;
+  const left = p.unplaced.map((u) => `${u.count} × ${moduleName(u.macro)}`).join(", ");
+  if (left) {
+    const keep =
+      p.placed.length > 0 &&
+      (await ask(`Only ${p.placed.length} of ${wanted} modules fit: no room for ${left}.\n\nKeep the ${p.placed.length} placed as a partial build? The plan then lists only what is left.`, {
+        title: "Partial build",
+        kind: "warning",
+      }));
+    if (!keep) {
+      // Placing is one undo step, taken only if it changed the design.
+      await apply(s.entries.length !== before ? api.undo() : Promise.resolve(s));
+      const note = `Nothing placed: no room for ${left}`;
+      $("planner-placed").textContent = note;
+      status(note, "error");
+      return false;
+    }
+  }
+  await apply(Promise.resolve(s), undefined, true, offerPlot);
+  const note =
+    `Placed ${p.placed.length} modules` +
+    (p.connectors.length ? ` and ${p.connectors.length} connection structures` : "") +
+    (p.docks_blocked ? `. ${p.docks_blocked} docks or bays have no clear space` : "") +
+    (p.sides_blocked ? `. ${p.sides_blocked} modules couldn't go on their side (no free snaps there with a clear view out): move them by hand` : "") +
+    (left ? `. Partial build: no room for ${left}` : "");
   $("planner-placed").textContent = note;
-  if (note) status(note, note.includes("No room") || note.includes("no clear approach") || note.includes("by hand") ? "error" : "good");
-  return note !== "";
+  status(note, left || p.docks_blocked || p.sides_blocked ? "error" : "good");
+  return true;
 }
 
 async function loadPlanner() {
@@ -1772,8 +1816,8 @@ function setBlueprints(b: Blueprints, tellCore = true) {
   } catch {
     // Remembering it is a convenience only.
   }
-  // The core's limit changes what the planner can make.
-  void (tellCore ? api.setBlueprints(b) : Promise.resolve()).then(refreshRates, refreshRates);
+  // The core's limit changes the checks (modules without a blueprint) and what the planner can make.
+  void (tellCore ? apply(api.setBlueprints(b)) : scene ? apply(api.scene()) : Promise.resolve()).then(refreshRates, refreshRates);
   renderBlueprints();
   renderRaceFilter();
   renderPalette();

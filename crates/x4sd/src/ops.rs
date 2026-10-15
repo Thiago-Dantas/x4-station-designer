@@ -20,7 +20,7 @@ use x4sd_core::plan::{parse_plans, write_plans};
 use x4sd_core::planner::{self, module_counts, producible_wares, ProductionPlan, Request};
 use x4sd_core::plot::{required_plot, Plot};
 use x4sd_core::save::{newest_save, owned_modules, read_blueprints};
-use x4sd_core::validate::{validate, validate_plot};
+use x4sd_core::validate::{validate, validate_plot, Issue};
 
 /// A production target: this many modules making `ware`.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
@@ -340,7 +340,7 @@ pub fn execute(op: Op, ctx: &mut Ctx) -> Result<Value, String> {
         }
         Op::Undo => Ok(json!({"undone": ctx.design.undo()})),
         Op::Redo => Ok(json!({"redone": ctx.design.redo()})),
-        Op::ValidateDesign => Ok(json!({"issues": issues(ctx.design, c)})),
+        Op::ValidateDesign => Ok(json!({"issues": issue_list(ctx.design, c, ctx.blueprints, ctx.names).iter().map(|i| i.to_string()).collect::<Vec<_>>()})),
         Op::SetPlot { pos, neg } => {
             ctx.design.set_plot(Some(Plot { pos, neg })).map_err(err)?;
             Ok(plot_status(ctx.design, c))
@@ -796,13 +796,20 @@ fn describe(ctx: &Ctx) -> Result<Value, String> {
     Ok(out)
 }
 
-/// Validation issues of the design, including the plot checks when it has a plot.
-pub fn issues(design: &Design, catalog: &Catalog) -> Vec<String> {
+/// Validation issues of the design, including the plot checks when it has a plot,
+/// and, with the blueprint limit on, modules the player has no blueprint for.
+pub fn issue_list(design: &Design, catalog: &Catalog, blueprints: &Blueprints, names: &ModuleNames) -> Vec<Issue> {
     let mut issues = validate(design.plan(), catalog);
     if let Some(plot) = design.plot() {
         issues.extend(validate_plot(design.plan(), catalog, &plot));
     }
-    issues.iter().map(|i| i.to_string()).collect()
+    if let Some(owned) = blueprints.owned() {
+        for e in design.plan().entries.iter().filter(|e| !owned.contains(&e.macro_name.to_ascii_lowercase())) {
+            let name = names.get(&e.macro_name.to_ascii_lowercase()).map_or_else(|| e.macro_name.clone(), |n| n.0.clone());
+            issues.push(Issue::NoBlueprint { index: e.index, name });
+        }
+    }
+    issues
 }
 
 /// The plot, the plot the station needs, and whether it fits.

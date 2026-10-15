@@ -53,6 +53,8 @@ pub enum Issue {
     PlotTooSmall { plot: Plot, required: Plot },
     /// The station is longer along an axis than any plot can be.
     TooBigForAnyPlot { axis: char, km: u32 },
+    /// The player has no blueprint for the module (`name`), with the blueprint limit on.
+    NoBlueprint { index: u32, name: String },
 }
 
 impl Issue {
@@ -72,7 +74,8 @@ impl Issue {
             | Issue::SnapMisaligned { index, .. }
             | Issue::OutsidePlot { index }
             | Issue::Overlap { index, .. }
-            | Issue::BlocksZone { index, .. } => Some(*index),
+            | Issue::BlocksZone { index, .. }
+            | Issue::NoBlueprint { index, .. } => Some(*index),
             Issue::MissingPatch { .. } | Issue::PlotTooSmall { .. } | Issue::TooBigForAnyPlot { .. } => None,
         }
     }
@@ -103,6 +106,7 @@ impl fmt::Display for Issue {
             Issue::OutsidePlot { index } => write!(f, "entry {index}: outside the plot"),
             Issue::PlotTooSmall { plot, required } => write!(f, "the station needs a {required} plot; the plot is {plot}"),
             Issue::TooBigForAnyPlot { axis, km } => write!(f, "the station is {km} km along {axis}; plots are at most {MAX_AXIS_KM} km"),
+            Issue::NoBlueprint { index, name } => write!(f, "entry {index}: no blueprint for {name}"),
         }
     }
 }
