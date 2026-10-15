@@ -93,6 +93,7 @@ Proposed order (each step usable on its own):
   - [x] v1.1.0 published 2026-10-14: update notice, placement keeps the station's modules ([workflow-release-1.1.md](workflow-release-1.1.md))
   - [x] v1.2.0 published 2026-10-15: view draws on demand, frame rate limit ([workflow-release-1.2.md](workflow-release-1.2.md))
   - [x] v1.3.0 published 2026-10-15: copy / remove sequence, right-click menu, turns on what you look at, planner piers and dock areas ([workflow-release-1.3.md](workflow-release-1.3.md))
+  - [x] v1.4.0 published 2026-10-15: game found on any machine, placement breaks the station up and packs rebuilds, docks/piers/defence outermost, partial builds, most overlaps are notes ([workflow-release-1.4.md](workflow-release-1.4.md))
   - [x] The user published it and made the repo public
 - [x] Find the game on any machine: Steam libraries anywhere, GOG, a folder picker in the builder that is remembered (D-24, [workflow-find-game.md](workflow-find-game.md))
 - [ ] Automated checks (CI) for the parts that don't need the game installed
