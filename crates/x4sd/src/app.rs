@@ -59,6 +59,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             new_design,
             list_game_plans,
             list_plans_in_file,
+            delete_import_file,
             open_design,
             save_design,
             export_design,
@@ -238,6 +239,20 @@ fn list_game_plans(state: State<'_, Shared>) -> CmdResult {
         }
     }
     Ok(json!(out))
+}
+
+/// Deletes an import file: an `.xml` directly in `<profile>/constructionplan/`, nothing else.
+#[tauri::command]
+fn delete_import_file(state: State<'_, Shared>, file: String) -> CmdResult {
+    let app = state.lock().unwrap();
+    let profile = app.profile_dir.as_ref().ok_or("player profile not found")?;
+    let folder = profile.join("constructionplan").canonicalize().map_err(|e| format!("import folder: {e}"))?;
+    let path = Path::new(&file).canonicalize().map_err(|e| format!("{file}: {e}"))?;
+    if path.parent() != Some(folder.as_path()) || path.extension().is_none_or(|x| x != "xml") {
+        return Err(format!("{file} is not an import file"));
+    }
+    std::fs::remove_file(&path).map_err(|e| format!("{file}: {e}"))?;
+    Ok(json!({"deleted": file}))
 }
 
 #[tauri::command]

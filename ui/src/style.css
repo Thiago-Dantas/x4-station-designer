@@ -163,3 +163,8 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .plan-row { padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; margin-bottom: 4px; cursor: pointer; }
 .plan-row:hover { border-color: var(--accent); }
 .plan-row .m { color: var(--muted); font-size: 11px; }
+.plan-row:has(button) { display: flex; align-items: center; gap: 8px; }
+.plan-row:has(button) > div { flex: 1; }
+.plan-group { margin: 8px 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.plan-group:first-child { margin-top: 0; }
+.plan-group span { text-transform: none; font-weight: normal; letter-spacing: 0; }

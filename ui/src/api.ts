@@ -124,6 +124,7 @@ export const api = {
   newDesign: (name: string) => serial<Scene>("new_design", { name }),
   listGamePlans: () => invoke<PlanRef[]>("list_game_plans"),
   listPlansInFile: (file: string) => invoke<PlanRef[]>("list_plans_in_file", { file }),
+  deleteImportFile: (file: string) => invoke<unknown>("delete_import_file", { file }),
   openDesign: (file: string, id: string) => serial<Scene>("open_design", { file, id }),
   saveDesign: (file: string) => serial<{ file: string; new_plan: boolean }>("save_design", { file }),
   exportDesign: (newId: boolean, overwrite: boolean) =>

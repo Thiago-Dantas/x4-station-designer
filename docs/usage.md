@@ -112,7 +112,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - An overlap means two modules' collision meshes intersect. Modules joined at a snap may interlock, and are never counted. See docs/x4-construction-plans.md, "Overlaps".
   - **Blocked approaches and exits:** "entry N: blocks the approach of pier M" (or the exit of bay M, the approach of dock area M). Piers, bays and most dock areas keep exclusion zones free for ships: boxes in front of each dock or bay end, XL 4×4 km, L 1.2×1.2 km, both 100 km long, M 180×180×500 m. A module reaching more than 1 m into one is reported, unless it is joined to that module at a snap. The game imports such plans without a word, but ships may struggle. See docs/x4-construction-plans.md, "Clearance: exclusion zones".
 - **Toolbar:**
-  - *Open game plan…* lists your saved plans and import files.
+  - *Open game plan…* lists your plans in two groups: **In the game** (saved plans, `constructionplans.xml`) and **Import files** (the `constructionplan` folder; in the game only once imported there). Each import file has a *Delete* button (asks first; deletes only that file, never the saved plans).
   - *Open file…* / *Save as…* work with plan files. Both start in the game's plan folder, `<profile>\constructionplan\`. *Save as…* proposes the file name the game would give the plan.
   - *Export to game* writes the plan into `constructionplan\`; then click Import in the game's build menu.
     - Import replaces your plan with the same id, after the game asks.

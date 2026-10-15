@@ -1530,21 +1530,63 @@ async function removeSelected(sequence = false) {
   await apply(api.removeModule(index, sequence), done);
 }
 
+const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
 function choosePlan(title: string, plans: PlanRef[]): Promise<PlanRef | null> {
   return new Promise((resolve) => {
     $("modal-title").textContent = title;
     const body = $("modal-body");
-    body.replaceChildren(
-      ...plans.map((p) => {
-        const row = document.createElement("div");
-        row.className = "plan-row";
-        row.innerHTML = `<div class="n"></div><div class="m"></div>`;
-        row.querySelector(".n")!.textContent = p.name;
-        row.querySelector(".m")!.textContent = `${p.modules} modules · ${p.source ?? ""} · ${p.id}`;
-        row.onclick = () => close(p);
-        return row;
-      }),
-    );
+    const row = (p: PlanRef) => {
+      const el = document.createElement("div");
+      el.className = "plan-row";
+      el.innerHTML = `<div><div class="n"></div><div class="m"></div></div>`;
+      el.querySelector(".n")!.textContent = p.name;
+      const imported = p.source === "import folder";
+      el.querySelector(".m")!.textContent = `${p.modules} modules · ${imported ? fileName(p.file) : (p.source ?? "")} · ${p.id}`;
+      el.onclick = () => close(p);
+      if (imported) {
+        const del = document.createElement("button");
+        del.className = "danger";
+        del.textContent = "Delete";
+        del.title = "Delete this import file";
+        del.onclick = async (ev) => {
+          ev.stopPropagation();
+          const others = plans.filter((x) => x.file === p.file).length - 1;
+          const what = others > 0 ? ` It also holds ${others} other plan(s).` : "";
+          if (!(await ask(`Delete the import file "${fileName(p.file)}"?${what}\n\nThe game's saved plans are not touched.`, { title: "Delete import file", kind: "warning" }))) return;
+          try {
+            await api.deleteImportFile(p.file);
+            plans = plans.filter((x) => x.file !== p.file);
+            render();
+            status(`Deleted ${fileName(p.file)}`, "good");
+          } catch (e) {
+            status(String(e), "error");
+          }
+        };
+        el.append(del);
+      }
+      return el;
+    };
+    const group = (label: string, note: string) => {
+      const h = document.createElement("div");
+      h.className = "plan-group";
+      h.textContent = label + " ";
+      const n = document.createElement("span");
+      n.textContent = note;
+      h.append(n);
+      return h;
+    };
+    // Game plans: the saved ones (in the game) first, then the import files (in the game only once imported).
+    const render = () => {
+      if (!plans.some((p) => p.source)) return body.replaceChildren(...plans.map(row));
+      const saved = plans.filter((p) => p.source !== "import folder");
+      const imports = plans.filter((p) => p.source === "import folder");
+      body.replaceChildren(
+        ...(saved.length ? [group("In the game", "· saved plans"), ...saved.map(row)] : []),
+        ...(imports.length ? [group("Import files", "· constructionplan folder, in the game once imported"), ...imports.map(row)] : []),
+      );
+    };
+    render();
     const close = (p: PlanRef | null) => {
       $("modal").hidden = true;
       resolve(p);
