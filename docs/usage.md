@@ -21,7 +21,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - R / Shift+R keep a tilt. *Straighten* takes it off and keeps the twist.
     - The game's build menu only twists modules around snaps. Whether the game builds tilted joints is not checked yet, so *Checks* lists each one ("tilted N° off its snap").
   - The view follows the gizmo while you drag; the design changes when you let go (one undo step). The checks follow the drag: the plot box turns red or green and *Checks* lists what would be wrong if you let go there.
-  - *Build first* makes the module the root and step 1: the links between it and the old root are reversed, so that chain hangs on it and is built next (nothing moves); *Build last* moves it (and everything on it) to the end.
+  - *Build first* (Page Up) makes the module the root and step 1: the links between it and the old root are reversed, so that chain hangs on it and is built next (nothing moves); *Build last* (Page Down) moves it (and everything on it) to the end.
   - *A build stage ends here* closes a build stage after it.
   - **Connected by** (attached modules) changes which of its own snaps joins its parent, in place: same parent snap, same twist, everything on it moves along (a tilt is dropped). **C** / Shift+C cycles it. Snaps that hold one of its own modules aren't offered.
   - **Move…** lifts the module with everything attached to it; click any free snap cone (cones of the moving part are hidden) to re-attach it there. Its own snaps show as orange cones, the connecting one bright: click one to pick it (or use the panel, or C / T as when placing). Hovering a cone previews the moved part there. Esc cancels. If the new spot comes later in the build order, the moved part is re-sequenced after it.
@@ -33,11 +33,11 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
     - *Apply to all of this type* copies the module's equipment to every module of the same type.
     - *Apply to all modules* uses its turrets and shields on every group where they fit.
 - **Build order (left, second tab):** every module in build order, top to bottom, with "End of stage N" dividers.
-  - **Drag a row onto another** to move it to that step. A module can't come before the module it attaches to, so impossible moves are refused with a message.
-  - Click a row to select the module; double-click it to also point the camera at it (same viewing angle, closer).
+  - **Drag a row onto another** to move it to that step. **Shift-click** another row to select every module between them, then drag the range: it moves as one block, in the same order, and the row you grab lands on the row you drop on. Dropping on a selected row does nothing. A module can't come before the module it attaches to. If the drop would put one there, the block goes to the closest step that still keeps every module after the one it attaches to. When that step is the one it already has, nothing moves. The mouse wheel scrolls the list while a row is being dragged.
+  - Click a row to select that module only; double-click it to also point the camera at it (same viewing angle, closer).
   - *Show up to step* previews the station built up to that step; later rows are dimmed.
   - **Find in build order** (the box above the list) highlights the rows whose name or macro has every typed word, e.g. `cross ter`. Enter selects the next match and points the camera at it, Shift+Enter the previous one; the count shows which match is selected. Esc clears the box. All rows stay listed, so a found module can be dragged anywhere.
-  - Reordering renumbers the modules; the selection follows the moved module.
+  - Reordering renumbers the modules. The selection follows the row you dragged; a moved range stays selected.
 - **Planner (left, third tab):** our own take on the x4ep_planner mod. Name the wares to make and how many production modules of each (e.g. Hull Parts × 2), then *Generate plan*.
   - Each target shows **≈ N/h**: what its modules make per hour, before planning. It uses the module the plan would use (race, blueprints), fully staffed when *House the workforce* is on, at the right pane's sunlight. *no blueprint* (red) means the blueprint limit leaves no module that makes it.
   - **Ware box:** type part of a name (e.g. "hull par", "cell"); matches list below it. Arrow keys and Enter, or a click, add the ware with the count next to it.

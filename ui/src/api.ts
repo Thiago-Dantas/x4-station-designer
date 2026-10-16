@@ -154,6 +154,9 @@ export const api = {
   setPlot: (pos: Vec3, neg: Vec3) => serial<Scene>("set_plot", { pos, neg }),
   fitPlot: (growOnly: boolean) => serial<Scene>("fit_plot", { growOnly }),
   moveInBuildOrder: (index: number, position: number) => serial<Scene>("move_in_build_order", { index, position }),
+  /** Moves these modules as one block so `anchor` (one of them) lands at `position`. `focus` is `anchor`'s new index. */
+  moveBlockInBuildOrder: (indices: number[], anchor: number, position: number) =>
+    serial<Scene>("move_block_in_build_order", { indices, anchor, position }),
   buildFirst: (index: number) => serial<Scene>("build_first", { index }),
   buildLast: (index: number) => serial<Scene>("build_last", { index }),
   setStageEnd: (index: number, end: boolean) => serial<Scene>("set_stage_end", { index, end }),

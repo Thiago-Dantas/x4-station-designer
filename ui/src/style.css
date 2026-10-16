@@ -51,6 +51,7 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .step input { flex: 1; }
 #order-list { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+#order-list.dragging, #order-list.dragging .order-row { cursor: grabbing; }
 .order-row { padding: 4px 8px; border-bottom: 1px solid var(--panel-2); cursor: grab; user-select: none; display: flex; gap: 6px; }
 .order-row .num { color: var(--muted); min-width: 28px; text-align: right; }
 .order-row.selected { background: #3a2a14; }

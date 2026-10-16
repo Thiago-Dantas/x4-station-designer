@@ -57,7 +57,7 @@
             <span id="order-search-count"></span>
           </div>
           <div id="order-list"></div>
-          <p class="hint">Modules are built top to bottom, each after the one it attaches to. Drag a row onto another to move it there. Double-click a row to zoom to it.</p>
+          <p class="hint">Modules are built top to bottom, each after the one it attaches to. Drag a row onto another to move it. Shift-click a second row to select the range, then drag them together; they stop at the closest step that order allows. The wheel scrolls the list while you drag. Double-click a row to zoom to it.</p>
         </div>
         <div id="planner-tab" class="tab" hidden>
           <div class="planner-add">
@@ -134,8 +134,8 @@
             <button id="btn-detach" title="Make it free-standing where it is">Detach</button>
           </div>
           <div class="row order-actions">
-            <button id="btn-build-first" title="Build it first: it becomes the root, and the modules between it and the old root hang on it instead (nothing moves)">Build first</button>
-            <button id="btn-build-last" title="Build it as late as possible (with everything attached to it)">Build last</button>
+            <button id="btn-build-first" title="Build it first (Page Up): it becomes the root, and the modules between it and the old root hang on it instead (nothing moves)">Build first</button>
+            <button id="btn-build-last" title="Build it as late as possible (Page Down), with everything attached to it">Build last</button>
           </div>
           <label><span>A build stage ends here</span> <input type="checkbox" id="stage-end" /></label>
           <div id="sel-equipment" class="collapsed" hidden>

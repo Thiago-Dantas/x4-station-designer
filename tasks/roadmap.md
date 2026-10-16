@@ -66,6 +66,7 @@ Proposed order (each step usable on its own):
 - [x] **Plot size** (user request): plot per side in km, drawn as a box; modules outside are flagged; an enlarge (or undo) prompt; MCP `set_plot`/`fit_plot`; CLI `show` (plot needed) and `validate --plot`. See [workflow-plot-size.md](workflow-plot-size.md).
 - [x] **Build order viewer and editor** (user request; see [workflow-build-order.md](workflow-build-order.md)): list with stage dividers, drag to reorder, build first/last, stage ends, timeline slider, MCP tools. Verified in game (user, 2026-10-14, light testing): player builds follow the order.
   - [x] Search in the build order (user request, 2026-10-15): matches highlighted; Enter / Shift+Enter select the next / previous match and frame it in the view. Checked in the builder over DevTools (scratch test).
+  - [x] Shift-click a range and drag it together. A drop the attachment order can't accept lands on the closest step that can, and the mouse wheel keeps scrolling during the drag (user request, 2026-10-16; see [workflow-order-multiselect.md](workflow-order-multiselect.md)). Checked in the builder over DevTools.
 - [x] Keyboard navigation (user requests): WASD pan, Q/E down/up, arrow keys rotate
 - [x] Palette in the game's build-menu category order (user request)
 - [x] **x4ep_planner functionality** (user request; our own version from the game files; see [workflow-production-planner.md](workflow-production-planner.md)). Verified in game (user, 2026-10-14, light testing): an auto-placed station builds and ships reach its docks.
@@ -94,6 +95,7 @@ Proposed order (each step usable on its own):
   - [x] v1.2.0 published 2026-10-15: view draws on demand, frame rate limit ([workflow-release-1.2.md](workflow-release-1.2.md))
   - [x] v1.3.0 published 2026-10-15: copy / remove sequence, right-click menu, turns on what you look at, planner piers and dock areas ([workflow-release-1.3.md](workflow-release-1.3.md))
   - [x] v1.4.0 published 2026-10-15: game found on any machine, placement breaks the station up and packs rebuilds, docks/piers/defence outermost, partial builds, most overlaps are notes ([workflow-release-1.4.md](workflow-release-1.4.md))
+  - [x] v1.5.0 published 2026-10-16: shift-click a build-order range and drag it, closest legal step, wheel scrolls while dragging, Page Up / Page Down build first / last ([workflow-release-1.5.md](workflow-release-1.5.md))
   - [x] The user published it and made the repo public
 - [x] Find the game on any machine: Steam libraries anywhere, GOG, a folder picker in the builder that is remembered (D-24, [workflow-find-game.md](workflow-find-game.md))
 - [x] Automated checks (CI) for the parts that don't need the game installed (`ci.yml`, part of [workflow-scorecard.md](workflow-scorecard.md))

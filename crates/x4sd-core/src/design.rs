@@ -406,6 +406,76 @@ impl Design {
         Ok(position as u32)
     }
 
+    /// Moves `indices` as one block so `anchor` (one of them) lands at `position`
+    /// (1-based). The others keep their order around it, and the block stays
+    /// inside the list. Dropping onto one of the moved modules changes nothing.
+    ///
+    /// A module still has to be built after the one it attaches to. When `position`
+    /// would break that, the block goes to the closest step that doesn't (toward
+    /// the requested step when two are equally close). If that step is the one it
+    /// already has, nothing changes and no undo step is recorded. Returns
+    /// `anchor`'s index afterwards (modules are renumbered when the order changes).
+    pub fn move_block_in_build_order(&mut self, indices: &[u32], anchor: u32, position: usize) -> Result<u32> {
+        if indices.is_empty() {
+            return Err(Error("no modules to move".into()));
+        }
+        let order_now: Vec<u32> = self.plan.entries.iter().map(|e| e.index).collect();
+        if let Some(&missing) = indices.iter().find(|i| !order_now.contains(i)) {
+            return Err(Error(format!("no entry {missing}")));
+        }
+        let n = order_now.len();
+        if position == 0 || position > n {
+            return Err(Error(format!("position {position} is outside 1..{n}")));
+        }
+        let moving: Vec<u32> = order_now.iter().copied().filter(|i| indices.contains(i)).collect();
+        if !moving.contains(&anchor) {
+            return Err(Error(format!("module {anchor} is not one of the modules being moved")));
+        }
+        // The row under the pointer is already in the block: leave the order alone.
+        if moving.contains(&order_now[position - 1]) {
+            return Ok(anchor);
+        }
+        let offset = moving.iter().position(|&i| i == anchor).unwrap();
+        let k = moving.len();
+        // `anchor` can't sit so close to either end that the rest of the block falls off.
+        let min_pos = offset + 1;
+        let max_pos = n - k + offset + 1;
+        let ideal = position.clamp(min_pos, max_pos);
+        // Prefer the side the pointer asked for when two legal steps are the same distance away.
+        let prefer_lower = position <= ideal;
+        let remaining: Vec<u32> = order_now.iter().copied().filter(|i| !moving.contains(i)).collect();
+        for dist in 0..=(max_pos - min_pos) {
+            let mut slots = [None, None];
+            if dist == 0 {
+                slots[0] = Some(ideal);
+            } else if prefer_lower {
+                slots[0] = ideal.checked_sub(dist).filter(|&p| p >= min_pos);
+                slots[1] = ideal.checked_add(dist).filter(|&p| p <= max_pos);
+            } else {
+                slots[0] = ideal.checked_add(dist).filter(|&p| p <= max_pos);
+                slots[1] = ideal.checked_sub(dist).filter(|&p| p >= min_pos);
+            }
+            for landed in slots.into_iter().flatten() {
+                let insert_at = landed - offset - 1;
+                let mut order = Vec::with_capacity(n);
+                order.extend_from_slice(&remaining[..insert_at]);
+                order.extend_from_slice(&moving);
+                order.extend_from_slice(&remaining[insert_at..]);
+                if self.predecessor_violation(&order).is_some() {
+                    continue;
+                }
+                if order == order_now {
+                    return Ok(anchor);
+                }
+                self.apply_order(&order)?;
+                return Ok(landed as u32);
+            }
+        }
+        // No contiguous placement keeps the attachments (a non-contiguous set can
+        // do this). Leave the order as it is.
+        Ok(anchor)
+    }
+
     /// Builds entry `index` first: the links from it to its root are reversed, so
     /// it becomes the root and that chain hangs on it (offsets don't change). The
     /// chain follows it in its new order; the rest keep theirs. Returns 1.
@@ -543,16 +613,24 @@ impl Design {
         self.plan.entries.iter().position(|e| e.index == index).ok_or_else(|| Error(format!("no entry {index}")))
     }
 
-    /// Reorders the entries to `order` (current indices) if every module still
-    /// comes after its predecessor, then renumbers them `1..n`.
-    fn apply_order(&mut self, order: &[u32]) -> Result<()> {
+    /// `(module, the module it attaches to)` when `order` would build one first.
+    fn predecessor_violation(&self, order: &[u32]) -> Option<(u32, u32)> {
         let rank = |i: u32| order.iter().position(|&o| o == i);
         for e in &self.plan.entries {
             if let Some(p) = &e.predecessor {
                 if rank(p.index) > rank(e.index) {
-                    return Err(Error(format!("module {} would be built before {}, which it attaches to", e.index, p.index)));
+                    return Some((e.index, p.index));
                 }
             }
+        }
+        None
+    }
+
+    /// Reorders the entries to `order` (current indices) if every module still
+    /// comes after its predecessor, then renumbers them `1..n`.
+    fn apply_order(&mut self, order: &[u32]) -> Result<()> {
+        if let Some((module, predecessor)) = self.predecessor_violation(order) {
+            return Err(Error(format!("module {module} would be built before {predecessor}, which it attaches to")));
         }
         self.checkpoint();
         self.sort_and_renumber(order);
@@ -914,6 +992,76 @@ mod tests {
         assert_eq!(d.plan().entries[1].bookmark.as_deref(), Some("1"));
         assert!(d.undo());
         assert_eq!(d.plan().entries[1].bookmark, None);
+    }
+
+    #[test]
+    fn build_order_block_moves_together() {
+        let c = catalog();
+        // 1 beam, 2 cross on it, 3 beam on the cross, 4 beam on beam 1's other end.
+        let mut d = small_station(&c);
+        let placed = order(&d);
+        let steps = d.history_len();
+        // Grab the beam on the cross (#3) and drop it on #4. The cross stays just
+        // above it; the other beam shifts up. One undo step.
+        assert_eq!(d.move_block_in_build_order(&[2, 3], 3, 4).unwrap(), 4);
+        assert_eq!(
+            order(&d),
+            [
+                (1, "beam".to_owned(), None),
+                (2, "beam".to_owned(), Some(1)),
+                (3, "cross".to_owned(), Some(1)),
+                (4, "beam".to_owned(), Some(3)),
+            ]
+        );
+        assert_eq!(d.history_len(), steps + 1);
+        assert!(d.undo());
+        assert_eq!(order(&d), placed);
+        // Grabbing the cross instead clamps it to step 3 (the beam on it needs the next step).
+        // Same order; the cross's new index is 3.
+        assert_eq!(d.move_block_in_build_order(&[3, 2], 2, 4).unwrap(), 3);
+        assert_eq!(order(&d)[2].1, "cross");
+        assert!(d.undo());
+        // Beam 4 hangs on the root. Dropping it on step 1 can't pass the root, so it
+        // lands on step 2, the closest legal step, as one undo step.
+        let steps = d.history_len();
+        assert_eq!(d.move_block_in_build_order(&[4], 4, 1).unwrap(), 2);
+        assert_eq!(order(&d)[1], (2, "beam".to_owned(), Some(1)));
+        assert_eq!(d.history_len(), steps + 1);
+        assert!(d.undo());
+        // The cross and the beam on it can't jump ahead of the root. The closest
+        // legal place is where they already are: nothing moves, no undo step.
+        let stayed = d.history_len();
+        assert_eq!(d.move_block_in_build_order(&[2, 3], 2, 1).unwrap(), 2);
+        assert_eq!(order(&d), placed);
+        assert_eq!(d.history_len(), stayed, "already as close as the attachments allow");
+        // A chunk dropped before the module it hangs on stops at the closest later step.
+        let mut chain = small_station(&c);
+        let snap = chain.free_snaps(&c, 4).unwrap()[0].name.clone();
+        assert_eq!(chain.attach(&c, "beam", "s2", 4, &snap, 0.0).unwrap(), 5);
+        let chain_steps = chain.history_len();
+        assert_eq!(chain.move_block_in_build_order(&[4, 5], 4, 1).unwrap(), 2);
+        assert_eq!(chain.history_len(), chain_steps + 1);
+        assert_eq!(
+            order(&chain),
+            [
+                (1, "beam".to_owned(), None),
+                (2, "beam".to_owned(), Some(1)),
+                (3, "beam".to_owned(), Some(2)),
+                (4, "cross".to_owned(), Some(1)),
+                (5, "beam".to_owned(), Some(4)),
+            ]
+        );
+        // Dropping onto a module in the block changes nothing.
+        assert_eq!(d.move_block_in_build_order(&[2, 3], 3, 2).unwrap(), 3);
+        assert_eq!(d.history_len(), stayed);
+        assert_eq!(order(&d), placed);
+        // One module: the same result as move_in_build_order.
+        let mut alone = small_station(&c);
+        assert_eq!(d.move_block_in_build_order(&[4], 4, 2).unwrap(), alone.move_in_build_order(4, 2).unwrap());
+        assert_eq!(order(&d), order(&alone));
+        assert!(d.move_block_in_build_order(&[], 1, 1).is_err());
+        assert!(d.move_block_in_build_order(&[2, 9], 2, 3).is_err());
+        assert!(d.move_block_in_build_order(&[2, 3], 4, 4).is_err());
     }
 
     #[test]

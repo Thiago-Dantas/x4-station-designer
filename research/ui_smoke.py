@@ -129,10 +129,18 @@ try:
       const rows = [...document.querySelectorAll('#order-list .order-row')];
       const from = rows.findIndex((r, i) => i > 10 && /#(\d+)/.test(r.title) && Number(r.title.match(/#(\d+)/)[1]) < 10);
       const name = rows[from].querySelector('.n').textContent;
-      const data = new DataTransfer();
-      rows[from].dispatchEvent(new DragEvent('dragstart', { dataTransfer: data, bubbles: true }));
-      rows[9].dispatchEvent(new DragEvent('dragover', { dataTransfer: data, bubbles: true, cancelable: true }));
-      rows[9].dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+      const dst = rows[9];
+      dst.scrollIntoView({ block: 'center' });
+      const a = rows[from].getBoundingClientRect();
+      const b = dst.getBoundingClientRect();
+      const pid = 1;
+      const pe = (type, el, x, y, buttons) => el.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerId: pid, pointerType: 'mouse', isPrimary: true,
+        button: 0, buttons, clientX: x, clientY: y,
+      }));
+      pe('pointerdown', rows[from], a.left + 6, a.top + 4, 1);
+      pe('pointermove', window, b.left + 10, b.top + 3, 1);
+      pe('pointerup', window, b.left + 10, b.top + 3, 0);
       return [from + 1, name];
     })()"""
     dragged_from, dragged = cdp.js(drag)
@@ -142,6 +150,141 @@ try:
     assert now10 == dragged, (now10, dragged)
     cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
     cdp.wait_for(f"document.querySelectorAll('#order-list .order-row')[{dragged_from - 1}].querySelector('.n').textContent === '{dragged}'")
+    # Shift-click selects the rows between the two clicks; dragging one of them moves the range
+    # as one block, and the grabbed row lands on the row it was dropped on.
+    block = cdp.js(r"""(() => {
+      const rows = () => [...document.querySelectorAll('#order-list .order-row')];
+      const names = () => rows().map(r => r.querySelector('.n').textContent);
+      const clickRow = (i, shift) => rows()[i].dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: !!shift }));
+      const selectedCount = () => rows().filter(r => r.classList.contains('selected')).length;
+      clickRow(0, false);
+      clickRow(4, true);
+      const range = selectedCount();
+      clickRow(2, false);
+      const one = selectedCount();
+      const pred = rows().map(r => { const m = r.title.match(/#(\d+)/); return m ? Number(m[1]) : 0; });
+      const ids = rows().map(r => Number(r.querySelector('.num').textContent));
+      if (!ids.every((id, i) => id === i + 1)) throw new Error('build order indices are not 1..n');
+      const n = ids.length;
+      const before = names();
+      function simulate(start, end, dest, grab) {
+        const moving = [];
+        for (let i = start; i <= end; i++) moving.push(i);
+        const set = new Set(moving);
+        if (set.has(dest)) return null;
+        const offset = grab - start;
+        const k = moving.length;
+        const landed = Math.min(n - k + offset + 1, Math.max(offset + 1, dest));
+        const insertAt = landed - offset - 1;
+        const remaining = [];
+        for (let i = 1; i <= n; i++) if (!set.has(i)) remaining.push(i);
+        const order = remaining.slice(0, insertAt).concat(moving, remaining.slice(insertAt));
+        const rank = new Map(order.map((id, i) => [id, i]));
+        for (let i = 1; i <= n; i++) if (pred[i - 1] && rank.get(pred[i - 1]) > rank.get(i)) return null;
+        if (order.every((id, i) => id === i + 1)) return null;
+        return { order, landed, blockStart: landed - offset };
+      }
+      let move = null;
+      for (const k of [3, 2, 4]) {
+        for (let start = 1; start + k - 1 <= n && !move; start++) {
+          const end = start + k - 1;
+          for (let grab = end; grab >= start && !move; grab--) {
+            for (let dest = 1; dest <= n; dest++) {
+              const sim = simulate(start, end, dest, grab);
+              if (!sim) continue;
+              move = { start, end, grab, dest, k, landed: sim.landed, blockStart: sim.blockStart, expected: sim.order.map(id => before[id - 1]) };
+              break;
+            }
+          }
+        }
+      }
+      if (!move) throw new Error('no range can move together');
+      clickRow(move.start - 1, false);
+      clickRow(move.end - 1, true);
+      const blockSelected = selectedCount();
+      const drag = (from, to) => {
+        const list = rows();
+        const src = list[from], dst = list[to];
+        dst.scrollIntoView({ block: 'center' });
+        const a = src.getBoundingClientRect();
+        const b = dst.getBoundingClientRect();
+        const pid = 1;
+        const pe = (type, el, x, y, buttons) => el.dispatchEvent(new PointerEvent(type, {
+          bubbles: true, cancelable: true, pointerId: pid, pointerType: 'mouse', isPrimary: true,
+          button: 0, buttons, clientX: x, clientY: y,
+        }));
+        pe('pointerdown', src, a.left + 6, a.top + 4, 1);
+        pe('pointermove', window, b.left + 10, b.top + 3, 1);
+        pe('pointerup', window, b.left + 10, b.top + 3, 0);
+      };
+      drag(move.start - 1, move.start); // onto the next selected row: nothing moves
+      return Object.assign(move, { range, one, blockSelected, grabName: before[move.grab - 1] });
+    })()""")
+    assert block["range"] == 5 and block["one"] == 1, block
+    assert block["blockSelected"] == block["k"], block
+    time.sleep(0.8)
+    # The drop onto a selected row must not have reordered. The grabbed module is still at its old step.
+    still = cdp.js("[...document.querySelectorAll('#order-list .order-row .n')].map(n => n.textContent)")
+    assert still[block["grab"] - 1] == block["grabName"], (still[block["grab"] - 1], block["grabName"])
+    cdp.js(r"""((from, to) => {
+      const list = [...document.querySelectorAll('#order-list .order-row')];
+      const src = list[from], dst = list[to];
+      dst.scrollIntoView({ block: 'center' });
+      const a = src.getBoundingClientRect();
+      const b = dst.getBoundingClientRect();
+      const pid = 1;
+      const pe = (type, el, x, y, buttons) => el.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerId: pid, pointerType: 'mouse', isPrimary: true,
+        button: 0, buttons, clientX: x, clientY: y,
+      }));
+      pe('pointerdown', src, a.left + 6, a.top + 4, 1);
+      pe('pointermove', window, b.left + 10, b.top + 3, 1);
+      pe('pointerup', window, b.left + 10, b.top + 3, 0);
+    })(%d, %d)""" % (block["grab"] - 1, block["dest"] - 1))
+    moved_status = "Moved %d modules to steps %d-%d" % (block["k"], block["blockStart"], block["blockStart"] + block["k"] - 1)
+    cdp.wait_for("document.getElementById('status').textContent === %r" % moved_status)
+    got = cdp.js("[...document.querySelectorAll('#order-list .order-row .n')].map(n => n.textContent)")
+    assert got == block["expected"], (got[block["blockStart"] - 1:block["blockStart"] + block["k"]], block["expected"][block["blockStart"] - 1:block["blockStart"] + block["k"]])
+    assert got[block["landed"] - 1] == block["grabName"]
+    flags = cdp.js("[...document.querySelectorAll('#order-list .order-row')].map(r => r.classList.contains('selected'))")
+    first = flags.index(True)
+    assert first == block["blockStart"] - 1 and flags[first:first + block["k"]] == [True] * block["k"] and flags.count(True) == block["k"], (first, block)
+    print(f"   shift-select: rows 1-5 then one row; dragged {block['k']} (grabbed '{block['grabName']}') onto step {block['dest']} -> steps {block['blockStart']}-{block['blockStart'] + block['k'] - 1}")
+    changed = next(i for i, (a, b) in enumerate(zip(still, got)) if a != b)
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+    cdp.wait_for("document.querySelectorAll('#order-list .order-row .n')[%d].textContent === %r" % (changed, still[changed]))
+    # A module dropped before the one it attaches to lands on the closest later step.
+    closer = cdp.js(r"""(() => {
+      const rows = [...document.querySelectorAll('#order-list .order-row')];
+      const pred = rows.map(r => { const m = r.title.match(/#(\d+)/); return m ? Number(m[1]) : 0; });
+      for (let i = 1; i <= pred.length; i++) {
+        const p = pred[i - 1];
+        if (p && i > p + 1) return { i, p, name: rows[i - 1].querySelector('.n').textContent };
+      }
+      throw new Error('no module can move closer to its parent');
+    })()""")
+    cdp.js(r"""((from, to) => {
+      const list = [...document.querySelectorAll('#order-list .order-row')];
+      const src = list[from], dst = list[to];
+      dst.scrollIntoView({ block: 'center' });
+      const a = src.getBoundingClientRect();
+      const b = dst.getBoundingClientRect();
+      const pid = 1;
+      const pe = (type, el, x, y, buttons) => el.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, pointerId: pid, pointerType: 'mouse', isPrimary: true,
+        button: 0, buttons, clientX: x, clientY: y,
+      }));
+      pe('pointerdown', src, a.left + 6, a.top + 4, 1);
+      pe('pointermove', window, b.left + 10, b.top + 3, 1);
+      pe('pointerup', window, b.left + 10, b.top + 3, 0);
+    })(%d, %d)""" % (closer["i"] - 1, closer["p"] - 1))
+    closer_status = "Moved #%d to step %d" % (closer["i"], closer["p"] + 1)
+    cdp.wait_for("document.getElementById('status').textContent === %r" % closer_status)
+    assert "would be built before" not in cdp.js("document.getElementById('status').textContent")
+    assert cdp.js("document.querySelectorAll('#order-list .order-row .n')[%d].textContent" % closer["p"]) == closer["name"]
+    print(f"   closest step: '{closer['name']}' dropped on its parent #{closer['p']} -> {closer_status}")
+    cdp.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'z', ctrlKey: true}))")
+    cdp.wait_for("document.querySelectorAll('#order-list .order-row .n')[%d].textContent === %r" % (closer["i"] - 1, closer["name"]))
     cdp.js("document.getElementById('tab-modules').click()")
 
     cdp.js("document.getElementById('btn-new').click()")

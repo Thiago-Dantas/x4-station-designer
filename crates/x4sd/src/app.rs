@@ -73,6 +73,7 @@ pub fn run(game_dir: Option<PathBuf>, profile_dir: Option<PathBuf>) -> x4sd_core
             set_plot,
             fit_plot,
             move_in_build_order,
+            move_block_in_build_order,
             build_first,
             build_last,
             set_stage_end,
@@ -373,6 +374,12 @@ fn fit_plot(state: State<'_, Shared>, grow_only: bool) -> CmdResult {
 #[tauri::command]
 fn move_in_build_order(state: State<'_, Shared>, index: u32, position: usize) -> CmdResult {
     reorder(&state, |d| d.move_in_build_order(index, position))
+}
+
+/// Moves `indices` together so `anchor` lands at `position`. `focus` is `anchor`'s new index.
+#[tauri::command]
+fn move_block_in_build_order(state: State<'_, Shared>, indices: Vec<u32>, anchor: u32, position: usize) -> CmdResult {
+    reorder(&state, |d| d.move_block_in_build_order(&indices, anchor, position))
 }
 
 #[tauri::command]

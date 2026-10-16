@@ -39,6 +39,9 @@ let scene: Scene | null = null;
 /** The player profile folder (from the catalog), for the plan file dialogs. */
 let profileDir: string | null = null;
 let selected: number | null = null;
+/** Build-order rows selected together, and the row Shift-click extends from. */
+let orderSelection = new Set<number>();
+let orderAnchor: number | null = null;
 let armed: ModuleInfo | null = null;
 /** Module being moved onto another snap (with everything attached to it), if any. */
 let moving: number | null = null;
@@ -146,7 +149,7 @@ async function loadTextures() {
 }
 
 /** Runs a command that returns the new scene, then redraws. Errors go to the status bar. */
-async function apply(action: Promise<Scene>, done?: string, frame = false, userEdit = false) {
+async function apply(action: Promise<Scene>, done?: string, frame = false, userEdit = false): Promise<boolean> {
   try {
     const fitted = scene?.plot?.fits ?? true;
     scene = await action;
@@ -156,12 +159,17 @@ async function apply(action: Promise<Scene>, done?: string, frame = false, userE
     if (showTextures) await loadTextures();
     if (scene.focus) selected = scene.focus;
     if (selected !== null && !scene.entries.some((e) => e.index === selected)) selected = null;
+    // The old indices were renumbered. A drag that moved several rows puts the range back afterwards.
+    orderAnchor = selected;
+    orderSelection = new Set(selected === null ? [] : [selected]);
     redraw();
     if (frame) view.frame();
     if (done) status(done, "good");
     if (userEdit && fitted && scene.plot && !scene.plot.fits) await offerBiggerPlot(scene.plot);
+    return true;
   } catch (e) {
     status(String(e), "error");
+    return false;
   }
 }
 
@@ -409,6 +417,170 @@ function jumpToMatch(direction: 1 | -1) {
   $("order-list").querySelector(".order-row.selected")?.scrollIntoView({ block: "nearest" });
 }
 
+/** Selects every build-order row from the Shift anchor through `index`. The anchor stays put. */
+function extendOrderSelection(index: number): boolean {
+  if (!scene || orderAnchor === null) return false;
+  const from = scene.entries.findIndex((x) => x.index === orderAnchor);
+  const to = scene.entries.findIndex((x) => x.index === index);
+  if (from < 0 || to < 0) return false;
+  const lo = Math.min(from, to);
+  const hi = Math.max(from, to);
+  orderSelection = new Set(scene.entries.slice(lo, hi + 1).map((x) => x.index));
+  selected = index;
+  return true;
+}
+
+/** Build-order drag in progress. Pointer events, not HTML5 drag: a native drag
+ * in this window swallows the mouse wheel and leaves it stuck afterwards. */
+type OrderDrag = {
+  pointerId: number;
+  anchor: number;
+  indices: number[];
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  moved: boolean;
+};
+let orderDrag: OrderDrag | null = null;
+/** The click that follows a completed drag must not collapse the selection. */
+let suppressOrderClick = false;
+const ORDER_DRAG_SLOP = 4;
+
+function clearOrderDrop() {
+  for (const row of document.querySelectorAll("#order-list .order-row.drop")) row.classList.remove("drop");
+}
+
+/** The build-order row under the pointer, including a release on the gap between rows. */
+function orderRowAt(x: number, y: number): HTMLElement | null {
+  const list = $("order-list");
+  const box = list.getBoundingClientRect();
+  if (x < box.left || x > box.right || y < box.top || y > box.bottom) return null;
+  const hit = document.elementFromPoint(x, y)?.closest(".order-row");
+  if (hit instanceof HTMLElement && list.contains(hit)) return hit;
+  let best: HTMLElement | null = null;
+  let bestDist = Infinity;
+  for (const row of list.querySelectorAll<HTMLElement>(".order-row")) {
+    const r = row.getBoundingClientRect();
+    if (y < r.top - 12 || y > r.bottom + 12) continue;
+    const dist = Math.abs(y - (r.top + r.bottom) / 2);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = row;
+    }
+  }
+  return best;
+}
+
+function markOrderDrop(x: number, y: number) {
+  clearOrderDrop();
+  if (!orderDrag) return;
+  const row = orderRowAt(x, y);
+  const index = Number(row?.dataset.index);
+  if (!row || !(index > 0) || orderDrag.indices.includes(index)) return;
+  row.classList.add("drop");
+}
+
+/** Puts the grabbed rows at `position` (the drop row's current step). The core
+ * stops at the closest step the attachment order allows. */
+function commitOrderDrop(indices: number[], anchor: number, position: number) {
+  if (!scene || indices.includes(position)) return;
+  const count = indices.length;
+  const history = scene.history;
+  const kept = new Set(orderSelection);
+  const keptAnchor = orderAnchor;
+  void (async () => {
+    const ok = await apply(api.moveBlockInBuildOrder(indices, anchor, position));
+    const next = scene;
+    if (!ok || !next || next.focus == null) return;
+    if (next.history === history) {
+      orderSelection = kept;
+      orderAnchor = keptAnchor;
+      renderOrder();
+      const first = indices[0];
+      const last = indices[indices.length - 1];
+      status(count > 1 ? `Left ${count} modules at steps ${first}-${last}` : `Left #${anchor} at step ${anchor}`);
+      return;
+    }
+    if (count > 1) {
+      const start = next.focus - indices.indexOf(anchor);
+      orderAnchor = next.focus;
+      orderSelection = new Set(Array.from({ length: count }, (_, i) => start + i));
+      renderOrder();
+      status(`Moved ${count} modules to steps ${start}-${start + count - 1}`, "good");
+    } else {
+      status(`Moved #${anchor} to step ${next.focus}`, "good");
+    }
+  })();
+}
+
+function endOrderDrag(ev: PointerEvent, commit: boolean) {
+  const drag = orderDrag;
+  if (!drag || ev.pointerId !== drag.pointerId) return;
+  orderDrag = null;
+  const list = $("order-list");
+  list.classList.remove("dragging");
+  try {
+    if (list.hasPointerCapture(ev.pointerId)) list.releasePointerCapture(ev.pointerId);
+  } catch {
+    // The pointer is already gone.
+  }
+  clearOrderDrop();
+  if (!drag.moved) return;
+  suppressOrderClick = true;
+  setTimeout(() => {
+    suppressOrderClick = false;
+  }, 0);
+  if (!commit) return;
+  const position = Number(orderRowAt(ev.clientX, ev.clientY)?.dataset.index);
+  if (!(position > 0)) return;
+  commitOrderDrop(drag.indices, drag.anchor, position);
+}
+
+$("order-list").addEventListener(
+  "click",
+  (ev) => {
+    if (!suppressOrderClick) return;
+    suppressOrderClick = false;
+    ev.preventDefault();
+    ev.stopPropagation();
+  },
+  true,
+);
+$("order-list").addEventListener(
+  "wheel",
+  (ev) => {
+    const drag = orderDrag;
+    if (!drag?.moved) return;
+    const list = $("order-list");
+    const line = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? list.clientHeight : 1;
+    list.scrollTop += ev.deltaY * line;
+    ev.preventDefault();
+    markOrderDrop(drag.x, drag.y);
+  },
+  { passive: false },
+);
+window.addEventListener("pointermove", (ev) => {
+  const drag = orderDrag;
+  if (!drag || ev.pointerId !== drag.pointerId) return;
+  drag.x = ev.clientX;
+  drag.y = ev.clientY;
+  if (!drag.moved) {
+    if (Math.hypot(ev.clientX - drag.startX, ev.clientY - drag.startY) < ORDER_DRAG_SLOP) return;
+    drag.moved = true;
+    const list = $("order-list");
+    list.classList.add("dragging");
+    try {
+      list.setPointerCapture(ev.pointerId);
+    } catch {
+      // The gesture still tracks pointermove on the window.
+    }
+  }
+  markOrderDrop(ev.clientX, ev.clientY);
+});
+window.addEventListener("pointerup", (ev) => endOrderDrag(ev, true));
+window.addEventListener("pointercancel", (ev) => endOrderDrag(ev, false));
+
 /** The build order list: one row per module in build order, stage dividers, drag to reorder. */
 function renderOrder() {
   if (!scene) return;
@@ -426,30 +598,40 @@ function renderOrder() {
   for (const e of scene.entries) {
     const row = document.createElement("div");
     row.className =
-      "order-row" + (e.index === selected ? " selected" : "") + (buildStep !== null && e.index > buildStep ? " later" : "") + (matches.has(e.index) ? " match" : "");
-    row.draggable = true;
+      "order-row" +
+      (e.index === selected || orderSelection.has(e.index) ? " selected" : "") +
+      (buildStep !== null && e.index > buildStep ? " later" : "") +
+      (matches.has(e.index) ? " match" : "");
+    row.dataset.index = String(e.index);
     row.innerHTML = `<span class="num"></span><span class="n"></span>`;
     row.querySelector(".num")!.textContent = `${e.index}.`;
     row.querySelector(".n")!.textContent = e.name ?? e.macro;
     row.title = e.attached ? `attaches to #${e.attached.to}` : "not attached (root)";
     // Double click zooms to the module. No dblclick event: the first click redraws the rows.
     row.onclick = (ev) => {
+      if (ev.shiftKey && extendOrderSelection(e.index)) {
+        redraw();
+        if (ev.detail === 2) view.frameModule(e.index);
+        return;
+      }
       select(e.index);
       if (ev.detail === 2) view.frameModule(e.index);
     };
-    row.ondragstart = (ev) => ev.dataTransfer!.setData("text/x4sd-entry", String(e.index));
-    row.ondragover = (ev) => {
-      if (ev.dataTransfer?.types.includes("text/x4sd-entry")) {
-        ev.preventDefault();
-        row.classList.add("drop");
-      }
-    };
-    row.ondragleave = () => row.classList.remove("drop");
-    row.ondrop = (ev) => {
-      ev.preventDefault();
-      row.classList.remove("drop");
-      const moved = Number(ev.dataTransfer?.getData("text/x4sd-entry"));
-      if (moved && moved !== e.index) void apply(api.moveInBuildOrder(moved, e.index), `Moved #${moved} to step ${e.index}`);
+    row.onpointerdown = (ev) => {
+      if (ev.button !== 0 || !scene) return;
+      clearOrderDrop();
+      const group = orderSelection.has(e.index) ? orderSelection : new Set([e.index]);
+      const indices = scene.entries.map((x) => x.index).filter((i) => group.has(i));
+      orderDrag = {
+        pointerId: ev.pointerId,
+        anchor: e.index,
+        indices,
+        startX: ev.clientX,
+        startY: ev.clientY,
+        x: ev.clientX,
+        y: ev.clientY,
+        moved: false,
+      };
     };
     rows.push(row);
     if (e.stage_end) {
@@ -1672,6 +1854,8 @@ for (const id of ["armed-snap", "armed-twist"]) {
 
 function select(index: number | null) {
   selected = index;
+  orderAnchor = index;
+  orderSelection = new Set(index === null ? [] : [index]);
   redraw();
 }
 
@@ -2172,6 +2356,13 @@ window.addEventListener("keydown", (ev) => {
   if (ev.ctrlKey && key === "z") void stepHistory(ev.shiftKey);
   else if (ev.ctrlKey && key === "y") void stepHistory(true);
   else if (key === "delete") void removeSelected(ev.shiftKey);
+  else if (key === "pageup" && !ev.repeat && !ev.ctrlKey && !ev.altKey && selected !== null) {
+    ev.preventDefault();
+    void apply(api.buildFirst(selected), "Moved to the front of the build order");
+  } else if (key === "pagedown" && !ev.repeat && !ev.ctrlKey && !ev.altKey && selected !== null) {
+    ev.preventDefault();
+    void apply(api.buildLast(selected), "Moved to the end of the build order");
+  }
   else if (ev.ctrlKey && key === "c") void (ev.shiftKey ? startMove(selected, true) : copyModule(selected));
   else if (key === "c" && (armed || moving !== null)) cycle("armed-snap", ev.shiftKey ? -1 : 1);
   else if (key === "t" && (armed || moving !== null)) cycle("armed-twist", ev.shiftKey ? -1 : 1);
