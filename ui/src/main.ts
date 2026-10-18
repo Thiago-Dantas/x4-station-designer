@@ -1522,8 +1522,42 @@ function searchBox(box: HTMLInputElement, list: HTMLElement, entries: () => [str
         return row;
       }),
     );
-    list.hidden = !s.open || s.matches.length === 0;
-    list.children[s.active]?.scrollIntoView({ block: "nearest" });
+    place();
+  };
+  // The planner tab scrolls, so an absolute list under the box would be clipped.
+  // Pin it to the viewport instead, and keep the highlight inside the list.
+  const place = () => {
+    const show = s.open && s.matches.length > 0;
+    list.hidden = !show;
+    if (!show) return;
+    const active = list.children[s.active];
+    if (active instanceof HTMLElement) {
+      const top = active.offsetTop;
+      const bottom = top + active.offsetHeight;
+      if (top < list.scrollTop) list.scrollTop = top;
+      else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+    }
+    const at = box.getBoundingClientRect();
+    const pane = box.closest("#planner-tab")?.getBoundingClientRect();
+    if (pane && (at.bottom <= pane.top + 4 || at.top >= pane.bottom - 4)) {
+      list.hidden = true;
+      return;
+    }
+    list.style.left = `${at.left}px`;
+    list.style.width = `${at.width}px`;
+    const roomBelow = window.innerHeight - at.bottom;
+    const roomAbove = at.top;
+    const want = Math.min(280, list.scrollHeight);
+    // Open upward when the matches would run past the window, and never taller than the room there.
+    if (want > roomBelow && roomAbove > roomBelow) {
+      list.style.top = "auto";
+      list.style.bottom = `${window.innerHeight - at.top}px`;
+      list.style.maxHeight = `${Math.min(280, Math.max(80, roomAbove - 8))}px`;
+    } else {
+      list.style.bottom = "auto";
+      list.style.top = `${at.bottom}px`;
+      list.style.maxHeight = `${Math.min(280, Math.max(80, roomBelow - 8))}px`;
+    }
   };
   box.oninput = () => {
     s.open = true;
@@ -1553,6 +1587,9 @@ function searchBox(box: HTMLInputElement, list: HTMLElement, entries: () => [str
       render();
     }
   };
+  box.closest("#planner-tab")?.addEventListener("scroll", () => {
+    if (s.open) place();
+  });
   return {
     close() {
       s.open = false;

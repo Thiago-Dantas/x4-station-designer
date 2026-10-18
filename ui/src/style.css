@@ -48,6 +48,9 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .tabs button.on { border-color: var(--accent); color: #ffd9a8; }
 .tab { display: flex; flex-direction: column; gap: 6px; min-height: 0; flex: 1; }
 .tab[hidden] { display: none; }
+/* One scroller for the whole planner. A scroller on the result alone shrinks to
+   nothing once the targets and settings are taller than the pane. */
+#planner-tab { overflow-y: auto; }
 .step { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .step input { flex: 1; }
 #order-list { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
@@ -104,7 +107,7 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .planner-add { display: flex; gap: 4px; }
 .ware-search { position: relative; flex: 1; min-width: 0; }
 .ware-search #planner-ware { width: 100%; box-sizing: border-box; }
-.search-list { position: absolute; z-index: 10; left: 0; right: 0; top: 100%; max-height: 280px; overflow-y: auto; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; }
+.search-list { position: fixed; z-index: 10; max-height: 280px; overflow-y: auto; overscroll-behavior: contain; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; }
 .search-list div { padding: 3px 6px; cursor: pointer; }
 .search-list div.active { background: var(--line); }
 .ware-search #planner-module { width: 100%; box-sizing: border-box; }
@@ -132,7 +135,7 @@ aside { width: 290px; background: var(--panel); display: flex; flex-direction: c
 .equip-row input { width: 40px; }
 #equipment-panel select { max-width: 170px; }
 #planner-summary, #planner-placed { color: var(--muted); font-size: 12px; white-space: pre-line; }
-#planner-result { overflow-y: auto; min-height: 0; flex: 1; font-size: 12px; }
+#planner-result { font-size: 12px; }
 #planner-result h4 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; color: var(--muted); }
 .planned-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 3px; cursor: pointer; }
 .planned-row:hover { background: var(--line); }

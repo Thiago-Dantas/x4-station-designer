@@ -77,6 +77,7 @@ Proposed order (each step usable on its own):
   - [x] D. Optimize (user request, 2026-10-14): fix the shortfalls and re-lay the station out in layers (slotless inside, defensible outside, docks outermost), keeping its shape or rebuilding connectors. Optimize shows a plan to trim first, then *Apply plan*; the plot is fitted afterwards (D-14). See [workflow-optimize.md](workflow-optimize.md).
   - [x] F. Planner extras (user request, 2026-10-14): other modules (ship bays, defence platforms…), storage minimums per type, defence platforms on chosen sides of the station (D-15). See [workflow-planner-extras.md](workflow-planner-extras.md). Still to check in game.
   - [x] Other modules box: piers too, and only the planner race's modules (user request, 2026-10-15; see [workflow-planner-piers.md](workflow-planner-piers.md))
+  - [x] Planner tab scrolls when the plan is taller than the pane (user request, 2026-10-18; see [workflow-planner-scroll.md](workflow-planner-scroll.md))
   - [x] Defence platforms and piers outermost (user report 2026-10-15: Optimize put a disc deep inside a station): outer layer with a clear corridor out, D-23. See [workflow-outermost.md](workflow-outermost.md).
   - [x] E. Clearance for fabrication bays and piers (user report 2026-10-14): exclusion zones from the game data, `validate` reports blocked ones, auto-place and Optimize keep them clear (D-12). Still to check in game. See [workflow-clearance.md](workflow-clearance.md).
 - [x] **In-game load** (user request, 2026-10-14): right-pane readout (modules, connection structures, turrets, docks, size), MCP `station_load`, `show`; Planner option *Fewer connection structures* (D-13). See [workflow-fps-load.md](workflow-fps-load.md). Verified in game (user, 2026-10-14, light testing): these counts track frame rate.
@@ -96,6 +97,7 @@ Proposed order (each step usable on its own):
   - [x] v1.3.0 published 2026-10-15: copy / remove sequence, right-click menu, turns on what you look at, planner piers and dock areas ([workflow-release-1.3.md](workflow-release-1.3.md))
   - [x] v1.4.0 published 2026-10-15: game found on any machine, placement breaks the station up and packs rebuilds, docks/piers/defence outermost, partial builds, most overlaps are notes ([workflow-release-1.4.md](workflow-release-1.4.md))
   - [x] v1.5.0 published 2026-10-16: shift-click a build-order range and drag it, closest legal step, wheel scrolls while dragging, Page Up / Page Down build first / last ([workflow-release-1.5.md](workflow-release-1.5.md))
+  - [x] v1.5.1 published 2026-10-18: the Planner tab scrolls when the plan is taller than the pane ([workflow-release-1.5.1.md](workflow-release-1.5.1.md))
   - [x] The user published it and made the repo public
 - [x] Find the game on any machine: Steam libraries anywhere, GOG, a folder picker in the builder that is remembered (D-24, [workflow-find-game.md](workflow-find-game.md))
 - [x] Automated checks (CI) for the parts that don't need the game installed (`ci.yml`, part of [workflow-scorecard.md](workflow-scorecard.md))
