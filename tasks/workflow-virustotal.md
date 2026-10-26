@@ -19,3 +19,6 @@ Request (2026-10-26): scan each released `x4sd.exe` with VirusTotal, connected t
 - [x] Docs: BUILDING.md, SECURITY.md, CLAUDE.md, decisions.md (D-26)
 - [x] Commit and push
 - [ ] Next tagged release: check the step ran and the link is in the notes
+- [x] False-positive report to Trapmine (`fp@trapmine.com`, from VirusTotal's vendor contact list): sent from the user's Gmail 2026-10-26, all six hashes. Don't watch the inbox (user); the user reports any reply.
+- [ ] About a week later (from 2026-11-02) or when the user says Trapmine replied: ask VirusTotal to rescan the six hashes and check whether Trapmine dropped the hit.
+- [ ] If the hit comes back on new releases: build variants (plain Rust, blank Tauri 2 app, x4sd with parts removed) and see which ones Trapmine flags (user chose to report first, 2026-10-26)
