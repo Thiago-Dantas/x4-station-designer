@@ -53,3 +53,22 @@ jobs:
           # the attestation bundle next to the exe, for offline checks (and Scorecard's Signed-Releases)
           Copy-Item $env:BUNDLE target/release/x4sd.exe.sigstore.json
           gh release create $env:GITHUB_REF_NAME target/release/x4sd.exe target/release/x4sd.exe.sigstore.json --verify-tag --notes-from-tag
+      - name: VirusTotal scan
+        if: github.ref_type == 'tag'
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          # upload the exe, wait for the scan to finish, and add its link to the release notes
+          $headers = @{ 'x-apikey' = $env:VT_API_KEY }
+          $upload = Invoke-RestMethod -Method Post -Uri https://www.virustotal.com/api/v3/files -Headers $headers -Form @{ file = Get-Item target/release/x4sd.exe }
+          do {
+            Start-Sleep 20   # the free API allows 4 requests a minute
+            $scan = Invoke-RestMethod -Uri "https://www.virustotal.com/api/v3/analyses/$($upload.data.id)" -Headers $headers
+          } until ($scan.data.attributes.status -eq 'completed')
+          $scan.data.attributes.stats | ConvertTo-Json
+          $hash = (Get-FileHash target/release/x4sd.exe -Algorithm SHA256).Hash.ToLower()
+          $notes = (gh release view $env:GITHUB_REF_NAME --json body --jq .body) -join "`n"
+          "$notes`n`n[VirusTotal scan of ``x4sd.exe``](https://www.virustotal.com/gui/file/$hash)" | Set-Content notes.md
+          gh release edit $env:GITHUB_REF_NAME --notes-file notes.md

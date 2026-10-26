@@ -26,7 +26,8 @@ notice when one is available.
 - **The new-version check:** one request to the GitHub API when the builder starts.
 - **The release build:** `x4sd.exe` is built and attested by GitHub Actions
   ([.github/workflows/release.yml](.github/workflows/release.yml)). Check a download with
-  `gh attestation verify x4sd.exe -R Thiago-Dantas/x4-station-designer`.
+  `gh attestation verify x4sd.exe -R Thiago-Dantas/x4-station-designer`. Each release's notes link
+  to a VirusTotal scan of its `x4sd.exe`.
 
 Out of scope: the game itself, other mods, and what an AI agent decides to do with the MCP tools it
 has been given.
