@@ -8,7 +8,7 @@ description = "Core library of the X4 station designer: construction plan model 
 [dependencies]
 flate2 = "1"
 miniz_oxide = "0.9.1"
-roxmltree = "0.20"
+roxmltree = "0.21"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"
