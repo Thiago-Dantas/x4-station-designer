@@ -1,6 +1,6 @@
 # Workflow: keyboard and focus fixes (after issue #5), release 1.5.3
 
-Status: in progress (2026-11-08)
+Status: **done** (2026-11-08)
 
 User, 2026-11-08: asked for other inconsistencies like issue #5, then "ctrl z should not impact number box the same way it shouldnt impact text boxes. fix everything and ship as 1.5.3".
 
@@ -19,4 +19,4 @@ Not a problem: F5 and Ctrl+R don't reload the page.
 - [x] R / F / T / C ignore Ctrl and Alt
 - [x] Checked in the builder (release exe, scratch DevTools test, all pass): Ctrl+Z / Ctrl+Y in the search box undo/redo the design and keep the text; Esc clears the search; X = 500 + Enter moves and leaves the box, Ctrl+Z moves back and the field shows 0, Ctrl+Y with the cursor in the box redoes; a clicked *Textures* checkbox leaves focus and Ctrl+Z works after it; Ctrl+R leaves an attached module's twist, R twists it. `npm run check` clean.
 - [x] Docs: `docs/usage.md`, roadmap, this file, a note in [workflow-undo-filter.md](workflow-undo-filter.md). `CLAUDE.md`: version only.
-- [ ] Release 1.5.3: versions, commit, push, tag, check the release
+- [x] Release 1.5.3: versions, commit (`7fd8e9b`), push, tag; the Release workflow is green and `releases/latest` is v1.5.3 (exe, attestation, VirusTotal link)
