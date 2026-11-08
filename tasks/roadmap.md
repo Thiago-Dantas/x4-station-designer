@@ -99,6 +99,7 @@ Proposed order (each step usable on its own):
   - [x] v1.5.0 published 2026-10-16: shift-click a build-order range and drag it, closest legal step, wheel scrolls while dragging, Page Up / Page Down build first / last ([workflow-release-1.5.md](workflow-release-1.5.md))
   - [x] v1.5.1 published 2026-10-18: the Planner tab scrolls when the plan is taller than the pane ([workflow-release-1.5.1.md](workflow-release-1.5.1.md))
   - [x] v1.5.2 published 2026-11-08: Ctrl+Z no longer clears the palette filter text, GitHub issue #5 ([workflow-release-1.5.2.md](workflow-release-1.5.2.md))
+  - [x] v1.5.3 published 2026-11-08: undo/redo never undo typing, keys go back to the design after boxes, checkboxes and the slider ([workflow-keys-focus.md](workflow-keys-focus.md))
   - [x] The user published it and made the repo public
 - [x] Find the game on any machine: Steam libraries anywhere, GOG, a folder picker in the builder that is remembered (D-24, [workflow-find-game.md](workflow-find-game.md))
 - [x] Automated checks (CI) for the parts that don't need the game installed (`ci.yml`, part of [workflow-scorecard.md](workflow-scorecard.md))
@@ -106,6 +107,7 @@ Proposed order (each step usable on its own):
 - [x] Raise the OpenSSF Scorecard score (3.9 at first, 6.1 after) ([workflow-scorecard.md](workflow-scorecard.md))
 - [x] Modules no longer stack inside each other: snaps join only facing each other ([workflow-joined-snaps.md](workflow-joined-snaps.md)); Place all asks before a partial build ([workflow-placement-partial.md](workflow-placement-partial.md))
 - [x] Ctrl+Z no longer also clears the palette filter text (GitHub issue #5, 2026-11-08; see [workflow-undo-filter.md](workflow-undo-filter.md))
+- [x] Keys and focus (user request 2026-11-08, after issue #5): undo/redo always act on the design, Enter leaves number boxes, checkboxes and the slider give the keys back, Esc clears the palette search, Ctrl+letter isn't the letter shortcut ([workflow-keys-focus.md](workflow-keys-focus.md))
 - [ ] Re-tune auto-placement for honest layouts: break up sealed stations, connectors inside for internal modules ([workflow-retune-placement.md](workflow-retune-placement.md))
 
 ## Later: live bridge (option D)

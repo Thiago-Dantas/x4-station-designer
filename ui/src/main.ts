@@ -2066,6 +2066,22 @@ async function exportToGame() {
 // ---------------------------------------------------------------- wiring
 
 $("search").oninput = renderPalette;
+$("search").onkeydown = (ev) => {
+  if (ev.key !== "Escape") return;
+  $<HTMLInputElement>("search").value = "";
+  renderPalette();
+};
+// Give the keys back to the design: Enter in a number box or the plan name applies
+// it and leaves the box (blur fires its change); a checkbox or slider leaves focus
+// once changed. Otherwise Del, R, WASD… stay with the box.
+document.addEventListener("keydown", (ev) => {
+  const t = ev.target;
+  if (ev.key === "Enter" && t instanceof HTMLInputElement && (t.type === "number" || t.id === "design-name")) t.blur();
+});
+document.addEventListener("change", (ev) => {
+  const t = ev.target;
+  if (t instanceof HTMLInputElement && (t.type === "checkbox" || t.type === "range")) t.blur();
+});
 $("order-search").oninput = () => {
   renderOrder();
   $("order-list").querySelector(".order-row.match")?.scrollIntoView({ block: "nearest" });
@@ -2387,13 +2403,17 @@ viewport.addEventListener("drop", async (ev) => {
 });
 
 window.addEventListener("keydown", (ev) => {
-  if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;
   const key = ev.key.toLowerCase();
+  // Undo and redo act on the design, in text and number boxes too: typing is no undo
+  // step (issue #5). preventDefault: else WebView2 undoes the last typing in a box.
+  if (ev.ctrlKey && !ev.altKey && (key === "z" || key === "y")) {
+    ev.preventDefault();
+    return void stepHistory(key === "y" || ev.shiftKey);
+  }
+  if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;
   if (key === "escape" && !$("module-menu").hidden) return closeModuleMenu();
-  // preventDefault: else WebView2 also undoes the last typing in a text box (issue #5).
-  if (ev.ctrlKey && key === "z") { ev.preventDefault(); void stepHistory(ev.shiftKey); }
-  else if (ev.ctrlKey && key === "y") { ev.preventDefault(); void stepHistory(true); }
-  else if (key === "delete") void removeSelected(ev.shiftKey);
+  const plain = !ev.ctrlKey && !ev.altKey; // Ctrl+R, Ctrl+F… are not R, F…
+  if (key === "delete") void removeSelected(ev.shiftKey);
   else if (key === "pageup" && !ev.repeat && !ev.ctrlKey && !ev.altKey && selected !== null) {
     ev.preventDefault();
     void apply(api.buildFirst(selected), "Moved to the front of the build order");
@@ -2402,15 +2422,15 @@ window.addEventListener("keydown", (ev) => {
     void apply(api.buildLast(selected), "Moved to the end of the build order");
   }
   else if (ev.ctrlKey && key === "c") void (ev.shiftKey ? startMove(selected, true) : copyModule(selected));
-  else if (key === "c" && (armed || moving !== null)) cycle("armed-snap", ev.shiftKey ? -1 : 1);
-  else if (key === "t" && (armed || moving !== null)) cycle("armed-twist", ev.shiftKey ? -1 : 1);
-  else if (key === "c" && entry(selected)?.attached) {
+  else if (plain && key === "c" && (armed || moving !== null)) cycle("armed-snap", ev.shiftKey ? -1 : 1);
+  else if (plain && key === "t" && (armed || moving !== null)) cycle("armed-twist", ev.shiftKey ? -1 : 1);
+  else if (plain && key === "c" && entry(selected)?.attached) {
     const list = $<HTMLSelectElement>("sel-snap");
     const n = list.options.length;
     if (n > 1) void changeSnap(list.options[(list.selectedIndex + (ev.shiftKey ? -1 : 1) + n) % n].value);
   }
-  else if (key === "r") void twistSelected(ev.shiftKey ? -1 : 1);
-  else if (key === "f") view.frame();
+  else if (plain && key === "r") void twistSelected(ev.shiftKey ? -1 : 1);
+  else if (plain && key === "f") view.frame();
   else if (key === "escape") {
     if (moving !== null) {
       const done = copying ? "Copying stopped" : "Move cancelled";
