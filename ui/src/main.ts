@@ -2390,8 +2390,9 @@ window.addEventListener("keydown", (ev) => {
   if (ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement) return;
   const key = ev.key.toLowerCase();
   if (key === "escape" && !$("module-menu").hidden) return closeModuleMenu();
-  if (ev.ctrlKey && key === "z") void stepHistory(ev.shiftKey);
-  else if (ev.ctrlKey && key === "y") void stepHistory(true);
+  // preventDefault: else WebView2 also undoes the last typing in a text box (issue #5).
+  if (ev.ctrlKey && key === "z") { ev.preventDefault(); void stepHistory(ev.shiftKey); }
+  else if (ev.ctrlKey && key === "y") { ev.preventDefault(); void stepHistory(true); }
   else if (key === "delete") void removeSelected(ev.shiftKey);
   else if (key === "pageup" && !ev.repeat && !ev.ctrlKey && !ev.altKey && selected !== null) {
     ev.preventDefault();

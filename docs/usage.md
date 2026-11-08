@@ -125,7 +125,7 @@ Run `x4sd` with no arguments (or double-click `x4sd.exe`). It loads the game dat
   - *Export to game* writes the plan into `constructionplan\`; then click Import in the game's build menu.
     - Import replaces your plan with the same id, after the game asks.
     - **A renamed plan becomes a new plan.** If your saved plans or import files have the plan's id under another name, *Export* and *Save as* give it a new id first. In game it then imports next to the original instead of replacing it. The status line says so.
-  - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F).
+  - Undo and Redo (Ctrl+Z / Ctrl+Y), and Fit view (F). Ctrl+Z undoes design edits only: it leaves the search and filter boxes alone. While you type in a box, Ctrl+Z undoes the typing.
   - **● unsaved** (next to the name, and `*` in the window title) appears after changes since the last Save, Export or Open. Closing the window, New and Open ask before discarding them. Changes made by an agent count too.
 - **New versions** (D-19): once per start the builder asks GitHub for the latest release. If it is newer than the running one, a bar above the status line offers it: *Download* opens the release page in the browser; *Skip this version* hides it until a later release comes out (skip 1.1 and 1.2 shows again). With no network nothing shows. The CLI and the MCP server don't check.
 - **Frame counter** (top right of the view): frames per second, and the milliseconds a frame takes to update and draw. The frame rate stops at the screen's refresh rate, so the milliseconds show the real load. The view draws only when something changes (camera, keys, gizmo, hover, an edit), so it reads **idle** and uses almost no GPU when you aren't moving anything.

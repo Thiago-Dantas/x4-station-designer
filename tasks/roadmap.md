@@ -104,6 +104,7 @@ Proposed order (each step usable on its own):
 - [x] GitHub security checks, OpenSSF Scorecard, releases built by Actions from a tag (D-26, [workflow-github-ci.md](workflow-github-ci.md))
 - [x] Raise the OpenSSF Scorecard score (3.9 at first, 6.1 after) ([workflow-scorecard.md](workflow-scorecard.md))
 - [x] Modules no longer stack inside each other: snaps join only facing each other ([workflow-joined-snaps.md](workflow-joined-snaps.md)); Place all asks before a partial build ([workflow-placement-partial.md](workflow-placement-partial.md))
+- [x] Ctrl+Z no longer also clears the palette filter text (GitHub issue #5, 2026-11-08; see [workflow-undo-filter.md](workflow-undo-filter.md))
 - [ ] Re-tune auto-placement for honest layouts: break up sealed stations, connectors inside for internal modules ([workflow-retune-placement.md](workflow-retune-placement.md))
 
 ## Later: live bridge (option D)
