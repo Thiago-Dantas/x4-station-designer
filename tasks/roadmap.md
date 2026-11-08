@@ -98,6 +98,7 @@ Proposed order (each step usable on its own):
   - [x] v1.4.0 published 2026-10-15: game found on any machine, placement breaks the station up and packs rebuilds, docks/piers/defence outermost, partial builds, most overlaps are notes ([workflow-release-1.4.md](workflow-release-1.4.md))
   - [x] v1.5.0 published 2026-10-16: shift-click a build-order range and drag it, closest legal step, wheel scrolls while dragging, Page Up / Page Down build first / last ([workflow-release-1.5.md](workflow-release-1.5.md))
   - [x] v1.5.1 published 2026-10-18: the Planner tab scrolls when the plan is taller than the pane ([workflow-release-1.5.1.md](workflow-release-1.5.1.md))
+  - [x] v1.5.2 published 2026-11-08: Ctrl+Z no longer clears the palette filter text, GitHub issue #5 ([workflow-release-1.5.2.md](workflow-release-1.5.2.md))
   - [x] The user published it and made the repo public
 - [x] Find the game on any machine: Steam libraries anywhere, GOG, a folder picker in the builder that is remembered (D-24, [workflow-find-game.md](workflow-find-game.md))
 - [x] Automated checks (CI) for the parts that don't need the game installed (`ci.yml`, part of [workflow-scorecard.md](workflow-scorecard.md))
